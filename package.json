@@ -1,11 +1,11 @@
 {
   "name": "lunar-horizon",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "prepare:data": "node scripts/prepare-data.mjs",
-    "check": "node scripts/check-model.mjs"
+    "check": "node scripts/check-model.mjs && node scripts/check-mission.mjs"
   },
   "dependencies": {
     "astronomy-engine": "2.1.19",

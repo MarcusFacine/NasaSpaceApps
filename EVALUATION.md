@@ -34,3 +34,12 @@ No navegador foram exercitadas as três câmeras, a mudança de local, orientaç
 ## Limites que permanecem
 
 A resolução norte–sul do DEM original é ~474 m. A reamostragem da malha não cria detalhe adicional. O horizonte ignora relevo além de 50 km e obstáculos menores que o pixel. As posições usam a orientação lunar IAU aproximada; a textura do globo e a rotação da textura terrestre são recursos visuais. Não há otimização de trajetória, enlace, baterias, temperatura ou risco de pouso nesta versão.
+# Simulação Terra–Lua–Terra (versão 3)
+
+A janela calculada agora é retida explicitamente com início, fim, seleção e altura. A missão captura esses dados e o local em foco; sem uma janela calculada aplicável a esse local, usa a data selecionada como início de uma janela manual identificada. Mudanças na data, na comparação ou na altura invalidam a janela calculada anterior. A seleção é lembrada somente no navegador do usuário.
+
+O cronograma antecipa o lançamento pela duração da ida e exige que a permanência caiba na janela. A cena acompanha a Lua pela efeméride, mostra curvas de ida e volta e muda para o DEM LOLA no pouso, na permanência e na decolagem. Luz local usa direção e fração visível do Sol. O veículo genérico tem ~14 m na cena local e é ampliado na visão espacial.
+
+Validação: continuidade de posição e relógio nas sete etapas; datas de lançamento, pouso, saída e retorno; vetores finitos; rejeição de durações inválidas; animação completa até a Terra; controle de duração e câmera; largura móvel de 390 px sem transbordamento horizontal; sem erros de execução observados no navegador. Caso exercitado: janela comum Shackleton/Malapert de 22/10/2026 18:00 a 29/10/2026 00:00 UTC, ida de 72 h, permanência de 24 h e retorno de 72 h. Chegada à Terra em 26/10/2026 18:00 UTC.
+
+Limite fundamental: é uma animação cinemática educativa, **não** uma solução orbital. Curvas cúbicas e etapas de subida/descida são interpoladas; não há gravitação integrada, solução de Lambert, delta-v, combustível, órbitas de estacionamento ou atmosfera. O ponto terrestre é uma referência visual. A textura terrestre e o grão de rególito são visuais. A janela de luz/visada não estabelece viabilidade de lançamento nem cobertura de comunicação durante o voo. O DEM não resolve o contato do veículo com o solo. Esses limites estão junto aos controles da simulação, não apenas nesta avaliação.

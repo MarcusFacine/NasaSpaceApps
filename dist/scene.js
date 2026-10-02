@@ -60,7 +60,7 @@ export class LunarScene {
         this.camera.position.copy(this.controls.target).add(offset);this.controls.update();e.preventDefault();this.invalidate();
       }
     });
-    this.render=()=>{if(this.disposed)return;if(this.dirty&&!document.hidden&&!this.contextLost){this.controls.update();this.renderer.render(this.scene,this.camera);this.updateLabels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};
+    this.render=()=>{if(this.disposed)return;if(this.dirty&&!this.suspended&&!document.hidden&&!this.contextLost){this.controls.update();this.renderer.render(this.scene,this.camera);this.updateLabels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};
     this.resize();this.render();
   }
 

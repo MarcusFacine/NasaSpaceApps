@@ -1,16 +1,35 @@
 import { sites } from './sites.js';
 import { Terrain, evaluate, ephemeris, longestRun, clamp } from './model.js';
 import { LunarScene } from './scene.js';
+import { MissionUI } from './mission.js';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const astronomy=window.Astronomy;
 const fmt=n=>`${n>=0?'+':'−'}${Math.abs(n).toFixed(2)}°`;
 const coords=s=>`${Math.abs(s.lat).toFixed(2)}° S · ${Math.abs(s.lon).toFixed(2)}° ${s.lon<0?'W':'E'}`;
-const state={selected:['shackleton','malapert'],primary:'shackleton',view:'terrain',heightM:2,panel:'tracking',date:new Date('2026-10-02T12:00:00Z')};
+const state={selected:['shackleton','malapert'],primary:'shackleton',view:'terrain',heightM:2,panel:'tracking',date:new Date('2026-10-02T12:00:00Z'),window:null};
 const terrains=new Map();let scene=null,ready=false,playing=null,timelineKey='',searching=false,current=null;
 const selectedSites=()=>state.selected.map(id=>sites.find(s=>s.id===id));
 const primarySite=()=>sites.find(s=>s.id===state.primary);
 const humanDate=d=>new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'UTC'}).format(d)+' UTC';
+const windowKey=()=>[state.date.toISOString(),state.selected.join(','),state.heightM].join('|');
+function chosenWindow(){
+  if(state.window?.key===windowKey()&&state.selected.includes(state.primary))return {start:new Date(state.window.start),end:new Date(state.window.end),source:'search'};
+  return {start:new Date(state.date),end:new Date(+state.date+24*36e5),source:'manual'};
+}
+function saveSelection(){try{localStorage.setItem('lunar-horizon-selection-v3',JSON.stringify(state));}catch{/* Storage is optional. */}}
+function restoreSelection(){try{
+  const s=JSON.parse(localStorage.getItem('lunar-horizon-selection-v3'));if(!s)return;
+  if(Array.isArray(s.selected)&&s.selected.length>=1&&s.selected.length<=3&&new Set(s.selected).size===s.selected.length&&s.selected.every(id=>sites.some(site=>site.id===id)))state.selected=s.selected;
+  if(sites.some(site=>site.id===s.primary))state.primary=s.primary;
+  if(validDate(new Date(s.date)))state.date=new Date(s.date);
+  if(Number.isInteger(s.heightM)&&s.heightM>=2&&s.heightM<=20&&s.heightM%2===0)state.heightM=s.heightM;
+  if(['tracking','horizontal'].includes(s.panel))state.panel=s.panel;
+  if(['terrain','surface','globe'].includes(s.view))state.view=s.view;
+  if(s.window?.key===windowKey()&&validDate(new Date(s.window.start))&&validDate(new Date(s.window.end))&&new Date(s.window.end)>new Date(s.window.start))state.window=s.window;
+}catch{/* Ignore invalid device-local preferences. */}}
+const mission=new MissionUI(astronomy,()=>{if(scene){scene.suspended=false;scene.invalidate();}});
+$('#missionButton').addEventListener('click',()=>{if(!ready)return;stopPlayback();if(scene)scene.suspended=true;mission.open({site:primarySite(),terrain:terrains.get(state.primary),window:chosenWindow(),heightM:state.heightM,panel:state.panel});});
 
 function message(text,error=false){$('#appMessage').textContent=text;$('#appMessage').className=`message ${text?'visible':''} ${error?'error':''}`;}
 function validDate(date){return Number.isFinite(date?.getTime())&&date>=new Date('2000-01-01T00:00Z')&&date<=new Date('2050-12-31T23:59Z');}
@@ -33,6 +52,8 @@ function setView(view){state.view=view;$$('[data-view]').forEach(b=>{b.classList
 
 function render(){
   const d=state.date;
+  if(state.window?.key!==windowKey())state.window=null;
+  const window=chosenWindow();$('#chosenWindow').textContent=`${humanDate(window.start)} → ${humanDate(window.end)} · ${window.source==='search'?'calculada / Sol + Terra':'manual / 24 h'}`;saveSelection();
   $('#dateTime').value=d.toISOString().slice(0,16);
   $('#clock').textContent=d.toISOString().slice(11,16)+' UTC';
   $('#hourOutput').textContent=d.toISOString().slice(11,16)+' UTC';
@@ -119,7 +140,7 @@ async function findBestWindow(){
     if(!best.length){message('Nenhum intervalo comum de Sol + Terra encontrado nos próximos 30 dias. Compare menos locais ou explore outra data.');return;}
     if(state.date.getTime()!==snapshot.date.getTime()||state.heightM!==snapshot.heightM||state.selected.join(',')!==snapshot.sites.map(s=>s.id).join(',')){message('Os parâmetros mudaram durante a busca. Calcule novamente para usar a seleção atual.');return;}
     const start=new Date(snapshot.date.getTime()+best.start*36e5),end=new Date(start.getTime()+best.length*36e5);
-    setDate(start,true);message(`Maior intervalo comum estimado: ${best.length} h, de ${humanDate(start)} a ${humanDate(end)}. Busca de 30 dias, com amostras de 1 hora.`);
+    setDate(start,true);state.window={start:start.toISOString(),end:end.toISOString(),key:windowKey()};render();message(`Maior intervalo comum estimado: ${best.length} h, de ${humanDate(start)} a ${humanDate(end)}. Busca de 30 dias, com amostras de 1 hora. Use “Simular missão” para visualizar a ida e a volta.`);
   }finally{searching=false;button.disabled=false;button.textContent='Melhor janela';}
 }
 
@@ -145,7 +166,7 @@ dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoun
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)scene?.invalidate();});
 window.addEventListener('pagehide',()=>{stopPlayback();scene?.dispose();});
 
-function readVisibility(){return {utcDate:state.date.toISOString(),primarySite:state.primary,camera:state.view,heightM:state.heightM,panel:state.panel,sites:selectedSites().map(s=>{const m=evaluate(s,state.date,terrains.get(s.id),astronomy,state.heightM,state.panel);return {id:s.id,name:s.name,sunElevation:m.sun.elevation,sunAzimuth:m.sun.azimuth,sunMargin:m.sun.margin,earthElevation:m.earth.elevation,earthMargin:m.earth.margin,irradianceWm2:m.irradiance};})};}
+function readVisibility(){return {utcDate:state.date.toISOString(),primarySite:state.primary,camera:state.view,heightM:state.heightM,panel:state.panel,window:chosenWindow(),sites:selectedSites().map(s=>{const m=evaluate(s,state.date,terrains.get(s.id),astronomy,state.heightM,state.panel);return {id:s.id,name:s.name,sunElevation:m.sun.elevation,sunAzimuth:m.sun.azimuth,sunMargin:m.sun.margin,earthElevation:m.earth.elevation,earthMargin:m.earth.margin,irradianceWm2:m.irradiance};})};}
 function registerWebMCP(){
   const ctx=document.modelContext;if(!ctx?.registerTool)return;
   const lifecycle=new AbortController();window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
@@ -163,15 +184,16 @@ function registerWebMCP(){
   register({name:'read_lunar_visibility',title:'Ler visibilidade lunar',description:'Lê elevações, margens sobre o horizonte LOLA e irradiância nos locais selecionados.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute:readVisibility});
 }
 
-renderSites();render();
+restoreSelection();$('#height').value=state.heightM;$(`[name=panel][value=${state.panel}]`).checked=true;renderSites();setView(state.view);
 async function init(){
   try{
     if(!astronomy)throw new Error('A biblioteca de efemérides não carregou.');
     const response=await fetch('./data/metadata.json');if(!response.ok)throw new Error('Metadados LOLA indisponíveis.');const metadata=await response.json();
     await Promise.all(sites.map(async s=>{const r=await fetch(`./data/${s.id}.bin`);if(!r.ok)throw new Error(`Terreno de ${s.name} indisponível.`);const buffer=await r.arrayBuffer();if(buffer.byteLength!==metadata.tileSize**2*4)throw new Error('Malha de terreno incompleta.');terrains.set(s.id,new Terrain(s,new Float32Array(buffer),metadata));}));
     ready=true;
+    $('#missionButton').disabled=false;
     try{scene=new LunarScene($('#sceneCanvas'),$('#sceneViewport'),sites,t=>message(t,true));}catch(error){message('O navegador não conseguiu iniciar WebGL. Os cálculos e os gráficos continuam disponíveis.',true);$('#sceneLoading').innerHTML='<b>Visualização 3D indisponível</b><span>Ative a aceleração gráfica ou experimente outro navegador.</span>';console.warn(error);}
-    render();if(scene)$('#sceneLoading').classList.add('hidden');registerWebMCP();
+    scene?.setView(state.view);render();if(scene)$('#sceneLoading').classList.add('hidden');registerWebMCP();
   }catch(error){message(error.message,true);$('#sceneLoading').innerHTML='<b>Não foi possível carregar os dados</b><span>Recarregue a página para tentar novamente.</span>';console.error(error);}
 }
 init();

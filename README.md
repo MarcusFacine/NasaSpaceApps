@@ -17,6 +17,18 @@ Para desenvolvimento e reprodução dos dados: instale as versões fixadas com `
 - Irradiância incidente para painel rastreado ou horizontal, altura do observador de 2–20 m e animação temporal.
 - Busca do maior intervalo contínuo de Sol e centro da Terra visíveis em todos os locais selecionados nos próximos 30 dias (passo de 1 hora).
 - WebMCP: `configure_lunar_comparison` e `read_lunar_visibility`, com parâmetros validados antes de qualquer mudança de estado.
+- Missão Terra–Lua–Terra: botão **Simular missão**, com lançamento, viagem, pouso no relevo LOLA, permanência, decolagem e retorno. Usa o local em foco e a janela calculada pela comparação, ou uma janela manual iniciada na data escolhida.
+- Controles de reprodução, velocidade, etapas e câmera; seleção e janela lembradas apenas neste navegador.
+
+## Simulação de missão
+
+Escolha os locais, clique em **Melhor janela**, coloque em foco um dos locais dessa comparação e abra **Simular missão**. O pouso ocorre no início da janela. O lançamento é antecipado pela duração da ida, e a decolagem acontece após a permanência informada, que precisa caber na janela. Sem busca, a data selecionada inicia uma janela manual de 24 h, ajustável na simulação. Valores iniciais de 72 h de ida, até 24 h de permanência e 72 h de volta são hipóteses educativas, não parâmetros de um veículo.
+
+As posições geocêntricas da Lua e sua orientação são recalculadas pela efeméride. As curvas cúbicas visuais miram a posição lunar na chegada e partem da posição na saída. A saída/chegada terrestres usam o vetor EQJ de um observador em 28,5°N, 80,6°W (referência no Cabo Canaveral). A atitude da textura terrestre permanece ilustrativa. As curvas são cinemáticas: **não** há integração gravitacional, solução de Lambert, orçamento de delta-v, propulsão, estágios, manobras orbitais, atmosfera ou certificação de lançamento. A viagem não é uma previsão de voo. Uma janela de iluminação e visada **não é** uma janela orbital.
+
+Distâncias e raios planetários são proporcionais na visão espacial; o veículo é ampliado para leitura. Nas etapas locais, a malha usa quilômetros e o veículo genérico mede ~14 m. O grão de rególito é apenas um efeito de material, não geometria medida. O DEM de ~474 m não resolve a área de contato das pernas. A altitude e o caminho do veículo são ilustrativos. As condições são avaliadas **no destino lunar**, incluindo amostras horárias durante a permanência, não como cobertura de comunicação durante o voo. O relógio UTC permanece cronológico, mas a animação comprime o tempo separadamente por etapa.
+
+`node scripts/check-mission.mjs` verifica cronograma, continuidade das etapas, pouso no ponto escolhido, chegada terrestre e rejeição de durações inválidas. Fundamentos de trajetórias: [NASA Basics of Space Flight](https://science.nasa.gov/learn/basics-of-space-flight/chapter4-1/).
 
 ## Dados e limitações
 

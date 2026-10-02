@@ -24,10 +24,11 @@
     <div class="page-heading"><div><p class="eyebrow">PLANEJAMENTO EXPLORATÓRIO</p><h1>Um novo ponto de vista.</h1></div><p>Compare o relevo, a luz e a conexão com a Terra.</p></div>
     <section class="control-deck" aria-label="Controles de tempo">
       <div class="date-control"><label for="dateTime">DATA E HORA <span>UTC</span></label><input id="dateTime" type="datetime-local" min="2000-01-01T00:00" max="2050-12-31T23:59" value="2026-10-02T12:00"></div>
-      <div class="time-buttons"><button id="nowButton">Agora</button><button data-shift="-24">−1 dia</button><button data-shift="24">+1 dia</button><button data-shift="168">+7 dias</button><button id="bestWindow" class="accent-button">Melhor janela</button></div>
+      <div class="time-buttons"><button id="nowButton">Agora</button><button data-shift="-24">−1 dia</button><button data-shift="24">+1 dia</button><button data-shift="168">+7 dias</button><button id="bestWindow" class="accent-button">Melhor janela</button><button id="missionButton" class="mission-button" disabled>Simular missão</button></div>
       <div class="clock"><span id="clock">12:00 UTC</span><small id="dayOfYear">DIA 275 / 2026</small></div>
     </section>
     <p id="appMessage" class="message" role="status" aria-live="polite"></p>
+    <div class="chosen-window"><span>JANELA PARA A MISSÃO</span><b id="chosenWindow">Data selecionada · intervalo manual de 24 h</b><small>O pouso usa o início da janela; o lançamento acontece antes.</small></div>
     <section class="workspace" aria-label="Comparador lunar">
       <aside class="sites-panel">
         <div class="panel-title"><div><p class="eyebrow">REGIÕES DE REFERÊNCIA</p><h2>Locais para comparar</h2></div><span id="selectionCount" class="count">2/3</span></div>
@@ -60,6 +61,40 @@
       <div class="timeline-panel"><div class="section-heading"><div><p class="eyebrow">PRÓXIMAS 24 HORAS</p><h2>Luz e visada, lado a lado</h2></div><span id="bestSpan" class="window-value">—</span></div><div class="time-scale" id="timeScale"></div><div id="timelineRows" class="timeline-rows"></div><div class="timeline-legend"><span><i class="both"></i>Sol + Terra</span><span><i class="sun-only"></i>Sol</span><span><i class="earth-only"></i>Terra</span><span><i class="none"></i>Obstruído</span></div></div>
     </section>
   </main>
+  <dialog id="missionDialog" class="mission-dialog" aria-labelledby="missionTitle">
+    <div class="mission-heading"><div><p class="eyebrow">TERRA / LUA / TERRA</p><h2 id="missionTitle">Sua janela, uma missão.</h2></div><button id="closeMission" aria-label="Fechar simulação">×</button></div>
+    <div class="mission-layout">
+      <aside class="mission-plan">
+        <p class="eyebrow">DESTINO SELECIONADO</p><h3 id="missionSite">—</h3><p id="missionCoordinates" class="mission-subtle">—</p>
+        <div class="mission-window"><span id="missionWindowSource">JANELA</span><b id="missionWindowStart">—</b><b id="missionWindowEnd">—</b></div>
+        <form id="missionForm">
+          <label for="missionWindowHours">Janela manual <span>horas</span></label><input id="missionWindowHours" type="number" min="1" max="720" step="1" value="24">
+          <label for="missionOutbound">Viagem de ida <span>horas</span></label><input id="missionOutbound" type="number" min="24" max="240" step="1" value="72">
+          <label for="missionStay">Permanência no solo <span>horas</span></label><input id="missionStay" type="number" min="0.5" max="720" step="0.5" value="24">
+          <label for="missionInbound">Viagem de volta <span>horas</span></label><input id="missionInbound" type="number" min="24" max="240" step="1" value="72">
+          <button type="submit">Aplicar durações</button>
+        </form>
+        <p id="missionError" role="alert" class="mission-error"></p>
+        <dl id="missionEvents" class="mission-events"></dl>
+        <div id="missionAssessment" class="mission-assessment" role="status"></div>
+        <p class="mission-disclaimer">Animação educativa. Curvas ilustrativas, sem integração gravitacional, combustível ou validação de lançamento. Veículo genérico; saída e chegada terrestres em um ponto de referência no Cabo Canaveral.</p>
+      </aside>
+      <section class="mission-stage">
+        <div id="missionViewport" class="mission-viewport"><canvas id="missionCanvas" tabindex="0" aria-label="Simulação tridimensional da missão de ida e volta à Lua"></canvas>
+          <div class="mission-hud"><span id="missionPhase">Lançamento da Terra</span><time id="missionClock">—</time></div>
+          <div id="missionEarthLabel" class="mission-body-label">TERRA</div><div id="missionMoonLabel" class="mission-body-label">LUA</div>
+          <div id="missionSceneMessage" class="mission-scene-message" role="status"></div>
+          <div class="mission-camera"><label for="missionCamera">Câmera</label><select id="missionCamera"><option value="auto">Automática</option><option value="overview">Trajetória completa</option><option value="follow">Acompanhar veículo</option></select><button id="missionResetCamera" title="Recentrar câmera">↺</button><button id="missionFullscreen" title="Ampliar simulação">⛶</button></div>
+          <div class="mission-view-note"><span id="missionScale">DISTÂNCIAS REAIS · VEÍCULO AMPLIADO</span><span>Arraste para orbitar · Role para aproximar</span></div>
+        </div>
+        <div class="mission-telemetry"><div><span>TEMPO DE MISSÃO</span><b id="missionElapsed">—</b></div><div><span>DISTÂNCIA TERRA–LUA</span><b id="missionDistance">—</b></div><div><span>ALTITUDE ILUSTRATIVA</span><b id="missionAltitude">—</b></div><div><span>CONDIÇÃO NO DESTINO</span><b id="missionConditions">—</b></div></div>
+        <div id="missionPhases" class="mission-phases" role="group" aria-label="Etapas da missão"></div>
+        <div class="mission-playback"><button id="missionPlay" aria-label="Reproduzir missão" aria-pressed="false">▶ Reproduzir</button><button id="missionReplay" aria-label="Reiniciar missão">↺</button><label for="missionProgress" class="sr-only">Percorrer a missão</label><input id="missionProgress" type="range" min="0" max="1000" step="1" value="0"><label for="missionSpeed" class="sr-only">Velocidade da animação</label><select id="missionSpeed"><option value="1">1× / 100 s</option><option value="2">2× / 50 s</option><option value="4">4× / 25 s</option></select></div>
+        <p class="mission-playback-note">Tempo comprimido por etapa: horas de voo em segundos. O relógio UTC mostra o instante simulado. As condições são calculadas no destino, não durante o voo.</p>
+        <details class="mission-method"><summary>O que usa dados reais e o que é ilustrativo?</summary><p>Datas, coordenadas, posição da Lua, orientação lunar, iluminação e perfil de terreno usam o modelo do Lunar Horizon. A ida mira a posição da Lua na chegada; a volta parte da posição lunar na decolagem. As curvas e manobras são interpoladas para visualização, não resolvidas como órbitas. No pouso e na decolagem a câmera muda para o DEM LOLA, em escala vertical 1×; o veículo mede aproximadamente 14 m na cena local e é ampliado na cena Terra–Lua. O retorno ao ponto terrestre é apenas uma convenção visual. A janela de luz e visada não é uma janela orbital de lançamento.</p><a href="https://science.nasa.gov/learn/basics-of-space-flight/chapter4-1/" target="_blank" rel="noopener">NASA · fundamentos de trajetórias</a></details>
+      </section>
+    </div>
+  </dialog>
   <footer><span>LUNAR HORIZON / THREE.JS</span><span>NASA SVS · LRO / LOLA · Astronomy Engine <button id="footerMethod">Fontes e limitações</button></span></footer>
   <dialog id="aboutDialog"><button class="dialog-close" aria-label="Fechar">×</button><p class="eyebrow">DADOS E MÉTODO</p><h2>O relevo e o céu usam a mesma geometria.</h2><p>Esta versão combina terreno medido e efemérides astronômicas. Os pontos selecionados são referências regionais, não elipses de pouso certificadas.</p><dl class="method-list"><div><dt>Terreno</dt><dd>LOLA LDEM 64 pixels/grau, NASA SVS. Alturas de 16 bits em unidades de 0,5 m, reamostradas em malhas de 100 km. Curvatura lunar e escala vertical real.</dd></div><div><dt>Posições</dt><dd>Astronomy Engine 2.1.19, vetores geométricos J2000 e orientação lunar IAU_MOON aproximada. Paralaxe do observador incluída; sem refração.</dd></div><div><dt>Visibilidade</dt><dd>Horizonte a cada 0,5°, amostrado até 50 km. Sol e centro da Terra avaliados contra esse perfil. Terreno além de 50 km e estruturas subpixel não entram no cálculo.</dd></div><div><dt>Energia</dt><dd>Irradiância incidente aproximada, usando 1361 W/m² a 1 UA e fração do disco solar visível. Sem eficiência do painel, perdas elétricas, temperatura ou armazenamento.</dd></div><div><dt>Renderização</dt><dd>Three.js, sombras solares e textura LROC/NASA. Luz de preenchimento suave permite ler o relevo na sombra. Texturas e sombreamento têm finalidade visual.</dd></div><div><dt>Janelas</dt><dd>Melhor intervalo contínuo comum aos locais selecionados nos próximos 30 dias, amostrado a cada hora. Transições entre amostras não são resolvidas.</dd></div></dl><p class="method-limits">Uso exploratório e educativo. Uma decisão de missão precisa de DEM polar de alta resolução, orientação binária SPICE e validação do enlace. Não há certificação operacional nesta versão.</p><div class="source-links"><a href="https://svs.gsfc.nasa.gov/4720/" target="_blank" rel="noopener">NASA CGI Moon Kit</a><a href="https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc" target="_blank" rel="noopener">NAIF / orientação lunar</a><a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a><a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a></div><p class="credits">Terreno e Lua: NASA's Scientific Visualization Studio, LRO LOLA e LROC. Textura da Terra: exemplo de planetas do Three.js. Bibliotecas sob licença MIT.</p></dialog>
   <script type="module" src="app.js"></script>
