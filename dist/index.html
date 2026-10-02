@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lunar Horizon — Planejamento do polo sul lunar</title>
+  <meta name="description" content="Compare iluminação solar e visibilidade da Terra em locais candidatos no polo sul lunar.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1016'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%237c8b98' stroke-width='3'/%3E%3Cpath d='M13 39c9-7 15 2 23-5s11-2 15-5' fill='none' stroke='%23e6ff57' stroke-width='4'/%3E%3Ccircle cx='45' cy='18' r='5' fill='%23e6ff57'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Lunar Horizon — início">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="14"/><path d="M6 25c6-4 10 2 16-3s8-1 12-4"/><circle cx="29" cy="11" r="3"/></svg>
+        </span>
+        <span><b>LUNAR</b> HORIZON</span>
+      </a>
+      <div class="mission-status"><span class="status-pulse"></span> SIMULADOR ATIVO <span class="sep">/</span> MODELO EDUCATIVO</div>
+      <button class="icon-button" id="helpButton" aria-label="Sobre os dados" title="Sobre os dados">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.3 2.3 0 1 1 3.5 2c-.9.6-1.3 1.1-1.3 2.1M12 17h.01"/></svg>
+      </button>
+    </header>
+
+    <main>
+      <section class="intro-row">
+        <div>
+          <p class="eyebrow">PLANEJAMENTO DE POUSO · POLO SUL LUNAR</p>
+          <h1>Veja o horizonte antes de escolher o local.</h1>
+        </div>
+        <p class="intro-copy">Compare o acesso ao Sol e à Terra em diferentes regiões e encontre janelas favoráveis para energia e comunicação.</p>
+      </section>
+
+      <section class="control-deck" aria-label="Controles da simulação">
+        <div class="field-group date-field">
+          <label for="dateTime">DATA E HORA <span>UTC</span></label>
+          <div class="date-input-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+            <input id="dateTime" type="datetime-local" value="2026-10-02T12:00">
+          </div>
+        </div>
+        <div class="field-group presets">
+          <label>ATALHOS</label>
+          <div class="button-row">
+            <button data-shift="0" class="chip active">Agora</button>
+            <button data-shift="24" class="chip">+1 dia</button>
+            <button data-shift="168" class="chip">+7 dias</button>
+            <button id="bestWindow" class="chip accent">Melhor janela</button>
+          </div>
+        </div>
+        <div class="utc-clock">
+          <span>HORA DA MISSÃO</span>
+          <strong id="clock">12:00:00</strong>
+          <small id="dayOfYear">DIA 275 · 2026</small>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="site-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">LOCAIS CANDIDATOS</p>
+              <h2>Selecione até 3</h2>
+            </div>
+            <span id="selectionCount" class="count-badge">2 / 3</span>
+          </div>
+          <div id="siteList" class="site-list"></div>
+          <div class="legend-card">
+            <p><span class="legend-dot sun"></span> Sol acima do horizonte</p>
+            <p><span class="legend-dot earth"></span> Terra visível</p>
+            <p><span class="legend-dot blocked"></span> Obstrução local estimada</p>
+          </div>
+        </aside>
+
+        <section class="sky-panel">
+          <div class="panel-heading sky-heading">
+            <div>
+              <p class="section-kicker">VISÃO DO HORIZONTE</p>
+              <h2 id="primarySiteName">Cume Shackleton</h2>
+            </div>
+            <div class="view-tabs" role="tablist" aria-label="Modo de visualização">
+              <button class="view-tab active" data-view="polar" role="tab" aria-selected="true">Polar</button>
+              <button class="view-tab" data-view="profile" role="tab" aria-selected="false">Perfil</button>
+            </div>
+          </div>
+
+          <div class="sky-content">
+            <div class="sky-visual-wrap">
+              <svg id="skyChart" class="sky-chart" viewBox="0 0 420 420" role="img" aria-label="Mapa polar do céu local">
+                <defs>
+                  <radialGradient id="skyGlow"><stop offset="0" stop-color="#17222c"/><stop offset="1" stop-color="#0c1218"/></radialGradient>
+                  <filter id="sunGlow"><feGaussianBlur stdDeviation="6"/></filter>
+                </defs>
+                <circle cx="210" cy="210" r="162" fill="url(#skyGlow)" stroke="#34414c"/>
+                <circle cx="210" cy="210" r="121.5" class="grid-circle"/>
+                <circle cx="210" cy="210" r="81" class="grid-circle"/>
+                <circle cx="210" cy="210" r="40.5" class="grid-circle"/>
+                <path d="M48 210h324M210 48v324M95.4 95.4l229.2 229.2M324.6 95.4L95.4 324.6" class="grid-line"/>
+                <text x="210" y="26" text-anchor="middle">N · 0°</text><text x="395" y="215" text-anchor="middle">E · 90°</text>
+                <text x="210" y="406" text-anchor="middle">S · 180°</text><text x="25" y="215" text-anchor="middle">W · 270°</text>
+                <path id="terrainPath" class="terrain-line" d=""/>
+                <g id="sunMarker"><circle r="18" class="sun-halo" filter="url(#sunGlow)"/><circle r="8" class="sun-core"/><path d="M0-15v-5M0 15v5M-15 0h-5M15 0h5" class="sun-rays"/></g>
+                <g id="earthMarker"><circle r="10" class="earth-core"/><path d="M-7-2c4-2 6 4 13 1M-4 5c3-2 6-1 9-3" class="earth-land"/></g>
+              </svg>
+              <div class="visual-caption"><span>AZIMUTE</span><span>ELEVAÇÃO</span></div>
+            </div>
+
+            <div class="readout-stack">
+              <article class="readout-card sun-card">
+                <div class="readout-label"><span class="readout-icon sun"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg></span> SOL</div>
+                <strong id="sunElevation">+4.2°</strong>
+                <div class="metric-line"><span>Azimute</span><b id="sunAzimuth">102°</b></div>
+                <div class="metric-line"><span>Margem</span><b id="sunMargin">+2.8°</b></div>
+                <div class="status-label favorable" id="sunStatus">ILUMINAÇÃO FAVORÁVEL</div>
+              </article>
+              <article class="readout-card earth-card">
+                <div class="readout-label"><span class="readout-icon earth"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M4 9c3 0 4 2 7 1s4-4 8-2M6 16c3-2 6 2 11-1"/></svg></span> TERRA</div>
+                <strong id="earthElevation">+6.8°</strong>
+                <div class="metric-line"><span>Azimute</span><b id="earthAzimuth">14°</b></div>
+                <div class="metric-line"><span>Margem</span><b id="earthMargin">+5.1°</b></div>
+                <div class="status-label connected" id="earthStatus">LINK DIRETO DISPONÍVEL</div>
+              </article>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="timeline-panel">
+        <div class="timeline-header">
+          <div>
+            <p class="section-kicker">JANELA DE 24 HORAS</p>
+            <h2>Disponibilidade prevista</h2>
+          </div>
+          <div class="timeline-summary"><b id="bestSpan">17h</b><span>melhor janela combinada</span></div>
+        </div>
+        <div class="time-scale"><span>00h</span><span>04h</span><span>08h</span><span>12h</span><span>16h</span><span>20h</span><span>24h</span></div>
+        <div id="timelineRows" class="timeline-rows"></div>
+        <div class="timeline-legend"><span><i class="both"></i> Sol + Terra</span><span><i class="only-sun"></i> Apenas Sol</span><span><i class="only-earth"></i> Apenas Terra</span><span><i class="none"></i> Indisponível</span></div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MODELO CONCEITUAL · RESOLUÇÃO TEMPORAL 1H</span>
+      <span>Use efemérides e modelos digitais de terreno validados para decisões de missão.</span>
+    </footer>
+  </div>
+
+  <dialog id="aboutDialog">
+    <button class="dialog-close" aria-label="Fechar">×</button>
+    <p class="section-kicker">SOBRE ESTA SIMULAÇÃO</p>
+    <h2>Uma leitura rápida, não uma solução de navegação.</h2>
+    <p>O Lunar Horizon usa um modelo geométrico simplificado para demonstrar como data, relevo local e localização afetam a iluminação e a linha de visada para a Terra.</p>
+    <p>Os valores são plausíveis para fins educacionais, mas não substituem SPICE, LOLA, efemérides de missão nem análises de enlace certificadas.</p>
+    <div class="dialog-note">Próximo passo operacional: conectar os cálculos a kernels SPICE e a um modelo de terreno de alta resolução.</div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
