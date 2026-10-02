@@ -1,0 +1,36 @@
+{
+  "source": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
+  "credit": "NASA's Scientific Visualization Studio / LRO LOLA",
+  "sourcePixelsPerDegree": 64,
+  "sourceMeridionalSpacingKm": 0.47380235037733565,
+  "radiusKm": 1737.4,
+  "tileSize": 257,
+  "extentKm": 100,
+  "sites": {
+    "shackleton": {
+      "elevationKm": 0.7524920000000135,
+      "minKm": -3.943037509918213,
+      "maxKm": 1.9504039287567139
+    },
+    "malapert": {
+      "elevationKm": 4.823869000000006,
+      "minKm": -3.9758031368255615,
+      "maxKm": 5.149322032928467
+    },
+    "degerlache": {
+      "elevationKm": -2.7940399999999213,
+      "minKm": -3.0526232719421387,
+      "maxKm": 1.9504854679107666
+    },
+    "nobile": {
+      "elevationKm": 0.6782749999999604,
+      "minKm": -2.491543769836426,
+      "maxKm": 6.999994277954102
+    },
+    "haworth": {
+      "elevationKm": -3.378000000000002,
+      "minKm": -4.364192008972168,
+      "maxKm": 5.151257038116455
+    }
+  }
+}

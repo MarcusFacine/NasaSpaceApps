@@ -1,0 +1,17 @@
+{
+  "name": "lunar-horizon",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:data": "node scripts/prepare-data.mjs",
+    "check": "node scripts/check-model.mjs"
+  },
+  "dependencies": {
+    "astronomy-engine": "2.1.19",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "geotiff": "3.0.5"
+  }
+}
