@@ -4,11 +4,17 @@ Explorador do polo sul lunar em português. Site estático com Three.js 0.186.1,
 
 ## Executar
 
-Na pasta do projeto, execute `python -m http.server 4173 --directory dist` e abra `http://localhost:4173/`. Os arquivos de bibliotecas, texturas e terreno necessários já estão em `dist`. Não é necessário instalar dependências para executar a versão entregue.
+No Windows, dê dois cliques em **Iniciar Lunar Horizon.cmd** ou execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1` na pasta do projeto. Abra `http://localhost:4173/`. Esse inicializador usa o Node.js disponível (incluindo o runtime do Codex), inicia um processo independente do terminal temporário e serve apenas em `127.0.0.1` e `::1`. Não cria serviço, tarefa agendada, entrada de inicialização ou publicação. Uma segunda execução apenas verifica o servidor existente; uma porta ocupada por outro processo não é liberada automaticamente. Os registros ficam em `artifacts/localhost-server.log`.
+
+Como alternativa em um terminal que permanecerá aberto, execute `npm start` (Node.js) ou `python -m http.server 4173 --bind 127.0.0.1 --directory dist` e use `http://127.0.0.1:4173/`. Os arquivos de bibliotecas, texturas e terreno necessários já estão em `dist`. Não é necessário instalar dependências para executar a versão entregue. Após reiniciar o computador, execute o inicializador novamente.
 
 Para desenvolvimento e reprodução dos dados: instale as versões fixadas com `pnpm install`. `pnpm prepare:data` obtém as linhas polares do DEM NASA por HTTP Range, gera as cinco malhas binárias e copia as bibliotecas locais. `pnpm check` verifica a geometria e um caso de referência JPL. A regeneração dos dados precisa de rede; o servidor estático e os cálculos não.
 
-## Experiência
+## Tutorial ilustrado
+
+Abra `http://localhost:4173/tutorial.html` ou clique em **Tutorial** no cabeçalho do aplicativo. O guia inclui capturas reais, parâmetros reproduzíveis, comparação de casos favoráveis e obstruídos, busca de janela comum, missão Terra–Lua–Terra, entradas rejeitadas e conclusões que o modelo não permite. O botão **Imprimir guia** usa a impressão do navegador, com opção de salvar como PDF. Os exemplos podem ser recalculados com `node scripts/tutorial-examples.mjs`.
+
+## Recursos do aplicativo
 
 - Câmeras de relevo orbital, superfície e globo lunar; interação por mouse, toque e teclado (setas / Home).
 - Terreno regional de 100 × 100 km, amostrado em 257 × 257 pontos, com curvatura lunar e escala vertical 1×.
