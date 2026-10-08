@@ -99,7 +99,7 @@
           <li>Reproduza a janela de 150 h do passo 04, com apenas Shackleton e Malapert. Clique no nome de <b>Borda de Shackleton</b> para colocá-la em exploração.</li>
           <li>Abra <b>Simular missão</b>. Confira o destino e a indicação <b>Janela calculada</b>. O local em foco deve fazer parte da comparação; um local de fora não recebe essa janela comum.</li>
           <li>Use <b>72 h de ida, 24 h de permanência e 72 h de volta</b>. Clique em <b>Aplicar durações</b>. São hipóteses educativas, não especificações de um foguete.</li>
-          <li>Clique em <b>Reproduzir</b> ou escolha uma das sete etapas. A barra permite percorrer a missão; 1×, 2× e 4× mudam apenas a velocidade da animação.</li>
+          <li>Clique em <b>Reproduzir</b> ou escolha uma das 13 etapas. A barra permite percorrer a missão; 1×, 2× e 4× mudam apenas a velocidade da animação. A ida e a volta já incluem o tempo das órbitas e das manobras.</li>
         </ol>
         <ol class="mission-dates" aria-label="Cronograma do exemplo, todas as datas em UTC">
           <li><span>Lançamento</span><b>19/10/2026</b><time datetime="2026-10-19T18:00:00Z">18:00 UTC</time><small>72 h antes do pouso</small></li>
@@ -111,7 +111,7 @@
           <figure><a href="tutorial/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/06-trajetoria.jpg" width="1150" height="930" loading="lazy" alt="Simulação em Ida à Lua com câmera Trajetória completa, Terra, Lua e curvas ilustrativas de ida e volta."></a><figcaption><b>Trajetória completa:</b> visão espacial da ida e da volta. O veículo é ampliado para leitura.</figcaption></figure>
           <figure><a href="tutorial/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/05-missao.jpg" width="1150" height="930" loading="lazy" alt="Etapa No solo com foguete genérico no terreno de Shackleton e cronograma de missão baseado na janela escolhida."></a><figcaption><b>No solo:</b> veículo no terreno lunar. Use câmera Automática para acompanhar a mudança entre visão espacial e local.</figcaption></figure>
         </div>
-        <p><b>Automática</b> troca o enquadramento por etapa; <b>Trajetória completa</b> mostra o conjunto; <b>Acompanhar veículo</b> segue o foguete. As etapas são Lançamento, Ida à Lua, Pouso lunar, No solo, Decolagem, Volta à Terra e Chegada à Terra.</p>
+        <p><b>Automática</b> enquadra a órbita terrestre a 300 km e as órbitas lunares a 100 km, antes do pouso e após a decolagem. São 1,5 volta terrestre e 1 volta em cada trecho lunar, com os motores desligados. O contador mostra voltas e velocidade circular; os períodos são cerca de 90,5 min na Terra e 117,8 min na Lua. <b>Trajetória completa</b> mostra o conjunto; <b>Acompanhar veículo</b> segue o foguete. As 13 etapas incluem as queimas de injeção translunar, inserção lunar e injeção à Terra. A reprodução completa dura 140 s em 1×. Descida e subida têm 20 s cada, com cerca de 14–15 s próximos do solo e aproximação/afastamento gradual da câmera. Nos últimos 400 m de descida ou nos primeiros 400 m de subida, a câmera usa o relevo LOLA. O foguete mantém a orientação para a frente nas órbitas e só inicia a rotação para a vertical durante a descida. As capturas acima mostram a interface anterior às órbitas.</p>
         <aside class="notice"><b>Leia o relógio UTC.</b> O tempo é comprimido separadamente por etapa. A indicação “Condição no destino” descreve o ponto lunar no instante mostrado, <b>não</b> o rádio ou a iluminação do foguete durante o voo. O resumo 25/25 do exemplo conta amostras da permanência; não verifica cada instante entre elas.</aside>
       </section>
 
@@ -129,7 +129,7 @@
         <div class="two-columns limit-cards">
           <article><h4>“O enlace está garantido.”</h4><p>Terra visível significa visada para seu <b>centro</b>. Faltam estação terrestre, antena, apontamento, frequência e orçamento do enlace.</p></article>
           <article><h4>“A missão tem energia suficiente.”</h4><p>Irradiância não inclui área, eficiência, temperatura, consumo nem baterias. Não use W/m² como autonomia elétrica.</p></article>
-          <article><h4>“Este foguete consegue fazer essa trajetória.”</h4><p>As curvas são cinemáticas e ilustrativas: não há integração gravitacional, combustível, delta-v, manobras orbitais ou validação de lançamento. Janela de iluminação <b>não é janela orbital</b>.</p></article>
+          <article><h4>“Este foguete consegue fazer essa trajetória.”</h4><p>Somente as órbitas de estacionamento usam a solução circular de dois corpos. Transferências e queimas são ilustrativas; não há solução orbital completa, continuidade garantida de velocidade entre etapas, combustível ou delta-v. Dar voltas não produz um estilingue automático. Janela de iluminação <b>não é janela orbital</b>.</p></article>
           <article><h4>“O pouso neste ponto é seguro.”</h4><p>O terreno original tem espaçamento de aproximadamente 474 m norte–sul; não resolve pedras, inclinações pequenas ou contato das pernas. Os pontos são referências regionais, não sítios certificados.</p></article>
         </div>
       </section>

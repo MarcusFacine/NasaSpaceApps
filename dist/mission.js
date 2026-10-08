@@ -1,5 +1,5 @@
 import { evaluate } from './model.js';
-import { HOUR, PHASES, buildMission, sampleMission } from './mission-model.js';
+import { HOUR, PHASES, ANIMATION_SECONDS, buildMission, sampleMission } from './mission-model.js';
 import { MissionScene } from './mission-scene.js';
 
 const $=s=>document.querySelector(s);
@@ -27,9 +27,12 @@ export class MissionUI {
     $('#missionOutbound').value=72;$('#missionInbound').value=72;$('#missionStay').value=Math.min(24,(context.window.end-context.window.start)/HOUR);$('#missionStay').max=(context.window.end-context.window.start)/HOUR;
     $('#missionCamera').value='auto';$('#missionSceneMessage').textContent='';$('#missionError').textContent='';
     this.dialog.showModal();
-    try{this.scene=new MissionScene($('#missionCanvas'),$('#missionViewport'),context.terrain,text=>$('#missionSceneMessage').textContent=text);}catch{$('#missionSceneMessage').textContent='A cena 3D não pôde ser iniciada. O cronograma da missão continua disponível.';}
+    // A disposed WebGL context cannot be reused until asynchronously restored.
+    // Keep the DOM attributes, but give each reopened scene a fresh canvas.
+    const canvas=$('#missionCanvas'),freshCanvas=canvas.cloneNode(false);canvas.replaceWith(freshCanvas);
+    try{this.scene=new MissionScene(freshCanvas,$('#missionViewport'),context.terrain,text=>$('#missionSceneMessage').textContent=text);}catch{$('#missionSceneMessage').textContent='A cena 3D não pôde ser iniciada. O cronograma da missão continua disponível.';}
     this.apply();
-    this.tick=now=>{if(!this.dialog.open)return;const dt=Math.min(5000,now-this.last);this.last=now;if(this.playing&&!document.hidden){this.progress=Math.min(1,this.progress+dt/100000*Number($('#missionSpeed').value));if(this.progress>=1)this.stop();if(now-this.lastDraw>=40){this.lastDraw=now;this.draw();}}this.frame=requestAnimationFrame(this.tick);};this.frame=requestAnimationFrame(this.tick);
+    this.tick=now=>{if(!this.dialog.open)return;const dt=Math.min(5000,now-this.last);this.last=now;if(this.playing&&!document.hidden){this.progress=Math.min(1,this.progress+dt/(ANIMATION_SECONDS*1000)*Number($('#missionSpeed').value));const finished=this.progress>=1;if(finished)this.stop();if(finished||now-this.lastDraw>=40){this.lastDraw=now;this.draw();}}this.frame=requestAnimationFrame(this.tick);};this.frame=requestAnimationFrame(this.tick);
   }
   apply(){
     this.stop();const c=this.context,duration=Number($('#missionWindowHours').value);
@@ -40,7 +43,8 @@ export class MissionUI {
       this.plan=plan;this.progress=0;this.conditionKey='';$('#missionError').textContent='';$('#missionStay').max=(end-c.window.start)/HOUR;
       $('#missionWindowSource').textContent=c.window.source==='search'?'JANELA CALCULADA · AMOSTRAS DE 1 h':'JANELA MANUAL · NÃO OTIMIZADA';
       $('#missionWindowStart').textContent=fullDate(c.window.start);$('#missionWindowEnd').textContent='até '+fullDate(end);
-      $('#missionEvents').innerHTML=[['Lançamento',plan.launch],['Pouso lunar',plan.arrival],['Saída da Lua',plan.departure],['Chegada à Terra',plan.returnAt]].map(([label,time])=>`<div><dt>${label}</dt><dd>${shortDate(time)}</dd></div>`).join('');
+      $('#missionEvents').innerHTML=[['Lançamento',plan.launch],['Injeção translunar',plan.times.tli[0]],['Inserção lunar',plan.times.loi[0]],['Pouso lunar',plan.arrival],['Saída da Lua',plan.departure],['Injeção à Terra',plan.times.tei[0]],['Chegada à Terra',plan.returnAt]].map(([label,time])=>`<div><dt>${label}</dt><dd>${shortDate(time)}</dd></div>`).join('');
+      $('#missionOrbitSummary').innerHTML=[['Terra',plan.earthParking,'1,5 volta antes da ida'],['Lua',plan.lunarParking,'1 volta antes do pouso e após a decolagem']].map(([body,orbit,note])=>`<div><b>${body} · ${Math.round(orbit.radiusKm-(body==='Terra'?6378.137:1737.4))} km</b><span>Período ${(orbit.periodSeconds/60).toFixed(1).replace('.',',')} min · ${orbit.speedKmS.toFixed(2).replace('.',',')} km/s</span><small>${note}</small></div>`).join('');
       $('#missionPhases').innerHTML=PHASES.map(p=>`<button data-mission-phase="${p.id}" aria-pressed="false">${p.label}</button>`).join('');
       document.querySelectorAll('[data-mission-phase]').forEach(button=>button.addEventListener('click',()=>{this.stop();this.progress=PHASES.find(p=>p.id===button.dataset.missionPhase).start;this.draw(true);}));
       let total=0,good=0;
@@ -58,6 +62,8 @@ export class MissionUI {
     $('#missionElapsed').textContent=`${s.elapsedHours.toFixed(1)} h`;$('#missionDistance').textContent=Math.round(s.distanceKm).toLocaleString('pt-BR')+' km';
     $('#missionAltitude').textContent=(s.altitudeKm<1?(s.altitudeKm*1000).toFixed(0)+' m':Math.round(s.altitudeKm).toLocaleString('pt-BR')+' km')+' / '+s.altitudeReference;
     $('#missionConditions').textContent=`Sol ${this.conditions.sun.available?'visível':'obstruído'} · Terra ${this.conditions.earth.available?'visível':'obstruída'}`;
+    $('#missionOrbitStatus').textContent=s.orbit?`${s.orbitTurns.toFixed(2).replace('.',',')} / ${s.orbit.turns.toFixed(2).replace('.',',')} voltas · ${s.orbit.speedKmS.toFixed(2).replace('.',',')} km/s · motores desligados`:
+      s.engine?(['tli','loi','tei'].includes(s.phase)?'Queima ilustrativa · não calcula delta-v':'Propulsão ilustrativa'):s.phase==='surface'?'Veículo no solo lunar':'Voo ilustrativo · sem solução orbital';
     $('#missionProgress').value=Math.round(this.progress*1000);
     document.querySelectorAll('[data-mission-phase]').forEach(b=>{const active=b.dataset.missionPhase===s.phase;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
     this.sample=s;

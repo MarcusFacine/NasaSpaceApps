@@ -42,4 +42,20 @@ O cronograma antecipa o lançamento pela duração da ida e exige que a permanê
 
 Validação: continuidade de posição e relógio nas sete etapas; datas de lançamento, pouso, saída e retorno; vetores finitos; rejeição de durações inválidas; animação completa até a Terra; controle de duração e câmera; largura móvel de 390 px sem transbordamento horizontal; sem erros de execução observados no navegador. Caso exercitado: janela comum Shackleton/Malapert de 22/10/2026 18:00 a 29/10/2026 00:00 UTC, ida de 72 h, permanência de 24 h e retorno de 72 h. Chegada à Terra em 26/10/2026 18:00 UTC.
 
-Limite fundamental: é uma animação cinemática educativa, **não** uma solução orbital. Curvas cúbicas e etapas de subida/descida são interpoladas; não há gravitação integrada, solução de Lambert, delta-v, combustível, órbitas de estacionamento ou atmosfera. O ponto terrestre é uma referência visual. A textura terrestre e o grão de rególito são visuais. A janela de luz/visada não estabelece viabilidade de lançamento nem cobertura de comunicação durante o voo. O DEM não resolve o contato do veículo com o solo. Esses limites estão junto aos controles da simulação, não apenas nesta avaliação.
+Limite da versão inicial da missão: a animação era inteiramente cinemática, sem órbitas de estacionamento. A revisão abaixo substitui apenas esses trechos por órbitas circulares analíticas; as transferências continuam ilustrativas.
+
+## Revisão: órbitas de estacionamento
+
+Agora há 13 etapas, incluindo estacionamento terrestre a 300 km (1,5 volta), estacionamento lunar a 100 km antes do pouso e após a decolagem (1 volta em cada trecho), e queimas visuais TLI/LOI/TEI. Períodos e velocidades seguem a solução circular de dois corpos com μ JPL DE440: ~90,5 min / 7,73 km/s na Terra e ~117,8 min / 1,63 km/s na Lua. Os motores ficam desligados nas órbitas. O plano lunar é polar e fixo no referencial inercial, com o centro acompanhando a efeméride. Não representa um estilingue ou economia demonstrada de combustível.
+
+Os tempos das novas etapas são descontados dos totais da ida/volta; a janela, o pouso, a permanência e o retorno do caso de referência não mudam. A câmera automática enquadra as órbitas e o DEM nos últimos 400 m do trecho local. Há anéis orbitais, contador de voltas, velocidade circular e resumo dos períodos.
+
+Validação automatizada: cronograma das 13 fases, continuidade de posição, órbitas fechadas, velocidade tangencial, velocidade numérica consistente com Kepler, motores desligados e raio constante. Ligações visuais verificadas para cinco locais, elevação de 4,5 km e durações de 24, 72 e 240 h. A seleção de controles Bézier rejeita cruzamentos das esferas planetárias em 1001 amostras, sem constituir validação de navegação.
+
+Limites restantes: transferências Bézier corrigidas pela efeméride lunar; subida/descida, queimas e reentrada interpoladas. Há continuidade C0, não garantia de continuidade de velocidade. Não há solução de Lambert, integração de três corpos, delta-v, combustível, atmosfera ou otimização do plano de lançamento. As condições de luz/visada não certificam voo, enlace ou obstáculos na descida. O retorno terrestre e as texturas são visuais. O DEM não resolve o contato do veículo com o solo.
+
+### Revisão de continuidade e cutscenes (08/10/2026)
+
+Restauradas as cenas de subida/descida próximas do terreno (cerca de 14–15 s em 1×, dentro de etapas de 20 s). A animação total passa a 140 s, sem alterar as datas UTC da missão. Relógio de apresentação com aceleração/desaceleração nas bordas das etapas; junções Bézier tangentes nas transferências; atitudes contínuas e prógradas durante o estacionamento lunar. A rotação para a vertical ocorre apenas com a descida já iniciada. A câmera interpola alvo, direção e zoom durante 1,8 s, preserva a pose ao trocar de referencial espacial/local e acompanha a aproximação/afastamento do terreno. Esses ajustes são de apresentação, não uma nova solução de dinâmica orbital.
+
+Verificações: continuidade de posição e atitude em todas as etapas, duração da cena local, altitude monotônica na subida/descida, orientação prógrada nas órbitas, conversão bidirecional dos referenciais da câmera, interpolação incremental sem saltos, períodos/velocidades circulares e ausência de interseção com os globos nas transferências de 24/72/240 h nos cinco locais.

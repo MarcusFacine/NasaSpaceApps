@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import * as Astronomy from 'astronomy-engine';
 import { sites } from '../dist/sites.js';
-import { PHASES,HOUR,buildMission,sampleMission,lunarPoint,terrestrialPoint } from '../dist/mission-model.js';
+import { PHASES,ANIMATION_SECONDS,presentationTime,HOUR,EARTH_RADIUS,PARKING,buildMission,sampleMission,lunarPoint,terrestrialPoint,parkingState } from '../dist/mission-model.js';
+import { RADIUS_KM } from '../dist/model.js';
+import * as THREE from 'three';
+import { MissionScene } from '../dist/mission-scene.js';
+const magnitude=v=>Math.hypot(...v),difference=(a,b)=>a.map((v,i)=>v-b[i]);
+const progressAt=(id,t=0)=>{const p=PHASES.find(p=>p.id===id);return p.start+(p.end-p.start)*t;};
 const plan=buildMission({site:sites[0],windowStart:'2026-10-22T18:00:00Z',windowEnd:'2026-10-29T00:00:00Z',outboundHours:72,stayHours:24,inboundHours:72},Astronomy);
 assert.equal(new Date(plan.launch).toISOString(),'2026-10-19T18:00:00.000Z');
 assert.equal(new Date(plan.returnAt).toISOString(),'2026-10-26T18:00:00.000Z');
@@ -14,12 +19,90 @@ for(const phase of PHASES.slice(1)){
   const left=sampleMission(plan,phase.start-1e-9,Astronomy),right=sampleMission(plan,phase.start,Astronomy);
   assert.ok(Math.hypot(...left.position.map((v,i)=>v-right.position[i]))<.1,`Position discontinuity: ${phase.id}`);
   assert.ok(Math.abs(+left.date-+right.date)<100,`Clock discontinuity: ${phase.id}`);
+  assert.ok(left.direction.reduce((sum,x,i)=>sum+x*right.direction[i],0)>.999,`Attitude discontinuity: ${phase.id}`);
 }
-const landed=sampleMission(plan,.49,Astronomy),returned=sampleMission(plan,1,Astronomy);
+const landed=sampleMission(plan,progressAt('surface'),Astronomy),returned=sampleMission(plan,1,Astronomy);
 assert.equal(+landed.date,plan.arrival);assert.equal(landed.altitudeKm,0);assert.equal(landed.phase,'surface');
 assert.deepEqual(landed.position,lunarPoint(plan.site,landed.date,Astronomy));
 assert.equal(+returned.date,plan.returnAt);assert.equal(returned.altitudeKm,0);assert.deepEqual(returned.position,terrestrialPoint(returned.date,Astronomy));
 assert.throws(()=>buildMission({...plan,stayHours:151},Astronomy),/caber/);
 assert.throws(()=>buildMission({...plan,outboundHours:0},Astronomy),/24 a 240/);
 assert.equal(plan.departure-plan.arrival,24*HOUR);
-console.log('PASS: mission dates, monotonic UTC clock, finite vectors, continuous stage boundaries, selected lunar landing, Earth arrival and invalid durations. Trajectory remains kinematic, not orbital.');
+assert.equal(plan.times.earthOrbit[1],plan.times.tli[0]);
+assert.equal(plan.times.lunarOrbit[1],plan.times.descent[0]);
+assert.equal(plan.times.ascent[1],plan.times.lunarReturnOrbit[0]);
+assert.equal(plan.times.lunarReturnOrbit[1],plan.times.tei[0]);
+assert.ok(plan.earthParking.periodSeconds/60>90&&plan.earthParking.periodSeconds/60<91);
+assert.ok(plan.lunarParking.periodSeconds/60>117&&plan.lunarParking.periodSeconds/60<119);
+for(const [id,orbit] of [['earthOrbit',plan.earthParking],['lunarOrbit',plan.lunarParking],['lunarReturnOrbit',plan.lunarReturnParking]]){
+  assert.ok(Math.abs((orbit.end-orbit.start)/1000-orbit.turns*orbit.periodSeconds)<1e-6);
+  const first=parkingState(orbit,orbit.start),full=parkingState(orbit,orbit.start+orbit.periodSeconds*1000);
+  assert.ok(magnitude(difference(first.relative,full.relative))<1e-5,'Circular orbit must close after its Kepler period');
+  for(let i=0;i<=100;i++){
+    const ms=orbit.start+(orbit.end-orbit.start)*i/100,state=parkingState(orbit,ms);
+    assert.ok(Math.abs(magnitude(state.relative)-orbit.radiusKm)<1e-8);
+    assert.ok(Math.abs(state.relative.reduce((sum,v,k)=>sum+v*state.direction[k],0))<1e-8,'Velocity must be tangential');
+    const numericalSpeed=magnitude(difference(parkingState(orbit,ms+500).relative,parkingState(orbit,ms-500).relative));
+    assert.ok(Math.abs(numericalSpeed-orbit.speedKmS)<1e-4,'Kepler speed must match propagated position');
+    const sample=sampleMission(plan,progressAt(id,Math.min(i/100,.999999)),Astronomy);
+    const center=orbit.body==='Earth'?[0,0,0]:sample.moon;
+    assert.ok(Math.abs(magnitude(difference(sample.position,center))-orbit.radiusKm)<1e-7);
+    assert.equal(sample.engine,false,'Parking is unpowered');
+    const forward=parkingState(orbit,+sample.date).direction;
+    assert.ok(sample.direction.reduce((sum,x,k)=>sum+x*forward[k],0)>1-1e-8,'No backward attitude in parking');
+    assert.ok(sample.orbitTurns>=0&&sample.orbitTurns<=orbit.turns);
+  }
+}
+assert.equal(plan.earthParking.turns,PARKING.earthTurns);
+assert.equal(plan.lunarParking.turns,PARKING.lunarTurns);
+for(const site of sites){
+  for(const hours of [24,72,240]){
+    const candidate=buildMission({site,windowStart:plan.windowStart,windowEnd:plan.windowEnd,outboundHours:hours,inboundHours:hours,elevationKm:4.5},Astronomy);
+    for(const id of ['outbound','inbound'])for(let i=0;i<=500;i++){
+      const s=sampleMission(candidate,progressAt(id,Math.min(i/500,.999999)),Astronomy);
+      assert.ok(magnitude(s.position)>EARTH_RADIUS,`Transfer intersects Earth: ${site.id}/${hours}/${id}/${i}`);
+      assert.ok(magnitude(difference(s.position,s.moon))>RADIUS_KM,`Transfer intersects Moon: ${site.id}/${hours}/${id}/${i}`);
+    }
+    for(const phase of PHASES.slice(1)){
+      const left=sampleMission(candidate,phase.start-1e-10,Astronomy),right=sampleMission(candidate,phase.start,Astronomy);
+      assert.ok(magnitude(difference(left.position,right.position))<.1,`Boundary: ${site.id}/${hours}/${phase.id}`);
+    }
+    const ground=sampleMission(candidate,progressAt('surface'),Astronomy);
+    assert.ok(magnitude(difference(ground.position,lunarPoint(site,ground.date,Astronomy,4.5)))<1e-7);
+    assert.ok(magnitude(ground.localPosition)<1e-7);
+  }
+}
+assert.equal(PHASES.reduce((sum,p)=>sum+p.seconds,0),ANIMATION_SECONDS);
+assert.equal(presentationTime(0),0);assert.equal(presentationTime(1),1);
+assert.ok(presentationTime(.0001)/.0001<.00001,'Presentation velocity eases in at stage boundaries');
+for(const id of ['descent','ascent']){
+  const phase=PHASES.find(p=>p.id===id);assert.equal(phase.seconds,20);
+  let localSamples=0,previousAltitude=id==='descent'?Infinity:-Infinity;
+  for(let i=0;i<1000;i++){
+    const s=sampleMission(plan,progressAt(id,i/1000),Astronomy);if(s.local)localSamples++;
+    assert.ok(id==='descent'?s.altitudeKm<=previousAltitude+1e-7:s.altitudeKm>=previousAltitude-1e-7,'Monotonic surface flight');previousAltitude=s.altitudeKm;
+  }
+  assert.ok(localSamples/1000*phase.seconds>13.5,'Restore the extended close-up cutscene');
+}
+assert.ok(sampleMission(plan,progressAt('descent',.05),Astronomy).altitudeKm<PARKING.lunarAltitudeKm,'Descent begins while the vehicle pitches');
+// Exercise camera-frame conversion and interpolation without a GPU or DOM.
+const scene=Object.create(MissionScene.prototype),surfaceSample=sampleMission(plan,progressAt('surface',.5),Astronomy);
+scene.plan=plan;scene.terrain={height:()=>0};
+for(const direction of [false,true]){
+  const point=new THREE.Vector3(.08,.024,.11),world=scene.convertView(point,surfaceSample,false,direction),roundtrip=scene.convertView(world,surfaceSample,true,direction);
+  assert.ok(roundtrip.distanceTo(point)<1e-7,'Camera must preserve its pose between world and terrain coordinates');
+}
+scene.camera=new THREE.PerspectiveCamera(45,1,.001,10000);scene.controls={target:new THREE.Vector3(),update(){}};
+scene.moon={position:new THREE.Vector3(surfaceSample.moon[0],surfaceSample.moon[2],-surfaceSample.moon[1]).multiplyScalar(.001)};
+for(const local of [false,true]){
+  const target=local?new THREE.Vector3():scene.moon.position.clone(),from={target:target.clone(),position:target.clone().add(new THREE.Vector3(0,0,local?4:2)),up:new THREE.Vector3(0,1,0)},to={target:target.clone(),position:target.clone().add(new THREE.Vector3(local?.08:5,local?.024:2,local?.11:4)),up:new THREE.Vector3(0,1,0)};
+  scene.cameraTween={from,to,local,start:0,duration:1800};scene.animateCamera(0);
+  assert.ok(scene.camera.position.distanceTo(from.position)<1e-8,'No camera jump at the beginning of a blend');
+  let previous=scene.camera.position.clone();
+  for(let i=1;i<=180;i++){scene.animateCamera(i*10);assert.ok(scene.camera.position.toArray().every(Number.isFinite));assert.ok(scene.camera.position.distanceTo(previous)<.2,'Camera blend must be incremental');previous.copy(scene.camera.position);}
+  assert.ok(scene.camera.position.distanceTo(to.position)<1e-8);assert.equal(scene.cameraTween,null);
+}
+const climbSample=sampleMission(plan,progressAt('ascent',.85),Astronomy);
+scene.vehicle={position:new THREE.Vector3(climbSample.position[0],climbSample.position[2],-climbSample.position[1]).multiplyScalar(.001)};scene.mode='auto';scene.setCamera(climbSample,false);
+assert.ok(scene.controls.minDistance<scene.camera.position.distanceTo(scene.controls.target),'World controls must allow the close surface camera without forcing a zoom-out');
+console.log('PASS: 13 phases, preserved mission/window dates, continuous positions and attitudes, forward unpowered parking, Kepler periods/speeds, extended surface cutscenes, monotonic ascent/descent, eased presentation clock, camera-frame roundtrip and smooth camera interpolation, transfer clearance for five sites and 24/72/240 h. Transfers/burns remain illustrative.');

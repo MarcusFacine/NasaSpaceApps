@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { AU_KM, RADIUS_KM, siteBasis } from './model.js';
-import { EARTH_RADIUS, moonPosition } from './mission-model.js';
+import { EARTH_RADIUS, moonPosition, parkingPath, parkingState, toInertial } from './mission-model.js';
 
 const v=a=>new THREE.Vector3(a[0],a[2],-a[1]);
 const space=a=>v(a).multiplyScalar(.001);
@@ -29,7 +29,7 @@ export class MissionScene {
   constructor(canvas,container,terrain,onError){
     this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.35;this.renderer.setClearColor(0x02050a);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
-    this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});
+    this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});this.controls.addEventListener('start',()=>{this.cameraTween=null;this.manualCamera=true;});
     this.world=new THREE.Group();this.local=new THREE.Group();this.scene.add(this.world,this.local);
     this.sunlight=new THREE.DirectionalLight(0xfff6e4,3.2);this.sunlight.shadow.mapSize.set(2048,2048);this.sunlight.shadow.normalBias=.00012;this.sunlight.shadow.bias=-.00001;this.scene.add(this.sunlight,this.sunlight.target);this.fill=new THREE.AmbientLight(0xa4c2df,.19);this.scene.add(this.fill);
     const loader=new THREE.TextureLoader();this.moonTexture=loader.load('./assets/moon-color.jpg',()=>this.dirty=true,undefined,()=>onError('Textura lunar indisponível. A geometria continua visível.'));this.moonTexture.colorSpace=THREE.SRGBColorSpace;this.moonTexture.wrapS=THREE.RepeatWrapping;
@@ -41,8 +41,8 @@ export class MissionScene {
     this.vehicle=rocket();this.world.add(this.vehicle);this.localVehicle=rocket();this.local.add(this.localVehicle);this.makeTerrain(terrain);
     this.trail=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.8}));this.world.add(this.trail);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
-    canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError('O contexto 3D foi perdido. Feche e reabra a simulação.');});
-    this.render=()=>{if(this.disposed)return;if(this.dirty&&!document.hidden&&!this.contextLost){this.renderer.render(this.scene,this.camera);this.labels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};this.render();
+    this.canvas=canvas;this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError('O contexto 3D foi perdido. Feche e reabra a simulação.');};canvas.addEventListener('webglcontextlost',this.onContextLost);
+    this.render=now=>{if(this.disposed)return;this.animateCamera(now??performance.now());if(this.dirty&&!document.hidden&&!this.contextLost){this.renderer.render(this.scene,this.camera);this.labels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};this.render();
   }
   makeTerrain(terrain){
     const n=terrain.size,extent=terrain.extent,g=new THREE.PlaneGeometry(extent,extent,n-1,n-1),pos=g.attributes.position,uv=g.attributes.uv,basis=siteBasis(terrain.site);
@@ -61,47 +61,118 @@ export class MissionScene {
     const ring=mesh(new THREE.RingGeometry(.007,.0074,64),new THREE.MeshBasicMaterial({color:0xe6ff57,side:THREE.DoubleSide,transparent:true,opacity:.7}),this.local,[0,.0003,0]);ring.rotation.x=-Math.PI/2;
   }
   setPlan(plan){
-    this.plan=plan;this.cameraKey='';
+    this.plan=plan;this.cameraKey='';this.cameraTween=null;this.lastLocal=undefined;
     for(const line of this.pathLines||[]){this.world.remove(line);line.geometry.dispose();line.material.dispose();}
     this.pathLines=[plan.outboundPath,plan.inboundPath].map((points,i)=>{const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points.map(space)),new THREE.LineBasicMaterial({color:i?0x6dd9ff:0xe6ff57,transparent:true,opacity:.38}));this.world.add(line);return line;});
+    this.parkingLines=[plan.earthParking,plan.lunarParking,plan.lunarReturnParking].map((orbit,i)=>{
+      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(parkingPath(orbit).map(space)),new THREE.LineBasicMaterial({color:i===0?0xe6ff57:0x6dd9ff,transparent:true,opacity:.8}));
+      this.world.add(line);this.pathLines.push(line);return line;
+    });
     const orbit=Array.from({length:65},(_,i)=>space(moonPosition(new Date(plan.launch+(plan.returnAt-plan.launch)*i/64),window.Astronomy)));
     this.bounds=new THREE.Box3().setFromPoints([...plan.outboundPath.map(space),...plan.inboundPath.map(space),...orbit,new THREE.Vector3(-7,-7,-7),new THREE.Vector3(7,7,7)]).getBoundingSphere(new THREE.Sphere());
     const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbit),new THREE.LineDashedMaterial({color:0x7a8896,dashSize:1,gapSize:1,transparent:true,opacity:.32}));line.computeLineDistances();this.world.add(line);this.pathLines.push(line);this.dirty=true;
   }
   setMode(mode){this.mode=mode;this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);}
   update(sample,conditions,reset=false){
-    this.sample=sample;this.conditions=conditions;const local=sample.local&&this.mode!=='overview';this.world.visible=!local;this.local.visible=local;
+    const previous=this.sample;this.sample=sample;this.conditions=conditions;const local=sample.local&&this.mode!=='overview';this.world.visible=!local;this.local.visible=local;
     this.moon.position.copy(space(sample.moon));
+    this.parkingLines[1].position.copy(this.moon.position);this.parkingLines[2].position.copy(this.moon.position);
+    this.parkingLines[1].visible=+sample.date<=this.plan.departure;this.parkingLines[2].visible=+sample.date>=this.plan.departure;
     const f=sample.frame,matrix=new THREE.Matrix4().makeBasis(v(f.x),v(f.z),v(f.y).negate());this.moon.quaternion.setFromRotationMatrix(matrix);
     // The Earth texture is visual, not a precise Earth-fixed attitude model.
     this.earth.rotation.y=window.Astronomy.SiderealTime(sample.date)*Math.PI/12;
     this.vehicle.position.copy(space(sample.position));this.vehicle.quaternion.setFromUnitVectors(Y,v(sample.direction).normalize());
-    this.localVehicle.position.set(0,this.terrain.height(0,0)+sample.altitudeKm,0);
+    const localTarget=sample.localPosition?new THREE.Vector3(...sample.localPosition):new THREE.Vector3(0,sample.altitudeKm,0);
+    localTarget.y+=this.terrain.height(0,0);this.localVehicle.position.copy(localTarget);
+    if(sample.localDirection)this.localVehicle.quaternion.setFromUnitVectors(Y,new THREE.Vector3(...sample.localDirection).normalize());
     this.localVehicle.userData.plumes.forEach(p=>p.visible=sample.engine);this.vehicle.userData.plumes.forEach(p=>p.visible=sample.engine);
     this.marker.visible=sample.phase==='surface';
     const earthHelio=window.Astronomy.HelioVector(window.Astronomy.Body.Earth,sample.date);
     const sun=local?new THREE.Vector3(...conditions.sun.direction):v([earthHelio.x,earthHelio.y,earthHelio.z]).negate().normalize();
     this.sunlight.intensity=local?3.2*conditions.sun.diskFraction:3.2;
-    this.sunlight.target.position.copy(local?new THREE.Vector3(0,sample.altitudeKm,0):this.moon.position.clone().multiplyScalar(.5));this.sunlight.position.copy(this.sunlight.target.position).add(sun.multiplyScalar(local?200:1000));this.sunlight.castShadow=local;
+    this.sunlight.target.position.copy(local?localTarget:this.moon.position.clone().multiplyScalar(.5));this.sunlight.position.copy(this.sunlight.target.position).add(sun.multiplyScalar(local?200:1000));this.sunlight.castShadow=local;
     if(local){Object.assign(this.sunlight.shadow.camera,{left:-.6,right:.6,top:.6,bottom:-.6,near:.01,far:500});this.sunlight.shadow.camera.updateProjectionMatrix();this.localEarth.position.copy(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(350));this.localEarth.scale.setScalar(350*EARTH_RADIUS/conditions.earth.distanceKm);}
-    const key=local?'local':this.mode==='overview'?'overview':this.mode==='follow'?'follow':sample.phase;
-    if(reset||key!==this.cameraKey){this.cameraKey=key;this.setCamera(sample,local);}
-    else if(this.lastPosition){
-      const target=local?new THREE.Vector3(0,sample.altitudeKm+.007,0):this.mode==='overview'||['outbound','inbound'].includes(sample.phase)&&this.mode==='auto'?null:this.vehicle.position;
-      if(target){const delta=target.clone().sub(this.lastPosition);this.camera.position.add(delta);this.controls.target.add(delta);this.controls.update();this.lastPosition=target.clone();}
+    const orbit=this.orbitForPhase(sample),key=local?'local':this.mode==='overview'?'overview':this.mode==='follow'?'follow':orbit?`orbit-${orbit===this.plan.lunarReturnParking?'return':orbit.body}`:sample.phase;
+    if(reset||key!==this.cameraKey){
+      const blend=!reset&&Boolean(this.cameraKey),from={position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()};
+      if(blend&&!this.lastLocal&&this.lastPosition&&previous){const oldOrbit=this.orbitForPhase(previous),delta=oldOrbit?(oldOrbit.body==='Moon'?space(sample.moon.map((x,i)=>x-previous.moon[i])):new THREE.Vector3()):space(sample.position.map((x,i)=>x-previous.position[i]));from.position.add(delta);from.target.add(delta);}
+      if(blend&&local!==this.lastLocal){from.position=this.convertView(from.position,sample,local);from.target=this.convertView(from.target,sample,local);from.up=this.convertView(from.up,sample,local,true).normalize();}
+      this.cameraKey=key;this.setCamera(sample,local);
+      this.manualCamera=false;
+      if(blend){this.cameraTween={from,to:{position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()},start:performance.now(),local,duration:1800};this.animateCamera(performance.now());}
     }
-    this.trail.geometry.dispose();const points=sample.phase==='outbound'?this.plan.outboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):sample.phase==='inbound'?this.plan.inboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):[];this.trail.geometry=new THREE.BufferGeometry().setFromPoints(points.map(space));this.trail.visible=points.length>1;
+    else if(this.lastPosition){
+      const target=local?localTarget.clone().add(new THREE.Vector3(0,.007,0)):this.mode==='overview'||['outbound','inbound'].includes(sample.phase)&&this.mode==='auto'?null:
+        this.mode==='auto'&&this.orbitForPhase(sample)?(this.orbitForPhase(sample).body==='Earth'?new THREE.Vector3():this.moon.position):this.vehicle.position;
+      if(target){const delta=target.clone().sub(this.lastPosition);this.camera.position.add(delta);this.controls.target.add(delta);if(this.cameraTween)for(const pose of [this.cameraTween.from,this.cameraTween.to]){pose.position.add(delta);pose.target.add(delta);}this.controls.update();this.lastPosition=target.clone();}
+    }
+    if(!local&&this.mode==='auto'&&['descent','ascent'].includes(sample.phase)&&!this.manualCamera){
+      const pose=this.flightCameraPose(sample);
+      if(this.cameraTween)this.cameraTween.to=pose;
+      else{this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.controls.update();}
+    }
+    this.lastLocal=local;
+    this.trail.geometry.dispose();let points=sample.phase==='outbound'?this.plan.outboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):sample.phase==='inbound'?this.plan.inboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):[];
+    if(sample.orbit){
+      const orbit=sample.orbit,count=Math.max(2,Math.ceil(sample.t*192*orbit.turns));
+      points=Array.from({length:count},(_,i)=>{const relative=parkingState(orbit,orbit.start+(+sample.date-orbit.start)*i/(count-1)).relative;return orbit.body==='Earth'?relative:relative.map((x,k)=>x+sample.moon[k]);});
+    }
+    this.trail.geometry=new THREE.BufferGeometry().setFromPoints(points.map(space));this.trail.visible=points.length>1;
     const close=['launch','arrival'].includes(sample.phase)||this.mode==='follow';
-    const size=this.camera.position.distanceTo(this.vehicle.position)*(close?.055:.022)/.014;this.vehicle.scale.setScalar(Math.max(4,size));this.dirty=true;
-    document.getElementById('missionScale').textContent=local?'RELEVO LOLA 1× · VEÍCULO ~14 m':'DISTÂNCIAS REAIS · VEÍCULO AMPLIADO';
+    const flight=['descent','ascent'].includes(sample.phase),size=this.camera.position.distanceTo(this.vehicle.position)*(close?.055:.022)/.014;this.vehicle.scale.setScalar(Math.max((flight||this.cameraTween)?.001:4,size));this.dirty=true;
+    this.camera.near=local?.0001:Math.max(1e-8,Math.min(.0005,this.camera.position.distanceTo(this.controls.target)*.02));this.camera.updateProjectionMatrix();
+    document.getElementById('missionScale').textContent=local?'RELEVO LOLA 1× · VEÍCULO ~14 m':flight?'APROXIMAÇÃO LUNAR':sample.orbit?'ÓRBITA CIRCULAR · MODELO DE DOIS CORPOS':'DISTÂNCIAS REAIS · VEÍCULO AMPLIADO';
+  }
+  orbitForPhase(sample){
+    if(['earthOrbit','tli'].includes(sample.phase))return this.plan.earthParking;
+    if(['loi','lunarOrbit'].includes(sample.phase))return this.plan.lunarParking;
+    if(['lunarReturnOrbit','tei'].includes(sample.phase))return this.plan.lunarReturnParking;
+    return null;
+  }
+  convertView(point,sample,toLocal,direction=false){
+    const basis=siteBasis(this.plan.site),ground=RADIUS_KM+this.plan.elevationKm-this.terrain.height(0,0);
+    if(toLocal){
+      const inertial=[point.x,-point.z,point.y].map(x=>x*(direction?1:1000));
+      const body=sample.frame.transform(direction?inertial:inertial.map((x,i)=>x-sample.moon[i]));
+      const dot=a=>body.reduce((sum,x,i)=>sum+x*a[i],0);
+      return new THREE.Vector3(dot(basis.east),dot(basis.up)-(direction?0:ground),-dot(basis.north));
+    }
+    const body=basis.east.map((x,i)=>x*point.x+basis.up[i]*(point.y+(direction?0:ground))-basis.north[i]*point.z);
+    const inertial=toInertial(body,sample.frame);return direction?v(inertial):space(inertial.map((x,i)=>x+sample.moon[i]));
+  }
+  flightCameraPose(sample){
+    const target=this.vehicle.position.clone(),offset=this.convertView(new THREE.Vector3(.08,.024,.11),sample,false,true).normalize().multiplyScalar((.138+sample.altitudeKm*.005)/1000);
+    return {position:target.clone().add(offset),target,up:this.convertView(Y,sample,false,true).normalize()};
+  }
+  animateCamera(now){
+    const tween=this.cameraTween;if(!tween)return;
+    const t=THREE.MathUtils.clamp((now-tween.start)/tween.duration,0,1),u=t*t*(3-2*t),{from,to}=tween;
+    const a=from.position.clone().sub(from.target),b=to.position.clone().sub(to.target),distance=Math.exp(THREE.MathUtils.lerp(Math.log(Math.max(a.length(),1e-8)),Math.log(Math.max(b.length(),1e-8)),u));
+    const turn=new THREE.Quaternion().setFromUnitVectors(a.clone().normalize(),b.clone().normalize());
+    const offset=a.normalize().applyQuaternion(new THREE.Quaternion().slerp(turn,u)).multiplyScalar(distance);
+    this.controls.target.copy(from.target).lerp(to.target,u);this.camera.position.copy(this.controls.target).add(offset);this.camera.up.copy(from.up).lerp(to.up,u).normalize();
+    if(!tween.local){
+      // Keep a blended camera outside both globes while zooming from the surface.
+      for(const [center,radius] of [[new THREE.Vector3(),EARTH_RADIUS/1000],[this.moon.position,RADIUS_KM/1000]]){const relative=this.camera.position.clone().sub(center);if(relative.length()<radius+.000001)this.camera.position.copy(center).add(relative.setLength(radius+.000001));}
+    }
+    this.controls.maxDistance=Math.max(tween.local?40:1500,distance*1.1);this.camera.near=tween.local?.0001:Math.max(1e-8,Math.min(.0005,distance*.02));this.camera.updateProjectionMatrix();this.controls.update();this.dirty=true;
+    if(t===1)this.cameraTween=null;
   }
   setCamera(sample,local){
-    this.camera.up.copy(Y);this.camera.near=local?.0001:.0005;this.camera.far=10000;this.camera.updateProjectionMatrix();this.controls.minDistance=local?.015:.02;this.controls.maxDistance=local?40:1500;this.controls.enablePan=true;this.controls.maxPolarAngle=local?Math.PI*.49:Math.PI-.01;
-    if(local){const target=new THREE.Vector3(0,sample.altitudeKm+.007,0);this.controls.target.copy(target);this.camera.position.copy(target).add(new THREE.Vector3(.08,.024,.11));this.lastPosition=target.clone();}
+    this.camera.up.copy(Y);this.camera.near=local?.0001:.0005;this.camera.far=10000;this.camera.updateProjectionMatrix();this.controls.minDistance=local?.015:['descent','ascent'].includes(sample.phase)?.000015:.02;this.controls.maxDistance=local?40:1500;this.controls.enablePan=true;this.controls.maxPolarAngle=local?Math.PI*.49:Math.PI-.01;
+    if(local){const target=this.localVehicle.position.clone().add(new THREE.Vector3(0,.007,0));this.controls.target.copy(target);this.camera.position.copy(target).add(new THREE.Vector3(.08,.024,.11));this.lastPosition=target.clone();}
+    else if(this.mode==='auto'&&this.orbitForPhase(sample)){
+      const orbit=this.orbitForPhase(sample),center=orbit.body==='Earth'?new THREE.Vector3():this.moon.position.clone(),radius=orbit.radiusKm/1000;
+      const offset=v(orbit.normal).multiplyScalar(2.8).add(v(orbit.p).multiplyScalar(1.2)).add(v(orbit.q).multiplyScalar(.5)).normalize();
+      const distance=radius/Math.sin(THREE.MathUtils.degToRad(this.camera.fov/2))*1.25/Math.min(this.camera.aspect,1);
+      this.controls.target.copy(center);this.camera.position.copy(center).add(offset.multiplyScalar(distance));this.lastPosition=center.clone();
+    }
     else if(this.mode==='overview'||['outbound','inbound'].includes(sample.phase)&&this.mode==='auto'){
       const center=this.bounds.center,distance=this.bounds.radius/Math.sin(THREE.MathUtils.degToRad(this.camera.fov/2))*1.12/Math.min(this.camera.aspect,1),axis=space(this.plan.outboundCurve[3]).normalize();
       const offset=new THREE.Vector3().crossVectors(axis,Y);if(offset.length()<.1)offset.set(0,0,1);offset.normalize().add(new THREE.Vector3(0,.6,0)).normalize();
       this.controls.target.copy(center);this.camera.position.copy(center).add(offset.multiplyScalar(distance));this.lastPosition=null;
+    }else if(this.mode==='auto'&&['descent','ascent'].includes(sample.phase)){
+      const pose=this.flightCameraPose(sample);this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.lastPosition=pose.target.clone();
     }else{
       const target=this.vehicle.position.clone(),up=v(sample.direction).normalize(),side=new THREE.Vector3().crossVectors(up,Y);if(side.length()<.01)side.set(1,0,0);side.normalize();const distance=['launch','arrival'].includes(sample.phase)?3:12;
       this.controls.target.copy(target);this.camera.position.copy(target).add(up.clone().multiplyScalar(distance*.45)).add(side.multiplyScalar(distance));this.lastPosition=target.clone();
@@ -115,5 +186,5 @@ export class MissionScene {
     }
   }
   resize(){const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);this.dirty=true;}
-  dispose(){this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material])mat.dispose();}});this.moonTexture.dispose();this.earthTexture.dispose();this.renderer.dispose();this.renderer.forceContextLoss();}
+  dispose(){if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material])mat.dispose();}});this.moonTexture.dispose();this.earthTexture.dispose();this.renderer.dispose();this.renderer.forceContextLoss();}
 }
