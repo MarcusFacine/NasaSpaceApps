@@ -1,36 +1,87 @@
 {
-  "source": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
-  "credit": "NASA's Scientific Visualization Studio / LRO LOLA",
-  "sourcePixelsPerDegree": 64,
-  "sourceMeridionalSpacingKm": 0.47380235037733565,
+  "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_20MPP_ADJ.TIF",
+  "sourceOverviewMeters": 80,
+  "sourceNativeMeters": 20,
+  "wideSource": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_60S_240MPP_ADJ.TIF",
+  "wideOverviewMeters": 480,
+  "credit": "NASA GSFC PGDA / LRO LOLA — Barker et al. 2023, Planetary Science Journal 4:183",
+  "doi": "10.60903/gsfcpgda-lola-spole",
+  "sourceMeridionalSpacingKm": 0.08,
   "radiusKm": 1737.4,
-  "tileSize": 257,
+  "tileSize": 769,
   "extentKm": 100,
-  "sites": {
+  "wide": {
+    "tileSize": 257,
+    "extentKm": 400
+  },
+  "inner": {
+    "tileSize": 513,
+    "extentKm": 20,
+    "sourceOverviewMeters": 40
+  },
+  "psr": {
+    "tileSize": 769,
+    "extentKm": 100,
+    "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LPSR_80S_20MPP_ADJ.TIF",
+    "encoding": "uint8, 255 = PSR"
+  },
+  "validation": {
     "shackleton": {
-      "elevationKm": 0.7524920000000135,
-      "minKm": -3.943037509918213,
-      "maxKm": 1.9504039287567139
+      "meanAbsKm": 0.007973145738386202,
+      "correlation": 0.999939609066943
     },
     "malapert": {
-      "elevationKm": 4.823869000000006,
-      "minKm": -3.9758031368255615,
-      "maxKm": 5.149322032928467
+      "meanAbsKm": 0.00761811532500946,
+      "correlation": 0.9999813511095947
     },
     "degerlache": {
-      "elevationKm": -2.7940399999999213,
-      "minKm": -3.0526232719421387,
-      "maxKm": 1.9504854679107666
+      "meanAbsKm": 0.0075668061282735625,
+      "correlation": 0.999957166918886
     },
     "nobile": {
-      "elevationKm": 0.6782749999999604,
-      "minKm": -2.491543769836426,
-      "maxKm": 6.999994277954102
+      "meanAbsKm": 0.008630943516062528,
+      "correlation": 0.9999856524076168
     },
     "haworth": {
-      "elevationKm": -3.378000000000002,
-      "minKm": -4.364192008972168,
-      "maxKm": 5.151257038116455
+      "meanAbsKm": 0.007787714456144989,
+      "correlation": 0.9999831141511665
+    }
+  },
+  "sites": {
+    "shackleton": {
+      "elevationKm": 0.7435200214385986,
+      "innerElevationKm": 0.7439476251602173,
+      "minKm": -3.957216501235962,
+      "maxKm": 1.9578906297683716,
+      "psrFraction": 0.175885795647667
+    },
+    "malapert": {
+      "elevationKm": 4.853644847869873,
+      "innerElevationKm": 4.85392951965332,
+      "minKm": -4.0207839012146,
+      "maxKm": 5.171685218811035,
+      "psrFraction": 0.133928344953421
+    },
+    "degerlache": {
+      "elevationKm": -2.8021905422210693,
+      "innerElevationKm": -2.8020355701446533,
+      "minKm": -3.0905392169952393,
+      "maxKm": 1.9569696187973022,
+      "psrFraction": 0.1355500278171878
+    },
+    "nobile": {
+      "elevationKm": 0.6774722337722778,
+      "innerElevationKm": 0.6774258613586426,
+      "minKm": -2.5126922130584717,
+      "maxKm": 7.025477886199951,
+      "psrFraction": 0.10046655088854355
+    },
+    "haworth": {
+      "elevationKm": -3.379819393157959,
+      "innerElevationKm": -3.379544258117676,
+      "minKm": -4.377329349517822,
+      "maxKm": 5.171746730804443,
+      "psrFraction": 0.23592019088171184
     }
   }
 }

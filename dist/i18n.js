@@ -1,0 +1,248 @@
+// Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, idioma do navegador.
+const KEY = 'horisite-lang';
+const listeners = new Set();
+
+const DICT = {
+  pt: {
+    'meta.appTitle': 'Horisite · Explorador do polo sul lunar',
+    'brand.tagline': 'lunar landing site navigator',
+    'nav.home': 'Início', 'nav.tutorial': 'Tutorial', 'nav.method': 'Dados e método', 'nav.app': 'Abrir o Horisite',
+    'lang.label': 'Idioma',
+    'view.group': 'Câmera', 'view.terrain': 'Relevo 3D', 'view.surface': 'Superfície', 'view.globe': 'Globo',
+    'loading.title': 'Carregando o relevo do polo sul', 'loading.sub': 'Modelo de elevação LOLA de 20 m e efemérides',
+    'loading.failTitle': 'Não foi possível carregar os dados', 'loading.failSub': 'Recarregue a página para tentar de novo.',
+    'loading.webglTitle': 'Visualização 3D indisponível', 'loading.webglSub': 'Ative a aceleração gráfica ou use outro navegador. Os cálculos continuam abaixo.',
+    'sun': 'Sol', 'earth': 'Terra',
+    'state.visible': 'À vista', 'state.blocked': 'Atrás do relevo', 'state.edge': 'No limite',
+    'answer.above': '{v} acima do relevo', 'answer.below': '{v} abaixo do relevo',
+    'answer.elevation': 'Altura no céu', 'answer.azimuth': 'Direção', 'answer.horizon': 'Relevo nessa direção',
+    'answer.irradiance': 'Luz num painel', 'answer.distance': 'Distância',
+    'answer.earthNote': 'Visada para o centro da Terra. Um enlace de rádio depende da antena e da estação.',
+    'panel.legend': 'Painel', 'panel.tracking': 'Segue o Sol', 'panel.horizontal': 'Deitado',
+    'light.real': 'Luz real do Sol', 'light.partial': 'Sol parcialmente atrás do relevo', 'light.dark': 'Local na sombra',
+    'light.reading': 'Luz de leitura ligada · não física',
+    'tool.psr': 'Sombra eterna', 'psr.legend': 'violeta: sombra eterna, onde o Sol nunca bate (PGDA)',
+    'scale.tele': 'Teleobjetiva · fase real deste instante · Home volta ao campo normal',
+    'tool.sun': 'Olhar para o Sol', 'tool.earth': 'Olhar para a Terra', 'tool.reset': 'Recentrar', 'tool.reading': 'Luz de leitura', 'tool.fullscreen': 'Tela cheia',
+    'hint.terrain': 'Arraste para girar · role ou faça pinça para aproximar', 'hint.surface': 'Arraste para olhar em volta · role para usar a lente · Home recentra', 'hint.globe': 'Arraste para girar a Lua',
+    'scale.terrain': 'Relevo LOLA real · escala vertical 1×', 'scale.surface': 'Olho a {h} m do solo', 'scale.globe': 'Locais numerados no polo sul',
+    'scene.blocked.sun': 'Relevo bloqueia o Sol · {d}', 'scene.blocked.earth': 'Relevo bloqueia a Terra · {d}',
+    'time.label': 'Data e hora (UTC)', 'time.now': 'Agora', 'time.minus1': '−1 dia', 'time.plus1': '+1 dia', 'time.plus7': '+7 dias',
+    'time.play': 'Passar o tempo', 'time.pause': 'Pausar o tempo', 'time.scrub': 'Hora do dia',
+    'sites.label': 'Locais', 'sites.hint': 'Marque até três para comparar. Toque no nome para explorar.',
+    'sites.compare': 'Comparar {name}', 'sites.max': 'Você já compara três locais. Desmarque um para incluir outro.', 'sites.min': 'Mantenha pelo menos um local na comparação.',
+    'site.shackleton': 'Borda de Shackleton', 'site.malapert': 'Maciço Malapert', 'site.degerlache': 'Região de Gerlache', 'site.nobile': 'Borda de Nobile', 'site.haworth': 'Região de Haworth',
+    'tag.shackleton': 'Polo sul', 'tag.malapert': 'Maciço', 'tag.degerlache': 'Cratera', 'tag.nobile': 'Cratera', 'tag.haworth': 'Cratera',
+    'action.best': 'Melhor janela', 'action.searching': 'Calculando…', 'action.mission': 'Simular missão',
+    'window.title': 'Janela da missão', 'window.search': 'calculada · Sol e Terra', 'window.manual': 'manual · 24 h',
+    'window.note': 'O pouso usa o início da janela; o lançamento acontece antes.',
+    'msg.dateRange': 'Escolha uma data entre 2000 e 2050.',
+    'msg.noWindow': 'Nenhum intervalo comum de Sol e Terra nos próximos 30 dias. Compare menos locais ou escolha outra data.',
+    'msg.changed': 'A seleção mudou durante a busca. Calcule de novo para usar a seleção atual.',
+    'msg.best': 'Maior intervalo comum: {h} h, de {start} a {end}. Busca de 30 dias em passos de 1 hora.',
+    'msg.opening': 'Abrimos no início da melhor janela dos próximos 30 dias: Sol e Terra à vista nos locais escolhidos.',
+    'msg.fullscreen': 'O navegador não liberou a tela cheia.', 'msg.webgl': 'O navegador não iniciou o WebGL. Os cálculos e os gráficos continuam disponíveis.',
+    'msg.dismiss': 'Fechar aviso',
+    'error.moonTexture': 'A textura da Lua não carregou. O relevo continua disponível.', 'error.earthTexture': 'A textura da Terra não carregou.',
+    'error.contextLost': 'A cena 3D perdeu o contexto gráfico. Recarregue a página; os cálculos continuam disponíveis.',
+    'error.data': 'Dados de terreno indisponíveis para {name}.', 'error.ephemeris': 'A biblioteca de efemérides não carregou.',
+    'horizon.title': 'O que o relevo esconde',
+    'horizon.desc': 'A silhueta do relevo em volta do local, e por onde o Sol e a Terra passam nas próximas 24 horas.',
+    'horizon.axis': 'Direção · Norte 0° · Leste 90°', 'horizon.note': 'Sem atmosfera, sem refração.',
+    'legend.relief': 'Relevo', 'legend.sunPath': 'Caminho do Sol', 'legend.earthPath': 'Caminho da Terra', 'legend.now': 'agora',
+    'timeline.title': 'Próximas 24 horas',
+    'timeline.desc': 'Em cada hora, a metade de cima é o Sol e a de baixo, a Terra. Hachura: atrás do relevo.',
+    'timeline.best': 'maior trecho com os dois', 'timeline.cell': '{site}, {date}: {sun}; {earth}',
+    'sun.visible': 'Sol à vista', 'sun.blocked': 'Sol atrás do relevo', 'earth.visible': 'Terra à vista', 'earth.blocked': 'Terra atrás do relevo',
+    'height.label': 'Altura do observador', 'height.note': 'Acima do solo, no local.',
+    'data.title': 'De onde vêm os números',
+    'data.text': 'Relevo do modelo LOLA de 20 m do polo sul (NASA PGDA), em malha de ~130 m num recorte de 100 km, mais 400 km de contexto para o horizonte distante. Posições do Sol e da Terra pelo Astronomy Engine, conferidas contra o JPL Horizons.',
+    'data.limit': 'Uso educativo. Estes pontos são referências regionais, não locais de pouso certificados.',
+    'footer.made': 'Explorador independente do polo sul lunar.',
+    'footer.data': 'Dados: NASA PGDA · LRO/LOLA · NASA SVS · LROC. Estrelas: HYG v4.1 (CC BY-SA 4.0). Efemérides: Astronomy Engine. 3D: Three.js.',
+    'about.close': 'Fechar', 'about.title': 'O relevo e o céu usam a mesma geometria.',
+    'about.lead': 'O Horisite combina relevo medido e efemérides astronômicas. Os pontos são referências regionais, não elipses de pouso certificadas.',
+    'about.terrain.t': 'Relevo',
+    'about.terrain.d': 'DEM LOLA do polo sul de 20 m (NASA GSFC PGDA, Barker et al. 2023), lido na versão de 80 m e reamostrado em recortes de 100 × 100 km com 769 × 769 pontos (~130 m). Em volta, 400 × 400 km do DEM de 240 m para o horizonte distante. Curvatura lunar e escala vertical real. Conferido contra o DEM SVS de 474 m usado antes: diferença média de ~8 m.',
+    'about.positions.t': 'Posições',
+    'about.positions.d': 'Astronomy Engine 2.1.19: vetores geométricos J2000 e orientação lunar IAU aproximada, com paralaxe do observador. Num caso de referência, a maior diferença para o JPL Horizons foi de 0,0024°.',
+    'about.visibility.t': 'Visibilidade',
+    'about.visibility.d': 'Horizonte a cada 0,5° de direção, com o relevo amostrado até ~195 km (detalhado até 50 km). O Sol e o centro da Terra são comparados com esse perfil. Obstáculos menores que a malha não entram.',
+    'about.energy.t': 'Energia',
+    'about.energy.d': 'Irradiância incidente aproximada: 1361 W/m² a 1 UA vezes a fração do disco solar à vista. Sem eficiência do painel, perdas, temperatura ou bateria.',
+    'about.render.t': 'Imagem 3D',
+    'about.render.d': 'Sombreamento de regolito (modelo lunar-Lambert) e sombras do Sol. Perto do observador, 20 × 20 km do mesmo DEM a 40 m. O micro-relevo abaixo da malha e as variações de brilho do solo são sintéticos, só visuais. A luz de leitura é opcional e não física. Sombra eterna: mapa de regiões permanentemente sombreadas do PGDA (Barker et al. 2023). Estrelas do catálogo HYG v4.1 até magnitude 6, em posições J2000. Terra orientada pelo tempo sideral, com fase real; texturas de dia, nuvens e luzes noturnas dos exemplos do Three.js.',
+    'about.windows.t': 'Janelas',
+    'about.windows.d': 'Maior intervalo contínuo comum aos locais escolhidos nos próximos 30 dias, amostrado a cada hora. O que acontece entre uma amostra e outra não é resolvido.',
+    'about.limits': 'Uso exploratório e educativo. Uma decisão de missão precisa de análise de iluminação mais fina, orientação SPICE e validação do enlace. Não há certificação operacional.',
+    'mission.title': 'Sua janela, uma missão.', 'mission.close': 'Fechar simulação',
+    'mission.destination': 'Destino', 'mission.window': 'Janela',
+    'mission.windowSearch': 'Janela calculada · amostras de 1 h', 'mission.windowManual': 'Janela manual · não otimizada', 'mission.until': 'até {date}',
+    'mission.windowHours': 'Janela manual', 'mission.outbound': 'Viagem de ida', 'mission.stay': 'Permanência no solo', 'mission.inbound': 'Viagem de volta', 'unit.hours': 'horas',
+    'mission.apply': 'Aplicar durações', 'mission.errorWindow': 'A janela manual deve durar de 1 a 720 horas.',
+    'mission.noScene': 'A cena 3D não pôde iniciar. O cronograma da missão continua disponível.', 'mission.fullscreen': 'Tela cheia indisponível neste navegador.',
+    'mission.orbits': 'Órbitas de estacionamento', 'orbit.earth': 'Terra', 'orbit.moon': 'Lua',
+    'orbit.period': 'Período {min} min · {speed} km/s', 'orbit.earthNote': '1,5 volta antes da ida', 'orbit.moonNote': '1 volta antes do pouso e outra após a decolagem',
+    'mission.orbitsNote': 'Modelo circular de dois corpos. Sem efeito estilingue.',
+    'mission.events': 'Cronograma',
+    'event.launch': 'Lançamento', 'event.tli': 'Injeção translunar', 'event.loi': 'Inserção lunar', 'event.landing': 'Pouso lunar', 'event.departure': 'Saída da Lua', 'event.tei': 'Injeção à Terra', 'event.return': 'Chegada à Terra',
+    'mission.good': 'Destino com Sol e Terra em {n}/{n} amostras da permanência (passo de até 1 h).',
+    'mission.warn': 'Atenção: Sol e Terra juntos em só {good}/{total} amostras da permanência. A cena pode mostrar o destino no escuro.',
+    'mission.methodTitle': 'O que é real e o que é ilustrativo',
+    'mission.method': 'Datas, coordenadas, posição e orientação da Lua, luz e relevo vêm do modelo do Horisite. As órbitas de estacionamento (300 km da Terra, 100 km da Lua) usam T = 2π√(r³/μ) e v = √(μ/r) com os parâmetros do JPL DE440: 1,5 volta na Terra, 1 volta na Lua antes do pouso e 1 depois da decolagem. As transferências são curvas ilustrativas; as queimas, a subida, a descida e a reentrada são interpolações visuais. Não há solução de Lambert, integração de três corpos, delta-v nem combustível. O veículo mede ~14 m na cena local e é ampliado no espaço. Janela de luz e visada não é janela orbital.',
+    'mt.elapsed': 'Tempo de missão', 'mt.distance': 'Distância Terra–Lua', 'mt.altitude': 'Altitude', 'mt.conditions': 'No destino',
+    'cond': 'Sol {sun} · Terra {earth}', 'cond.visible': 'à vista', 'cond.blocked': 'atrás do relevo',
+    'alt.Terra': 'acima da Terra', 'alt.Lua': 'acima da Lua', 'alt.solo lunar': 'acima do solo lunar',
+    'ms.orbit': '{turns} de {total} voltas · {speed} km/s · motores desligados', 'ms.burn': 'Queima ilustrativa · sem cálculo de delta-v',
+    'ms.thrust': 'Propulsão ilustrativa', 'ms.surface': 'Veículo no solo lunar', 'ms.flight': 'Voo ilustrativo · sem solução orbital',
+    'mc.camera': 'Câmera', 'mc.auto': 'Automática', 'mc.overview': 'Trajetória inteira', 'mc.follow': 'Seguir o veículo', 'mc.reset': 'Recentrar câmera', 'mc.fullscreen': 'Tela cheia',
+    'msc.local': 'Relevo LOLA 1× · veículo ~14 m', 'msc.approach': 'Aproximação lunar', 'msc.orbit': 'Órbita circular · modelo de dois corpos', 'msc.space': 'Distâncias reais · veículo ampliado',
+    'mp.play': 'Reproduzir', 'mp.pause': 'Pausar', 'mp.replay': 'Recomeçar', 'mp.progress': 'Percorrer a missão', 'mp.speed': 'Velocidade', 'mp.phases': 'Etapas da missão',
+    'mp.note': 'Ida e volta incluem as órbitas e as manobras. O tempo é comprimido por etapa; o relógio mostra o UTC simulado. As condições são as do destino, não as do voo.',
+    'body.earth': 'Terra', 'body.moon': 'Lua',
+    'phase.launch': 'Lançamento', 'phase.earthOrbit': 'Órbita terrestre', 'phase.tli': 'Injeção translunar', 'phase.outbound': 'Ida à Lua', 'phase.loi': 'Inserção lunar',
+    'phase.lunarOrbit': 'Órbita lunar', 'phase.descent': 'Pouso lunar', 'phase.surface': 'No solo', 'phase.ascent': 'Decolagem lunar', 'phase.lunarReturnOrbit': 'Órbita lunar de volta',
+    'phase.tei': 'Injeção à Terra', 'phase.inbound': 'Volta à Terra', 'phase.arrival': 'Reentrada'
+  },
+  en: {
+    'meta.appTitle': 'Horisite · Lunar south pole explorer',
+    'brand.tagline': 'lunar landing site navigator',
+    'nav.home': 'Home', 'nav.tutorial': 'Tutorial', 'nav.method': 'Data & method', 'nav.app': 'Open Horisite',
+    'lang.label': 'Language',
+    'view.group': 'Camera', 'view.terrain': '3D relief', 'view.surface': 'Surface', 'view.globe': 'Globe',
+    'loading.title': 'Loading the south pole terrain', 'loading.sub': '20 m LOLA elevation model and ephemerides',
+    'loading.failTitle': 'The data could not load', 'loading.failSub': 'Reload the page to try again.',
+    'loading.webglTitle': '3D view unavailable', 'loading.webglSub': 'Turn on hardware acceleration or try another browser. The calculations remain below.',
+    'sun': 'Sun', 'earth': 'Earth',
+    'state.visible': 'In view', 'state.blocked': 'Behind the relief', 'state.edge': 'On the edge',
+    'answer.above': '{v} above the relief', 'answer.below': '{v} below the relief',
+    'answer.elevation': 'Height in the sky', 'answer.azimuth': 'Direction', 'answer.horizon': 'Relief in that direction',
+    'answer.irradiance': 'Light on a panel', 'answer.distance': 'Distance',
+    'answer.earthNote': "Line of sight to Earth's centre. A radio link depends on the antenna and the station.",
+    'panel.legend': 'Panel', 'panel.tracking': 'Tracks the Sun', 'panel.horizontal': 'Flat',
+    'light.real': 'Real sunlight', 'light.partial': 'Sun partly behind the relief', 'light.dark': 'Site in shadow',
+    'light.reading': 'Reading light on · not physical',
+    'tool.psr': 'Permanent shadow', 'psr.legend': 'violet: permanent shadow, where sunlight never reaches (PGDA)',
+    'scale.tele': 'Telephoto · real phase right now · Home returns to the normal view',
+    'tool.sun': 'Look at the Sun', 'tool.earth': 'Look at Earth', 'tool.reset': 'Recenter', 'tool.reading': 'Reading light', 'tool.fullscreen': 'Full screen',
+    'hint.terrain': 'Drag to turn · scroll or pinch to zoom', 'hint.surface': 'Drag to look around · scroll to use the lens · Home recenters', 'hint.globe': 'Drag to turn the Moon',
+    'scale.terrain': 'Real LOLA relief · vertical scale 1×', 'scale.surface': 'Eye {h} m above the ground', 'scale.globe': 'Numbered sites at the south pole',
+    'scene.blocked.sun': 'Relief blocks the Sun · {d}', 'scene.blocked.earth': 'Relief blocks Earth · {d}',
+    'time.label': 'Date and time (UTC)', 'time.now': 'Now', 'time.minus1': '−1 day', 'time.plus1': '+1 day', 'time.plus7': '+7 days',
+    'time.play': 'Play time', 'time.pause': 'Pause time', 'time.scrub': 'Time of day',
+    'sites.label': 'Sites', 'sites.hint': 'Tick up to three to compare. Tap a name to explore it.',
+    'sites.compare': 'Compare {name}', 'sites.max': 'You are already comparing three sites. Clear one to add another.', 'sites.min': 'Keep at least one site in the comparison.',
+    'site.shackleton': 'Shackleton rim', 'site.malapert': 'Malapert massif', 'site.degerlache': 'de Gerlache region', 'site.nobile': 'Nobile rim', 'site.haworth': 'Haworth region',
+    'tag.shackleton': 'South pole', 'tag.malapert': 'Massif', 'tag.degerlache': 'Crater', 'tag.nobile': 'Crater', 'tag.haworth': 'Crater',
+    'action.best': 'Best window', 'action.searching': 'Calculating…', 'action.mission': 'Simulate mission',
+    'window.title': 'Mission window', 'window.search': 'calculated · Sun and Earth', 'window.manual': 'manual · 24 h',
+    'window.note': 'Landing uses the window start; launch happens earlier.',
+    'msg.dateRange': 'Pick a date between 2000 and 2050.',
+    'msg.noWindow': 'No common Sun and Earth interval in the next 30 days. Compare fewer sites or pick another date.',
+    'msg.changed': 'The selection changed during the search. Calculate again to use the current one.',
+    'msg.best': 'Longest common interval: {h} h, from {start} to {end}. 30-day search in 1-hour steps.',
+    'msg.opening': 'We opened at the start of the best window in the next 30 days: Sun and Earth in view at the chosen sites.',
+    'msg.fullscreen': 'The browser did not allow full screen.', 'msg.webgl': 'The browser could not start WebGL. Calculations and charts remain available.',
+    'msg.dismiss': 'Dismiss',
+    'error.moonTexture': 'The Moon texture did not load. The relief is still available.', 'error.earthTexture': 'The Earth texture did not load.',
+    'error.contextLost': 'The 3D view lost its graphics context. Reload the page; the calculations remain available.',
+    'error.data': 'Terrain data unavailable for {name}.', 'error.ephemeris': 'The ephemeris library did not load.',
+    'horizon.title': 'What the relief hides',
+    'horizon.desc': 'The relief silhouette around the site, and where the Sun and Earth travel in the next 24 hours.',
+    'horizon.axis': 'Direction · North 0° · East 90°', 'horizon.note': 'No atmosphere, no refraction.',
+    'legend.relief': 'Relief', 'legend.sunPath': 'Sun path', 'legend.earthPath': 'Earth path', 'legend.now': 'now',
+    'timeline.title': 'Next 24 hours',
+    'timeline.desc': 'In each hour, the top half is the Sun and the bottom half is Earth. Hatched: behind the relief.',
+    'timeline.best': 'longest stretch with both', 'timeline.cell': '{site}, {date}: {sun}; {earth}',
+    'sun.visible': 'Sun in view', 'sun.blocked': 'Sun behind the relief', 'earth.visible': 'Earth in view', 'earth.blocked': 'Earth behind the relief',
+    'height.label': 'Observer height', 'height.note': 'Above the ground at the site.',
+    'data.title': 'Where the numbers come from',
+    'data.text': 'Relief from the 20 m LOLA south pole model (NASA PGDA), on a ~130 m mesh over a 100 km tile, plus 400 km of context for the far horizon. Sun and Earth positions from Astronomy Engine, checked against JPL Horizons.',
+    'data.limit': 'For education. These points are regional references, not certified landing sites.',
+    'footer.made': 'An independent explorer of the lunar south pole.',
+    'footer.data': 'Data: NASA PGDA · LRO/LOLA · NASA SVS · LROC. Stars: HYG v4.1 (CC BY-SA 4.0). Ephemerides: Astronomy Engine. 3D: Three.js.',
+    'about.close': 'Close', 'about.title': 'Relief and sky share one geometry.',
+    'about.lead': 'Horisite combines measured relief with astronomical ephemerides. The points are regional references, not certified landing ellipses.',
+    'about.terrain.t': 'Relief',
+    'about.terrain.d': 'The 20 m LOLA south pole DEM (NASA GSFC PGDA, Barker et al. 2023), read from its 80 m overview and resampled into 100 × 100 km tiles of 769 × 769 points (~130 m). Around it, 400 × 400 km from the 240 m DEM for the far horizon. Lunar curvature and true vertical scale. Checked against the 474 m SVS DEM used before: mean difference about 8 m.',
+    'about.positions.t': 'Positions',
+    'about.positions.d': 'Astronomy Engine 2.1.19: geometric J2000 vectors and the approximate IAU lunar orientation, with observer parallax. In one reference case the largest difference from JPL Horizons was 0.0024°.',
+    'about.visibility.t': 'Visibility',
+    'about.visibility.d': 'Horizon every 0.5° of direction, with relief sampled out to about 195 km (detailed to 50 km). The Sun and the centre of Earth are compared with that profile. Obstacles smaller than the mesh are not included.',
+    'about.energy.t': 'Energy',
+    'about.energy.d': 'Approximate incident irradiance: 1361 W/m² at 1 AU times the visible fraction of the solar disc. No panel efficiency, losses, temperature or storage.',
+    'about.render.t': '3D image',
+    'about.render.d': 'Regolith shading (lunar-Lambert model) and sun shadows. Near the observer, 20 × 20 km of the same DEM at 40 m. Micro-relief below the mesh and ground brightness variations are synthetic and visual only. The reading light is optional and not physical. Permanent shadow: the PGDA map of permanently shadowed regions (Barker et al. 2023). Stars from the HYG v4.1 catalogue to magnitude 6, at J2000 positions. Earth oriented by sidereal time with its real phase; day, cloud and night-light textures from the Three.js examples.',
+    'about.windows.t': 'Windows',
+    'about.windows.d': 'The longest continuous interval common to the chosen sites in the next 30 days, sampled every hour. What happens between samples is not resolved.',
+    'about.limits': 'For exploration and education. A mission decision needs finer illumination analysis, SPICE orientation and link validation. There is no operational certification.',
+    'mission.title': 'Your window, one mission.', 'mission.close': 'Close simulation',
+    'mission.destination': 'Destination', 'mission.window': 'Window',
+    'mission.windowSearch': 'Calculated window · 1 h samples', 'mission.windowManual': 'Manual window · not optimised', 'mission.until': 'until {date}',
+    'mission.windowHours': 'Manual window', 'mission.outbound': 'Outbound trip', 'mission.stay': 'Time on the surface', 'mission.inbound': 'Return trip', 'unit.hours': 'hours',
+    'mission.apply': 'Apply durations', 'mission.errorWindow': 'The manual window must last 1 to 720 hours.',
+    'mission.noScene': 'The 3D scene could not start. The mission timeline is still available.', 'mission.fullscreen': 'Full screen is not available in this browser.',
+    'mission.orbits': 'Parking orbits', 'orbit.earth': 'Earth', 'orbit.moon': 'Moon',
+    'orbit.period': 'Period {min} min · {speed} km/s', 'orbit.earthNote': '1.5 orbits before departure', 'orbit.moonNote': '1 orbit before landing and 1 after liftoff',
+    'mission.orbitsNote': 'Two-body circular model. No gravity assist.',
+    'mission.events': 'Timeline',
+    'event.launch': 'Launch', 'event.tli': 'Translunar injection', 'event.loi': 'Lunar orbit insertion', 'event.landing': 'Lunar landing', 'event.departure': 'Lunar departure', 'event.tei': 'Trans-Earth injection', 'event.return': 'Earth arrival',
+    'mission.good': 'Sun and Earth at the destination in {n}/{n} samples of the stay (steps of up to 1 h).',
+    'mission.warn': 'Note: Sun and Earth together in only {good}/{total} samples of the stay. The scene may show the destination in the dark.',
+    'mission.methodTitle': 'What is real and what is illustrative',
+    'mission.method': 'Dates, coordinates, the Moon’s position and orientation, light and relief come from the Horisite model. Parking orbits (300 km above Earth, 100 km above the Moon) use T = 2π√(r³/μ) and v = √(μ/r) with JPL DE440 parameters: 1.5 orbits at Earth, 1 lunar orbit before landing and 1 after liftoff. Transfers are illustrative curves; burns, ascent, descent and re-entry are visual interpolations. No Lambert solution, three-body integration, delta-v or fuel. The vehicle is ~14 m in the local scene and enlarged in space. A light and line-of-sight window is not an orbital window.',
+    'mt.elapsed': 'Mission time', 'mt.distance': 'Earth–Moon distance', 'mt.altitude': 'Altitude', 'mt.conditions': 'At the destination',
+    'cond': 'Sun {sun} · Earth {earth}', 'cond.visible': 'in view', 'cond.blocked': 'behind the relief',
+    'alt.Terra': 'above Earth', 'alt.Lua': 'above the Moon', 'alt.solo lunar': 'above the lunar surface',
+    'ms.orbit': '{turns} of {total} orbits · {speed} km/s · engines off', 'ms.burn': 'Illustrative burn · no delta-v computed',
+    'ms.thrust': 'Illustrative thrust', 'ms.surface': 'Vehicle on the lunar surface', 'ms.flight': 'Illustrative flight · no orbital solution',
+    'mc.camera': 'Camera', 'mc.auto': 'Automatic', 'mc.overview': 'Whole trajectory', 'mc.follow': 'Follow the vehicle', 'mc.reset': 'Recenter camera', 'mc.fullscreen': 'Full screen',
+    'msc.local': 'LOLA relief 1× · vehicle ~14 m', 'msc.approach': 'Lunar approach', 'msc.orbit': 'Circular orbit · two-body model', 'msc.space': 'True distances · vehicle enlarged',
+    'mp.play': 'Play', 'mp.pause': 'Pause', 'mp.replay': 'Restart', 'mp.progress': 'Scrub the mission', 'mp.speed': 'Speed', 'mp.phases': 'Mission phases',
+    'mp.note': 'Outbound and return include the orbits and manoeuvres. Time is compressed per phase; the clock shows simulated UTC. Conditions are those at the destination, not during flight.',
+    'body.earth': 'Earth', 'body.moon': 'Moon',
+    'phase.launch': 'Launch', 'phase.earthOrbit': 'Earth orbit', 'phase.tli': 'Translunar injection', 'phase.outbound': 'Coast to the Moon', 'phase.loi': 'Lunar orbit insertion',
+    'phase.lunarOrbit': 'Lunar orbit', 'phase.descent': 'Lunar landing', 'phase.surface': 'On the surface', 'phase.ascent': 'Lunar liftoff', 'phase.lunarReturnOrbit': 'Return lunar orbit',
+    'phase.tei': 'Trans-Earth injection', 'phase.inbound': 'Coast to Earth', 'phase.arrival': 'Re-entry'
+  }
+};
+
+function detect() {
+  const fromUrl = new URLSearchParams(location.search).get('lang');
+  if (fromUrl === 'pt' || fromUrl === 'en') return fromUrl;
+  try { const saved = localStorage.getItem(KEY); if (saved === 'pt' || saved === 'en') return saved; } catch { /* storage optional */ }
+  return (navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+}
+let lang = detect();
+
+export const getLang = () => lang;
+export const locale = () => (lang === 'pt' ? 'pt-BR' : 'en-GB');
+export function t(key, vars = {}) {
+  const text = DICT[lang][key] ?? DICT.pt[key] ?? key;
+  return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''));
+}
+export function addDictionary(extra) { for (const l of ['pt', 'en']) Object.assign(DICT[l], extra[l]); }
+export function applyI18n(root = document) {
+  root.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  root.querySelectorAll('[data-i18n-attr]').forEach(el => {
+    for (const pair of el.dataset.i18nAttr.split('|')) { const [attr, key] = pair.split(':'); el.setAttribute(attr, t(key)); }
+  });
+  root.querySelectorAll('[data-lang-option]').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.langOption === lang)));
+}
+export function setLang(next) {
+  if (next !== 'pt' && next !== 'en') return;
+  lang = next;
+  try { localStorage.setItem(KEY, next); } catch { /* storage optional */ }
+  document.documentElement.lang = next === 'pt' ? 'pt-BR' : 'en';
+  applyI18n(document);
+  listeners.forEach(fn => fn(next));
+}
+export const onLangChange = fn => listeners.add(fn);
+export const number = (n, digits = 0) => new Intl.NumberFormat(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+export const signedDegrees = n => `${n >= 0 ? '+' : '−'}${number(Math.abs(n), 2)}°`;
+export const utcDate = (d, withYear = false) => new Intl.DateTimeFormat(locale(), { day: '2-digit', month: '2-digit', ...(withYear ? { year: 'numeric' } : {}), hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(new Date(d)) + ' UTC';
+export function bindLanguageSwitch(root = document) {
+  root.querySelectorAll('[data-lang-option]').forEach(el => el.addEventListener('click', () => setLang(el.dataset.langOption)));
+  document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en';
+  applyI18n(root);
+}

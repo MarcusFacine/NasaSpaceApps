@@ -1,0 +1,67 @@
+/* Horisite: tokens e peças de marca compartilhadas pela landing e pelo app. */
+:root {
+  --sun: #ffe600;
+  --sun-deep: #f5c800;
+  --pink: #ff2f7d;
+  --orange: #ff7a3c;
+  --earth: #8ec5ff;
+  --ink: #0a0a0a;
+  --paper: #f2f1ec;
+  --white: #ffffff;
+  --slate: #5b6166;
+  --grad: linear-gradient(100deg, #ff2f7d 0%, #ff7a3c 46%, #ffe600 100%);
+  --font: 'Jost', 'Futura', 'Century Gothic', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --radius-lg: 28px;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; font-family: var(--font); font-weight: 400; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+img, svg, canvas { display: block; max-width: 100%; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: .08em; }
+:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; border-radius: 6px; }
+::selection { background: var(--sun); color: var(--ink); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+/* Logotipo: letras pesadas e juntas, cada uma por cima da seguinte, com sombra própria.
+   O "o" é o símbolo em degradê com os três feixes. */
+.wordmark { display: inline-flex; align-items: baseline; font: 800 var(--wm-size, 30px)/1 var(--font); letter-spacing: -.035em; text-decoration: none; color: var(--wm-color, var(--ink)); }
+.wordmark > span, .wordmark > img { position: relative; margin-right: -.045em; }
+.wordmark > span { text-shadow: .05em .045em .07em var(--wm-shadow, rgba(0, 0, 0, .28)); }
+.wordmark > img { width: 1.12em; height: auto; align-self: center; transform: translateY(.1em); filter: drop-shadow(.05em .045em .05em var(--wm-shadow, rgba(0, 0, 0, .28))); margin: 0 -.2em 0 -.01em; }
+.wordmark > :nth-child(1) { z-index: 8; } .wordmark > :nth-child(2) { z-index: 7; } .wordmark > :nth-child(3) { z-index: 6; }
+.wordmark > :nth-child(4) { z-index: 5; } .wordmark > :nth-child(5) { z-index: 4; } .wordmark > :nth-child(6) { z-index: 3; }
+.wordmark > :nth-child(7) { z-index: 2; } .wordmark > :nth-child(8) { z-index: 1; }
+.on-dark .wordmark, .wordmark.on-dark { --wm-color: var(--white); --wm-shadow: rgba(0, 0, 0, .7); }
+
+/* Botões em pílula. O primário leva o ponto amarelo do logotipo. */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .6em; min-height: 46px; padding: 0 1.25em; border-radius: 999px; border: 1.5px solid transparent; font-weight: 600; font-size: 16px; line-height: 1; text-decoration: none; white-space: nowrap; transition: transform .25s var(--ease), background-color .2s, border-color .2s, color .2s; }
+.btn:active { transform: scale(.97); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; transform: none; }
+.btn-primary { background: var(--ink); color: var(--white); }
+.btn-primary::after { content: ""; width: .62em; height: .62em; border-radius: 50%; background: var(--sun); box-shadow: 0 0 0 .2em rgba(255, 230, 0, .18); }
+.btn-primary:hover { background: #222; }
+.on-dark .btn-primary { background: var(--white); color: var(--ink); }
+.on-dark .btn-primary::after { box-shadow: 0 0 0 .2em rgba(0, 0, 0, .08); background: var(--ink); }
+.on-dark .btn-primary:hover { background: #f0f0ea; }
+.btn-ghost { background: transparent; border-color: currentColor; }
+.btn-ghost:hover { background: rgba(127, 127, 127, .12); }
+
+/* Seletor de idioma. */
+.lang-switch { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; border: 1.5px solid currentColor; }
+.lang-switch button { border: 0; background: transparent; min-width: 38px; min-height: 30px; border-radius: 999px; font: 600 13px/1 var(--mono); letter-spacing: .04em; opacity: .62; }
+.lang-switch button[aria-pressed="true"] { background: currentColor; opacity: 1; }
+.lang-switch button[aria-pressed="true"] span { color: var(--lang-active-ink, var(--white)); }
+.on-dark .lang-switch { --lang-active-ink: var(--ink); }
+
+/* Marcação amarela em palavras-chave, como na referência. */
+.mark { background: linear-gradient(transparent 12%, var(--sun) 12%, var(--sun) 92%, transparent 92%); padding: 0 .08em; border-radius: .12em; box-decoration-break: clone; -webkit-box-decoration-break: clone; color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }

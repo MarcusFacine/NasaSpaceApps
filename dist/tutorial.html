@@ -3,22 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a0e12">
-  <title>Tutorial ilustrado — Lunar Horizon</title>
-  <meta name="description" content="Aprenda a comparar locais lunares, interpretar o horizonte, buscar janelas de iluminação e visualizar uma missão Terra–Lua–Terra. Exemplos reproduzíveis e limites do modelo.">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0e12'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%239eaab2' stroke-width='3'/%3E%3Cpath d='M12 41l11-13 8 8 10-17 11 22' fill='none' stroke='%23e6ff57' stroke-width='3'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#f2f1ec">
+  <title>Tutorial ilustrado · Horisite</title>
+  <meta name="description" content="Aprenda a comparar locais do polo sul lunar, ler o horizonte real, buscar janelas de luz e visada e ver uma missão Terra–Lua–Terra.">
+  <link rel="icon" type="image/svg+xml" href="brand/horisite-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="brand/brand.css">
   <link rel="stylesheet" href="tutorial.css">
-  <script src="tutorial.js" defer></script>
+  <script type="module" src="tutorial.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#conteudo">Pular para o tutorial</a>
+  <a class="skip-link" href="#conteudo" data-i18n="tut.skip">Pular para o tutorial</a>
   <header class="guide-header">
-    <a class="brand" href="./" aria-label="Lunar Horizon, abrir aplicativo"><span aria-hidden="true">◒</span><b>LUNAR</b> HORIZON <small>3D</small></a>
-    <nav aria-label="Ações do tutorial"><a class="button" href="./">Abrir aplicativo</a><button id="printGuide" type="button">Imprimir guia</button></nav>
+    <a class="wordmark" href="./" aria-label="Horisite" style="--wm-size:28px"><span aria-hidden="true">h</span><img src="brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a>
+    <nav>
+      <div class="lang-switch" role="group" data-i18n-attr="aria-label:lang.label"><button type="button" data-lang-option="pt"><span>PT</span></button><button type="button" data-lang-option="en"><span>EN</span></button></div>
+      <button id="printGuide" type="button" class="btn btn-ghost" data-i18n="tut.print">Imprimir guia</button>
+      <a class="btn btn-primary" href="app/" data-i18n="nav.app">Abrir o Horisite</a>
+    </nav>
   </header>
-  <div class="guide-layout">
+
+  <!-- ============================ PORTUGUÊS ============================ -->
+  <div class="guide-layout lang-pt" lang="pt-BR">
     <nav class="contents" aria-label="Neste tutorial">
-      <p>NESTE TUTORIAL</p>
+      <p>Neste tutorial</p>
       <a href="#comecar"><span>01</span> Começar</a>
       <a href="#horizonte"><span>02</span> Ler o horizonte</a>
       <a href="#exemplos"><span>03</span> Comparar exemplos</a>
@@ -27,127 +37,261 @@
       <a href="#limites"><span>06</span> O que não é possível</a>
       <a href="#problemas"><span>07</span> Resolver problemas</a>
       <a href="#checklist"><span>08</span> Conferir o resultado</a>
-      <small>Versão 3D · exemplos em UTC<br>Guia local · outubro de 2026</small>
+      <small>Exemplos em UTC · relevo LOLA do PGDA · novembro de 2026</small>
     </nav>
     <main id="conteudo">
       <div class="guide-intro">
-        <p class="eyebrow">GUIA DE USO ILUSTRADO</p>
         <h1>Do horizonte à sua janela lunar.</h1>
-        <p>Aprenda a comparar locais, reconhecer obstruções do relevo e acompanhar uma missão educativa da Terra à Lua e de volta.</p>
-        <aside class="notice"><b>Favorável no modelo não significa missão viável.</b> O aplicativo estima iluminação e visada para o centro da Terra. Não certifica um pouso, a geração de energia elétrica, um enlace de rádio ou uma trajetória orbital.</aside>
+        <p>Aprenda a comparar locais, reconhecer o que o relevo esconde e acompanhar uma missão educativa da Terra à Lua e de volta.</p>
+        <aside class="notice"><b>Favorável no modelo não é missão viável.</b> O Horisite estima a luz do Sol e a visada para o centro da Terra. Não certifica um pouso, a geração de energia, um enlace de rádio nem uma trajetória.</aside>
       </div>
 
       <section id="comecar">
-        <div class="section-title"><span>01</span><h2>Comece com uma comparação reproduzível</h2></div>
+        <div class="section-title"><span>01</span><h2>Comece com uma comparação que dá para repetir</h2></div>
         <ol class="steps">
-          <li><b>Abra o aplicativo no localhost.</b> Se necessário, dê dois cliques em <code>Iniciar Lunar Horizon.cmd</code>, na pasta do projeto. Acesse <a href="http://localhost:4173/">localhost:4173</a>.</li>
-          <li><b>Informe 02/10/2026, 12:00 no campo de data.</b> O campo usa <b>UTC</b>, mesmo que seu computador esteja em outro fuso. Não use “Agora” para reproduzir estes exemplos.</li>
-          <li><b>Marque Borda de Shackleton e Maciço Malapert.</b> As caixas escolhem os locais da comparação; o nome escolhe o local em exploração. Clique no nome de <b>Maciço Malapert</b>.</li>
-          <li><b>Use altura de 2 m e painel Rastreado.</b> A altura é medida acima do terreno local; não é a altitude da região. O controle de painel está no cartão do Sol.</li>
+          <li><b>Abra o Horisite.</b> Use o botão <b>Abrir o Horisite</b> no alto desta página. Na primeira visita, o app abre sozinho na melhor janela dos próximos 30 dias; para seguir este guia, troque a data no passo 2.</li>
+          <li><b>Digite 02/10/2026, 12:00 no campo de data.</b> O campo usa <b>UTC</b>, mesmo que seu computador esteja em outro fuso. Não use <b>Agora</b> para repetir estes exemplos.</li>
+          <li><b>Marque Shackleton (1) e Malapert (2).</b> O círculo numerado escolhe os locais da comparação; o nome escolhe o local em exploração. Toque no nome <b>Malapert</b>.</li>
+          <li><b>Deixe a altura em 2 m e o painel em “Segue o Sol”.</b> A altura é medida acima do solo do local, não é a altitude da região. A opção do painel fica no quadro do Sol.</li>
         </ol>
-        <figure><a href="tutorial/01-comparar.jpg" target="_blank" rel="noopener"><img src="tutorial/01-comparar.jpg" width="1150" height="930" alt="Aplicativo com data 2 de outubro de 2026 às 12 UTC, Shackleton e Malapert selecionados e Malapert em exploração."></a><figcaption>Tela real: data, locais e câmera. Clique em qualquer captura deste guia para abri-la em tamanho maior. Em telas menores, role para ver os indicadores abaixo da cena.</figcaption></figure>
-        <div class="two-columns"><div><h3>Escolha a câmera</h3><p><b>Relevo 3D</b> mostra a região; <b>Superfície</b> aproxima a visão do observador; <b>Globo</b> situa o ponto na Lua. Arraste para orientar e role para aproximar.</p></div><div><h3>Encontre os astros</h3><p>Use <b>Sol</b> e <b>Terra</b> para olhar em suas direções, <b>Recentrar</b> para recuperar a câmera e <b>Ampliar</b> para tela cheia. A câmera não muda os cálculos.</p></div></div>
+        <figure><a href="tutorial/pt/01-comparar.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/01-comparar.jpg" width="1440" height="900" alt="Horisite em 2 de outubro de 2026 às 12:00 UTC, com Shackleton e Malapert marcados e Malapert em exploração."></a><figcaption>Tela real com os parâmetros deste passo. Clique em qualquer captura para abri-la maior.</figcaption></figure>
+        <div class="two-columns"><div><h3>Escolha a vista</h3><p><b>Relevo 3D</b> mostra a região com os raios até o Sol e a Terra; <b>Superfície</b> põe você no lugar do observador; <b>Globo</b> situa os locais na Lua. Arraste para girar.</p></div><div><h3>Use as ferramentas</h3><p>Os botões do Sol e da Terra olham para eles com uma lente: a Terra aparece com a fase real do instante. A lâmpada liga uma luz de leitura (não física) e o cristal mostra a sombra eterna.</p></div></div>
       </section>
 
       <section id="horizonte">
-        <div class="section-title"><span>02</span><h2>Elevação positiva não basta</h2></div>
-        <p>Compare a posição do astro com o <b>horizonte do relevo naquela direção</b>, e não apenas com o plano horizontal.</p>
-        <div class="formula">Margem = elevação do centro do astro − horizonte LOLA</div>
+        <div class="section-title"><span>02</span><h2>Estar acima do plano não basta</h2></div>
+        <p>Compare a posição do astro com o <b>relevo naquela direção</b>, e não só com o plano horizontal.</p>
+        <div class="formula">folga = altura do centro do astro − altura do relevo naquela direção</div>
         <dl class="glossary">
-          <div><dt>Elevação</dt><dd>Ângulo acima do plano local. Pode ser positivo e ainda haver uma montanha na frente.</dd></div>
-          <div><dt>Azimute</dt><dd>Direção ao redor do observador: norte 0°, leste 90°, sul 180° e oeste 270°.</dd></div>
-          <div><dt>Margem</dt><dd>Positiva: centro acima do horizonte. Negativa: centro obstruído. Perto de zero: resultado sensível ao terreno e à amostragem.</dd></div>
-          <div><dt>Limítrofe</dt><dd>O cartão sinaliza margens com módulo menor que 0,2°. É um alerta de proximidade do horizonte, não uma tolerância operacional certificada.</dd></div>
+          <div><dt>Altura no céu</dt><dd>Ângulo acima do plano local. Pode ser positivo e ainda haver uma crista na frente.</dd></div>
+          <div><dt>Direção</dt><dd>Ao redor do observador: norte 0°, leste 90°, sul 180° e oeste 270°.</dd></div>
+          <div><dt>Acima / abaixo do relevo</dt><dd>Acima: o centro do astro está à vista. Abaixo: o relevo o esconde. Perto de zero, o resultado é sensível ao terreno e à amostragem.</dd></div>
+          <div><dt>No limite</dt><dd>Folgas menores que 0,2°. É um alerta de proximidade do horizonte, não uma tolerância operacional.</dd></div>
         </dl>
-        <figure><a href="tutorial/02-horizonte.jpg" target="_blank" rel="noopener"><img src="tutorial/02-horizonte.jpg" width="1150" height="930" loading="lazy" alt="Indicadores de Shackleton: Sol com elevação mais 1,22 graus, horizonte mais 4,63 graus, margem menos 3,41 graus e irradiância zero; Terra visível. Gráficos de horizonte e próximas 24 horas."></a><figcaption>Shackleton, 02/10/2026 às 12:00 UTC: o Sol está a +1,22°, mas o horizonte está a +4,63°. A margem é −3,41°; o relevo o bloqueia. O ponto amarelo fica abaixo da curva do horizonte.</figcaption></figure>
-        <p>A cena tem uma luz fraca de leitura: enxergar o solo em 3D <b>não prova que ele esteja recebendo Sol</b>. Para essa avaliação, use os indicadores numéricos.</p>
+        <figure><a href="tutorial/pt/02-horizonte.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/02-horizonte.jpg" width="1440" height="1480" loading="lazy" alt="Shackleton em 2 de outubro de 2026 às 12:00 UTC: Sol a +1,22 grau, relevo a +8,52 graus, 7,30 graus abaixo do relevo; Terra à vista. Gráfico do horizonte e próximas 24 horas."></a><figcaption>Shackleton, 02/10/2026 às 12:00 UTC: o Sol está a +1,22° no céu, mas o relevo nessa direção chega a +8,52°. Ele fica 7,30° abaixo do relevo; no gráfico, o ponto amarelo está sob a silhueta.</figcaption></figure>
+        <p>A cena mostra a luz real do Sol. Ver o solo iluminado pela luz de leitura <b>não prova que ele recebe Sol</b>; para isso, use os números do quadro.</p>
       </section>
 
       <section id="exemplos">
-        <div class="section-title"><span>03</span><h2>Um caso favorável e um caso que não atende</h2></div>
-        <p>Reproduza os parâmetros do passo 01. Clique alternadamente nos nomes dos dois locais. Os números abaixo são arredondados a partir dos cálculos do aplicativo.</p>
-        <div class="table-wrap"><table><caption>02/10/2026 · 12:00 UTC · observador a 2 m · painel rastreado</caption><thead><tr><th scope="col">Resultado</th><th scope="col">Maciço Malapert</th><th scope="col">Borda de Shackleton</th></tr></thead><tbody>
-          <tr><th scope="row">Margem do Sol</th><td>+1,91° · visível</td><td>−3,41° · obstruído</td></tr>
-          <tr><th scope="row">Margem da Terra</th><td>+11,59° · visível</td><td>+7,20° · visível</td></tr>
-          <tr><th scope="row">Irradiância incidente</th><td>≈ 1.357 W/m²</td><td>0 W/m²</td></tr>
-          <tr><th scope="row">Critério Sol + Terra neste instante</th><td class="positive">Atende no modelo</td><td class="negative">Não atende: falta Sol direto</td></tr>
+        <div class="section-title"><span>03</span><h2>Um caso favorável e um que não atende</h2></div>
+        <p>Repita os parâmetros do passo 01 e toque alternadamente nos nomes dos dois locais. Os números abaixo são arredondados a partir do próprio app.</p>
+        <div class="table-wrap"><table><caption>02/10/2026 · 12:00 UTC · observador a 2 m · painel seguindo o Sol</caption><thead><tr><th scope="col">Resultado</th><th scope="col">Malapert</th><th scope="col">Shackleton</th></tr></thead><tbody>
+          <tr><th scope="row">Sol</th><td>2,00° acima do relevo</td><td>7,30° abaixo do relevo</td></tr>
+          <tr><th scope="row">Terra</th><td>12,91° acima do relevo</td><td>5,79° acima do relevo</td></tr>
+          <tr><th scope="row">Luz num painel</th><td>≈ 1.357 W/m²</td><td>0 W/m²</td></tr>
+          <tr><th scope="row">Sol e Terra neste instante</th><td class="positive">Atende no modelo</td><td class="negative">Não atende: falta Sol direto</td></tr>
         </tbody></table></div>
-        <aside class="notice"><b>Experimente a orientação do painel.</b> Em Malapert, troque Rastreado por Horizontal: a irradiância passa de aproximadamente 1.357 para <b>48 W/m²</b>, porque o Sol está baixo (+2,01°). Isso não altera a visibilidade geométrica. Volte a Rastreado para seguir o guia.</aside>
-        <p><b>O que você pode concluir:</b> Malapert tem luz e visada simultâneas nesse instante do modelo. <b>O que não pode concluir:</b> que os painéis alimentarão a missão ou que o rádio funcionará. W/m² mede radiação incidente por área, não potência elétrica disponível.</p>
+        <aside class="notice"><b>Experimente o painel deitado.</b> Em Malapert, troque “Segue o Sol” por “Deitado”: a luz passa de cerca de 1.357 para <b>48 W/m²</b>, porque o Sol está baixo (+2,01°). A visibilidade não muda. Volte para “Segue o Sol” para seguir o guia.</aside>
+        <p><b>O que dá para concluir:</b> Malapert tem luz e visada ao mesmo tempo nesse instante do modelo. <b>O que não dá:</b> que os painéis vão alimentar a missão ou que o rádio vai funcionar. W/m² mede luz por área, não potência elétrica.</p>
       </section>
 
       <section id="janela">
         <div class="section-title"><span>04</span><h2>Busque uma janela comum aos locais</h2></div>
-        <p>As faixas de <b>Próximas 24 horas</b> mostram uma amostra por hora e por local. Amarelo indica Sol + Terra, verde indica apenas Sol, azul apenas Terra e cinza ambos obstruídos. Passe sobre um bloco para ler seu horário; clicar nele muda a data e o local em foco.</p>
-        <p>O número “maior intervalo / local” é o maior intervalo <b>individual</b> nessas 24 horas. Não é a janela comum da comparação. Para essa busca, use <b>Melhor janela</b>.</p>
+        <p>Em <b>Próximas 24 horas</b>, cada hora é uma célula dividida: em cima, amarelo é o Sol à vista; embaixo, azul é a Terra à vista; hachura é atrás do relevo. Passe o mouse para ler o horário; clicar muda a data e o local. A faixa sob a barra de 24 horas mostra o mesmo para o local em exploração.</p>
+        <p>O número “maior trecho com os dois” vale para cada local <b>separadamente</b> nessas 24 horas. Para a janela comum da comparação, use <b>Melhor janela</b>.</p>
         <ol class="steps">
-          <li>Volte a <b>02/10/2026, 12:00 UTC</b>. Mantenha apenas Shackleton e Malapert marcados e altura de 2 m.</li>
-          <li>Clique em <b>Melhor janela</b>. O programa examina os próximos 30 dias, em passos de 1 hora, procurando o maior intervalo contínuo com os centros do Sol e da Terra acima do horizonte em <b>todos</b> os locais marcados.</li>
-          <li>Confira a faixa <b>Janela para a missão</b>: resultado estimado de <b>150 h</b>, de <b>22/10/2026, 18:00 UTC</b> a <b>29/10/2026, 00:00 UTC</b>. A data muda para o início desse intervalo.</li>
+          <li>Volte a <b>02/10/2026, 12:00 UTC</b>, com só Shackleton e Malapert marcados e altura de 2 m.</li>
+          <li>Clique em <b>Melhor janela</b>. O app examina os próximos 30 dias, hora a hora, procurando o maior intervalo contínuo com o centro do Sol e o da Terra acima do relevo em <b>todos</b> os locais marcados.</li>
+          <li>Confira a <b>Janela da missão</b>: <b>136 h</b>, de <b>23/10/2026, 00:00 UTC</b> a <b>28/10/2026, 16:00 UTC</b>. A data vai para o início desse intervalo.</li>
         </ol>
-        <figure><a href="tutorial/04-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/04-janela.jpg" width="1150" height="930" loading="lazy" alt="Resultado real da busca para Shackleton e Malapert: janela estimada de 150 horas entre 22 e 29 de outubro de 2026."></a><figcaption>A janela calculada passa a ser a referência do pouso. Alterar data, locais comparados ou altura invalida essa referência: refaça a busca.</figcaption></figure>
-        <aside class="notice caution"><b>Atenção ao início da janela.</b> Em Shackleton, às 18:00 de 22/10, a margem solar é apenas <b>+0,05°</b> e o estado é <b>Limítrofe</b>. O disco solar está parcialmente obstruído (≈ 846 W/m² no painel rastreado). O critério de centro visível não exige disco inteiro livre nem margem de segurança. Os limites horários não são transições calculadas com precisão de minutos.</aside>
+        <figure><a href="tutorial/pt/04-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/04-janela.jpg" width="1440" height="900" loading="lazy" alt="Resultado da busca para Shackleton e Malapert: janela de 136 horas entre 23 e 28 de outubro de 2026."></a><figcaption>A janela calculada passa a ser a referência do pouso. Mudar a data, os locais ou a altura invalida essa referência: busque de novo.</figcaption></figure>
+        <aside class="notice caution"><b>Atenção ao início da janela.</b> Em Shackleton, às 00:00 de 23/10, o Sol está só <b>0,04°</b> acima do relevo e o estado é <b>No limite</b>. O disco solar ainda está em parte atrás do relevo (cerca de 804 W/m² no painel que segue o Sol). O critério é o centro à vista, sem margem de segurança, e as bordas da janela não são calculadas com precisão de minutos.</aside>
         <h3>Exemplo sem janela comum</h3>
-        <p>Volte a 02/10/2026 às 12:00 UTC, mantenha altura de 2 m e marque <b>Shackleton + Malapert + Haworth</b>. Clique em Melhor janela: não há intervalo comum encontrado nesses 30 dias.</p>
-        <figure><a href="tutorial/03-sem-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/03-sem-janela.jpg" width="1150" height="930" loading="lazy" alt="Aplicativo informa que nenhum intervalo comum de Sol e Terra foi encontrado nos próximos 30 dias para Shackleton, Malapert e Haworth."></a><figcaption>“Não encontrado” vale para esses pontos, parâmetros, período e amostragem. Não significa que toda a região seja permanentemente inviável.</figcaption></figure>
-        <p><b>Como continuar:</b> compare menos locais ou explore outra data e recalcule. Sem janela calculada válida, a simulação usa um intervalo <b>manual</b> iniciado na data selecionada. Manual não significa otimizado ou favorável.</p>
+        <p>Volte a 02/10/2026 às 12:00 UTC e marque <b>Shackleton, Malapert e Haworth</b>. Clique em Melhor janela: não há intervalo comum nesses 30 dias.</p>
+        <figure><a href="tutorial/pt/03-sem-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/03-sem-janela.jpg" width="1440" height="900" loading="lazy" alt="O app avisa que não há intervalo comum de Sol e Terra nos próximos 30 dias para Shackleton, Malapert e Haworth."></a><figcaption>“Nenhum intervalo” vale para esses pontos, parâmetros, período e amostragem. Não quer dizer que a região inteira seja inviável.</figcaption></figure>
+        <p><b>Como continuar:</b> compare menos locais ou outra data e calcule de novo. Sem janela calculada, a simulação usa uma janela <b>manual</b> a partir da data escolhida, que não é otimizada nem favorável.</p>
       </section>
 
       <section id="missao">
         <div class="section-title"><span>05</span><h2>Da Terra à Lua, e de volta</h2></div>
         <ol class="steps">
-          <li>Reproduza a janela de 150 h do passo 04, com apenas Shackleton e Malapert. Clique no nome de <b>Borda de Shackleton</b> para colocá-la em exploração.</li>
-          <li>Abra <b>Simular missão</b>. Confira o destino e a indicação <b>Janela calculada</b>. O local em foco deve fazer parte da comparação; um local de fora não recebe essa janela comum.</li>
-          <li>Use <b>72 h de ida, 24 h de permanência e 72 h de volta</b>. Clique em <b>Aplicar durações</b>. São hipóteses educativas, não especificações de um foguete.</li>
-          <li>Clique em <b>Reproduzir</b> ou escolha uma das 13 etapas. A barra permite percorrer a missão; 1×, 2× e 4× mudam apenas a velocidade da animação. A ida e a volta já incluem o tempo das órbitas e das manobras.</li>
+          <li>Repita a janela de 136 h do passo 04 e toque no nome <b>Shackleton</b>.</li>
+          <li>Abra <b>Simular missão</b>. Confira o destino e a indicação <b>Janela calculada</b>. O local em exploração precisa estar na comparação para receber essa janela.</li>
+          <li>Use <b>72 h de ida, 24 h no solo e 72 h de volta</b> e clique em <b>Aplicar durações</b>. São hipóteses educativas, não dados de um foguete.</li>
+          <li>Clique em <b>Reproduzir</b> ou toque numa etapa da trilha sobre a barra. 1×, 2× e 4× mudam só a velocidade da animação.</li>
         </ol>
-        <ol class="mission-dates" aria-label="Cronograma do exemplo, todas as datas em UTC">
-          <li><span>Lançamento</span><b>19/10/2026</b><time datetime="2026-10-19T18:00:00Z">18:00 UTC</time><small>72 h antes do pouso</small></li>
-          <li><span>Pouso lunar</span><b>22/10/2026</b><time datetime="2026-10-22T18:00:00Z">18:00 UTC</time><small>Início da janela</small></li>
-          <li><span>Saída da Lua</span><b>23/10/2026</b><time datetime="2026-10-23T18:00:00Z">18:00 UTC</time><small>Após 24 h no solo</small></li>
-          <li><span>Chegada à Terra</span><b>26/10/2026</b><time datetime="2026-10-26T18:00:00Z">18:00 UTC</time><small>Após 72 h de volta</small></li>
+        <ol class="mission-dates" aria-label="Cronograma do exemplo, em UTC">
+          <li><span>Lançamento</span><b>20/10/2026</b><time datetime="2026-10-20T00:00:00Z">00:00 UTC</time><small>72 h antes do pouso</small></li>
+          <li><span>Pouso lunar</span><b>23/10/2026</b><time datetime="2026-10-23T00:00:00Z">00:00 UTC</time><small>Início da janela</small></li>
+          <li><span>Saída da Lua</span><b>24/10/2026</b><time datetime="2026-10-24T00:00:00Z">00:00 UTC</time><small>Após 24 h no solo</small></li>
+          <li><span>Chegada à Terra</span><b>27/10/2026</b><time datetime="2026-10-27T00:00:00Z">00:00 UTC</time><small>Após 72 h de volta</small></li>
         </ol>
         <div class="two-columns figures">
-          <figure><a href="tutorial/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/06-trajetoria.jpg" width="1150" height="930" loading="lazy" alt="Simulação em Ida à Lua com câmera Trajetória completa, Terra, Lua e curvas ilustrativas de ida e volta."></a><figcaption><b>Trajetória completa:</b> visão espacial da ida e da volta. O veículo é ampliado para leitura.</figcaption></figure>
-          <figure><a href="tutorial/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/05-missao.jpg" width="1150" height="930" loading="lazy" alt="Etapa No solo com foguete genérico no terreno de Shackleton e cronograma de missão baseado na janela escolhida."></a><figcaption><b>No solo:</b> veículo no terreno lunar. Use câmera Automática para acompanhar a mudança entre visão espacial e local.</figcaption></figure>
+          <figure><a href="tutorial/pt/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/06-trajetoria.jpg" width="1440" height="900" loading="lazy" alt="Missão na ida à Lua com a câmera Trajetória inteira."></a><figcaption><b>Trajetória inteira:</b> a ida e a volta no espaço, com distâncias reais. O veículo aparece ampliado.</figcaption></figure>
+          <figure><a href="tutorial/pt/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/05-missao.jpg" width="1440" height="900" loading="lazy" alt="Veículo no solo de Shackleton, sobre o relevo LOLA de 40 m."></a><figcaption><b>No solo:</b> o veículo genérico de ~14 m sobre o relevo real de 40 m.</figcaption></figure>
         </div>
-        <p><b>Automática</b> enquadra a órbita terrestre a 300 km e as órbitas lunares a 100 km, antes do pouso e após a decolagem. São 1,5 volta terrestre e 1 volta em cada trecho lunar, com os motores desligados. O contador mostra voltas e velocidade circular; os períodos são cerca de 90,5 min na Terra e 117,8 min na Lua. <b>Trajetória completa</b> mostra o conjunto; <b>Acompanhar veículo</b> segue o foguete. As 13 etapas incluem as queimas de injeção translunar, inserção lunar e injeção à Terra. A reprodução completa dura 140 s em 1×. Descida e subida têm 20 s cada, com cerca de 14–15 s próximos do solo e aproximação/afastamento gradual da câmera. Nos últimos 400 m de descida ou nos primeiros 400 m de subida, a câmera usa o relevo LOLA. O foguete mantém a orientação para a frente nas órbitas e só inicia a rotação para a vertical durante a descida. As capturas acima mostram a interface anterior às órbitas.</p>
-        <aside class="notice"><b>Leia o relógio UTC.</b> O tempo é comprimido separadamente por etapa. A indicação “Condição no destino” descreve o ponto lunar no instante mostrado, <b>não</b> o rádio ou a iluminação do foguete durante o voo. O resumo 25/25 do exemplo conta amostras da permanência; não verifica cada instante entre elas.</aside>
+        <p>A câmera <b>Automática</b> enquadra a órbita terrestre a 300 km e as órbitas lunares a 100 km, antes do pouso e depois da decolagem: 1,5 volta na Terra e 1 volta em cada trecho lunar, com os motores desligados. Os períodos são de cerca de 90,5 min na Terra e 117,8 min na Lua. A reprodução completa dura 140 s em 1×; descida e subida têm 20 s cada, perto do solo.</p>
+        <aside class="notice"><b>Leia o relógio UTC.</b> O tempo é comprimido por etapa. “No destino” descreve o ponto lunar no instante mostrado, não o voo. Se o destino estiver na sombra, a cena liga a luz de leitura e avisa.</aside>
       </section>
 
       <section id="limites">
-        <div class="section-title"><span>06</span><h2>O que não é possível fazer ou concluir</h2></div>
-        <h3>Entradas que o aplicativo não permite</h3>
+        <div class="section-title"><span>06</span><h2>O que não dá para fazer ou concluir</h2></div>
+        <h3>Entradas que o app recusa</h3>
         <div class="table-wrap"><table><thead><tr><th scope="col">Tentativa</th><th scope="col">Por que não funciona</th><th scope="col">Como corrigir</th></tr></thead><tbody>
-          <tr><td>Comparar quatro locais ou nenhum</td><td>A seleção aceita de 1 a 3 pontos.</td><td>Escolha até três; mantenha pelo menos um.</td></tr>
-          <tr><td>Data em 1999 ou 2051</td><td>A faixa implementada é 2000–2050.</td><td>Use uma data válida. O cronograma completo da missão também deve caber nessa faixa.</td></tr>
-          <tr><td>Permanecer 151 h na janela de 150 h</td><td>A permanência ultrapassa a janela; o formulário não aplica o valor.</td><td>Use no máximo 150 h; a adequação das condições ainda precisa ser avaliada.</td></tr>
-          <tr><td>Permanecer 48 h numa janela manual de 24 h</td><td>A permanência excede o intervalo manual.</td><td>Ajuste a janela manual ou a permanência. Aumentar a janela não garante luz e visada.</td></tr>
-          <tr><td>Ida ou volta de 12 h</td><td>O controle aceita 24–240 h por trecho.</td><td>Informe um valor permitido; essa faixa é do aplicativo, não uma garantia física.</td></tr>
+          <tr><td>Comparar quatro locais ou nenhum</td><td>A comparação aceita de 1 a 3 pontos.</td><td>Escolha até três e mantenha pelo menos um.</td></tr>
+          <tr><td>Data em 1999 ou 2051</td><td>A faixa do app é 2000–2050.</td><td>Use uma data válida; o cronograma da missão também precisa caber nela.</td></tr>
+          <tr><td>Ficar 137 h numa janela de 136 h</td><td>A permanência passa da janela.</td><td>Use no máximo 136 h; as condições ainda precisam ser avaliadas.</td></tr>
+          <tr><td>Ficar 48 h numa janela manual de 24 h</td><td>A permanência passa do intervalo manual.</td><td>Ajuste a janela ou a permanência; janela maior não garante luz e visada.</td></tr>
+          <tr><td>Ida ou volta de 12 h</td><td>O app aceita 24–240 h por trecho.</td><td>Use um valor permitido; essa faixa é do app, não um limite físico.</td></tr>
         </tbody></table></div>
-        <h3>Conclusões que exigem outras análises</h3>
+        <h3>Conclusões que pedem outras análises</h3>
         <div class="two-columns limit-cards">
-          <article><h4>“O enlace está garantido.”</h4><p>Terra visível significa visada para seu <b>centro</b>. Faltam estação terrestre, antena, apontamento, frequência e orçamento do enlace.</p></article>
-          <article><h4>“A missão tem energia suficiente.”</h4><p>Irradiância não inclui área, eficiência, temperatura, consumo nem baterias. Não use W/m² como autonomia elétrica.</p></article>
-          <article><h4>“Este foguete consegue fazer essa trajetória.”</h4><p>Somente as órbitas de estacionamento usam a solução circular de dois corpos. Transferências e queimas são ilustrativas; não há solução orbital completa, continuidade garantida de velocidade entre etapas, combustível ou delta-v. Dar voltas não produz um estilingue automático. Janela de iluminação <b>não é janela orbital</b>.</p></article>
-          <article><h4>“O pouso neste ponto é seguro.”</h4><p>O terreno original tem espaçamento de aproximadamente 474 m norte–sul; não resolve pedras, inclinações pequenas ou contato das pernas. Os pontos são referências regionais, não sítios certificados.</p></article>
+          <article><h4>“O enlace está garantido.”</h4><p>Terra à vista quer dizer visada para o <b>centro</b> dela. Faltam estação, antena, apontamento, frequência e orçamento do enlace.</p></article>
+          <article><h4>“A missão tem energia.”</h4><p>A luz num painel não inclui área, eficiência, temperatura, consumo nem baterias.</p></article>
+          <article><h4>“Este foguete faz essa trajetória.”</h4><p>Só as órbitas de estacionamento usam a solução circular de dois corpos. Transferências e queimas são ilustrativas; não há delta-v nem combustível. Janela de luz <b>não é</b> janela orbital.</p></article>
+          <article><h4>“Pousar aqui é seguro.”</h4><p>O relevo tem pontos a cada ~40 m perto do observador e ~130 m no resto do recorte; não mostra pedras nem o contato das pernas. Os pontos são referências regionais, não locais certificados.</p></article>
         </div>
       </section>
 
       <section id="problemas">
         <div class="section-title"><span>07</span><h2>Se algo não abrir ou parecer diferente</h2></div>
-        <details open><summary>Localhost recusou a conexão</summary><p>O servidor precisa estar ativo. Execute <code>Iniciar Lunar Horizon.cmd</code> na pasta <code>D:\Nasa_Space_Apps\lunar-horizon</code> e recarregue <a href="http://localhost:4173/">localhost:4173</a>. O inicializador mantém o servidor independente do terminal temporário e não publica o site. Após reiniciar o Windows, execute-o novamente.</p><p>Se o inicializador informar que a porta 4173 está ocupada, não encerre um processo desconhecido. Consulte o registro <code>artifacts/localhost-server.log</code>. Para testar o endereço IPv4, use <a href="http://127.0.0.1:4173/">127.0.0.1:4173</a>.</p></details>
-        <details><summary>A cena 3D não aparece</summary><p>Leia o aviso da página. Se WebGL não puder iniciar, os cálculos e os gráficos continuam disponíveis quando os dados foram carregados. Verifique a aceleração gráfica ou experimente outro navegador. Se a mensagem indicar falha nos dados, recarregue e verifique o servidor.</p></details>
-        <details><summary>Meu resultado não coincide com o exemplo</summary><p>Confira data e hora UTC, coordenadas do ponto, caixas marcadas, nome em exploração, altura e orientação do painel. A seleção é lembrada neste navegador; abrir a página não restaura os parâmetros deste guia. Alterações na comparação exigem uma nova busca de janela.</p></details>
+        <details open><summary>A cena 3D não aparece</summary><p>Leia o aviso da página. Se o WebGL não iniciar, os cálculos e os gráficos continuam disponíveis. Ligue a aceleração gráfica do navegador ou experimente outro navegador.</p></details>
+        <details><summary>A página demora para carregar</summary><p>O relevo real de cada local tem alguns megabytes. O primeiro local abre antes; os outros carregam em seguida. Em conexões lentas, espere o aviso de carregamento sumir.</p></details>
+        <details><summary>Meu resultado não bate com o exemplo</summary><p>Confira data e hora UTC, locais marcados, nome em exploração, altura e opção do painel. O app lembra a sua seleção neste navegador; abrir a página não restaura os parâmetros deste guia. Mudou a comparação? Busque a janela de novo.</p></details>
       </section>
 
       <section id="checklist">
         <div class="section-title"><span>08</span><h2>Antes de compartilhar uma comparação</h2></div>
-        <ul class="checklist"><li>Registre data e hora <b>UTC</b>, locais e suas coordenadas.</li><li>Anote altura do observador e orientação do painel.</li><li>Leia as duas margens e identifique estados limítrofes.</li><li>Informe se a janela é manual ou calculada, e o passo de 1 hora.</li><li>Registre ida, permanência e volta se usar a simulação.</li><li>Descreva o resultado como exploração do modelo, não como aprovação de uma missão.</li></ul>
-        <p>Para conhecer os dados e as aproximações, abra <b>Dados e método</b> no aplicativo ou <b>O que usa dados reais e o que é ilustrativo?</b> na simulação. As imagens deste guia são capturas reais da versão local, com os parâmetros indicados.</p>
-        <a class="button primary" href="./">Abrir Lunar Horizon</a>
+        <ul class="checklist"><li>Anote data e hora <b>UTC</b>, locais e coordenadas.</li><li>Anote a altura do observador e a opção do painel.</li><li>Leia as duas folgas e marque os estados “No limite”.</li><li>Diga se a janela é manual ou calculada, e que o passo é de 1 hora.</li><li>Anote ida, permanência e volta se usar a simulação.</li><li>Descreva o resultado como exploração do modelo, não como aprovação de missão.</li></ul>
+        <p>Para os dados e as aproximações, abra <b>Dados e método</b> no app ou <b>O que é real e o que é ilustrativo</b> na missão. As imagens deste guia são capturas reais do app com os parâmetros indicados.</p>
+        <p class="guide-end"><a class="btn btn-primary" href="app/">Abrir o Horisite</a></p>
+        <p class="guide-foot">Horisite · tutorial educativo · exemplos conferidos no próprio modelo.<br>Relevo NASA GSFC PGDA · LRO/LOLA (Barker et al. 2023) · efemérides Astronomy Engine · 3D Three.js.</p>
       </section>
-      <footer>Lunar Horizon 3D · tutorial educativo · exemplos conferidos no modelo local.<br>Terreno NASA LRO/LOLA · efemérides Astronomy Engine · renderização Three.js.</footer>
+    </main>
+  </div>
+
+  <!-- ============================ ENGLISH ============================ -->
+  <div class="guide-layout lang-en" lang="en">
+    <nav class="contents" aria-label="In this tutorial">
+      <p>In this tutorial</p>
+      <a href="#start"><span>01</span> Start</a>
+      <a href="#horizon"><span>02</span> Read the horizon</a>
+      <a href="#examples"><span>03</span> Compare examples</a>
+      <a href="#window"><span>04</span> Find a window</a>
+      <a href="#mission"><span>05</span> Fly there and back</a>
+      <a href="#limits"><span>06</span> What it cannot do</a>
+      <a href="#troubleshooting"><span>07</span> Troubleshooting</a>
+      <a href="#check"><span>08</span> Check the result</a>
+      <small>Examples in UTC · PGDA LOLA relief · November 2026</small>
+    </nav>
+    <main id="content">
+      <div class="guide-intro">
+        <h1>From the horizon to your lunar window.</h1>
+        <p>Learn to compare sites, see what the relief hides and follow an educational mission from Earth to the Moon and back.</p>
+        <aside class="notice"><b>Favourable in the model is not a viable mission.</b> Horisite estimates sunlight and line of sight to the centre of Earth. It does not certify a landing, power generation, a radio link or a trajectory.</aside>
+      </div>
+
+      <section id="start">
+        <div class="section-title"><span>01</span><h2>Start with a comparison you can repeat</h2></div>
+        <ol class="steps">
+          <li><b>Open Horisite.</b> Use <b>Open Horisite</b> at the top of this page. On a first visit the app opens by itself at the best window in the next 30 days; to follow this guide, change the date in step 2.</li>
+          <li><b>Type 02/10/2026, 12:00 in the date field</b> (2 October 2026). The field is in <b>UTC</b>, whatever your computer’s time zone. Do not use <b>Now</b> to repeat these examples.</li>
+          <li><b>Tick Shackleton (1) and Malapert (2).</b> The numbered circle picks the compared sites; the name picks the site you explore. Tap <b>Malapert</b>.</li>
+          <li><b>Keep the height at 2 m and the panel on “Tracks the Sun”.</b> Height is above the local ground, not the altitude of the region. The panel option is in the Sun box.</li>
+        </ol>
+        <figure><a href="tutorial/en/01-comparar.jpg" target="_blank" rel="noopener"><img src="tutorial/en/01-comparar.jpg" width="1440" height="900" alt="Horisite on 2 October 2026 at 12:00 UTC, with Shackleton and Malapert ticked and Malapert in focus."></a><figcaption>The real screen with this step’s settings. Click any capture to open it larger.</figcaption></figure>
+        <div class="two-columns"><div><h3>Choose the view</h3><p><b>3D relief</b> shows the region with rays to the Sun and Earth; <b>Surface</b> puts you in the observer’s place; <b>Globe</b> places the sites on the Moon. Drag to turn.</p></div><div><h3>Use the tools</h3><p>The Sun and Earth buttons look at them through a lens: Earth appears with its real phase at that moment. The lamp turns on a reading light (not physical) and the crystal shows permanent shadow.</p></div></div>
+      </section>
+
+      <section id="horizon">
+        <div class="section-title"><span>02</span><h2>Being above the plane is not enough</h2></div>
+        <p>Compare the body’s position with the <b>relief in that direction</b>, not only with the horizontal plane.</p>
+        <div class="formula">margin = height of the body’s centre − height of the relief in that direction</div>
+        <dl class="glossary">
+          <div><dt>Height in the sky</dt><dd>Angle above the local plane. It can be positive with a ridge still in front.</dd></div>
+          <div><dt>Direction</dt><dd>Around the observer: north 0°, east 90°, south 180° and west 270°.</dd></div>
+          <div><dt>Above / below the relief</dt><dd>Above: the body’s centre is in view. Below: the relief hides it. Near zero, the result is sensitive to terrain and sampling.</dd></div>
+          <div><dt>On the edge</dt><dd>Margins smaller than 0.2°. A warning that the body is close to the horizon, not an operational tolerance.</dd></div>
+        </dl>
+        <figure><a href="tutorial/en/02-horizonte.jpg" target="_blank" rel="noopener"><img src="tutorial/en/02-horizonte.jpg" width="1440" height="1480" loading="lazy" alt="Shackleton on 2 October 2026 at 12:00 UTC: Sun at +1.22 degrees, relief at +8.52 degrees, 7.30 degrees below the relief; Earth in view. Horizon chart and next 24 hours."></a><figcaption>Shackleton, 2 October 2026 at 12:00 UTC: the Sun is +1.22° in the sky, but the relief in that direction reaches +8.52°. It sits 7.30° below the relief; on the chart, the yellow dot is under the silhouette.</figcaption></figure>
+        <p>The scene shows real sunlight. Seeing ground lit by the reading light <b>does not prove it receives sunlight</b>; use the numbers in the box for that.</p>
+      </section>
+
+      <section id="examples">
+        <div class="section-title"><span>03</span><h2>A favourable case and one that fails</h2></div>
+        <p>Repeat the settings of step 01 and tap the two site names in turn. The figures below are rounded from the app itself.</p>
+        <div class="table-wrap"><table><caption>2 Oct 2026 · 12:00 UTC · observer at 2 m · panel tracking the Sun</caption><thead><tr><th scope="col">Result</th><th scope="col">Malapert</th><th scope="col">Shackleton</th></tr></thead><tbody>
+          <tr><th scope="row">Sun</th><td>2.00° above the relief</td><td>7.30° below the relief</td></tr>
+          <tr><th scope="row">Earth</th><td>12.91° above the relief</td><td>5.79° above the relief</td></tr>
+          <tr><th scope="row">Light on a panel</th><td>≈ 1,357 W/m²</td><td>0 W/m²</td></tr>
+          <tr><th scope="row">Sun and Earth at this moment</th><td class="positive">Meets it in the model</td><td class="negative">Fails: no direct sunlight</td></tr>
+        </tbody></table></div>
+        <aside class="notice"><b>Try a flat panel.</b> At Malapert, switch “Tracks the Sun” to “Flat”: the light drops from about 1,357 to <b>48 W/m²</b> because the Sun is low (+2.01°). Visibility does not change. Switch back to follow the guide.</aside>
+        <p><b>What you can conclude:</b> Malapert has light and line of sight at the same moment in the model. <b>What you cannot:</b> that panels will power the mission or that the radio will work. W/m² measures light per area, not electrical power.</p>
+      </section>
+
+      <section id="window">
+        <div class="section-title"><span>04</span><h2>Search for a window common to the sites</h2></div>
+        <p>In <b>Next 24 hours</b>, each hour is a split cell: on top, yellow is the Sun in view; below, blue is Earth in view; hatching means behind the relief. Hover to read the time; clicking changes the date and the site. The strip under the 24-hour bar shows the same for the site you explore.</p>
+        <p>“Longest stretch with both” applies to each site <b>separately</b> in those 24 hours. For the common window, use <b>Best window</b>.</p>
+        <ol class="steps">
+          <li>Go back to <b>2 October 2026, 12:00 UTC</b>, with only Shackleton and Malapert ticked and a 2 m height.</li>
+          <li>Click <b>Best window</b>. The app checks the next 30 days hour by hour, looking for the longest continuous interval with the centres of the Sun and Earth above the relief at <b>all</b> ticked sites.</li>
+          <li>Check the <b>Mission window</b>: <b>136 h</b>, from <b>23 October 2026, 00:00 UTC</b> to <b>28 October 2026, 16:00 UTC</b>. The date moves to the start of that interval.</li>
+        </ol>
+        <figure><a href="tutorial/en/04-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/en/04-janela.jpg" width="1440" height="900" loading="lazy" alt="Search result for Shackleton and Malapert: a 136-hour window between 23 and 28 October 2026."></a><figcaption>The calculated window becomes the landing reference. Changing the date, sites or height invalidates it: search again.</figcaption></figure>
+        <aside class="notice caution"><b>Mind the start of the window.</b> At Shackleton, at 00:00 on 23 October, the Sun is only <b>0.04°</b> above the relief and the state is <b>On the edge</b>. Part of the solar disc is still behind the relief (about 804 W/m² on a tracking panel). The rule is the centre in view, with no safety margin, and the window edges are not resolved to the minute.</aside>
+        <h3>An example with no common window</h3>
+        <p>Go back to 2 October 2026 at 12:00 UTC and tick <b>Shackleton, Malapert and Haworth</b>. Click Best window: there is no common interval in those 30 days.</p>
+        <figure><a href="tutorial/en/03-sem-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/en/03-sem-janela.jpg" width="1440" height="900" loading="lazy" alt="The app reports no common Sun and Earth interval in the next 30 days for Shackleton, Malapert and Haworth."></a><figcaption>“No interval” holds for these points, settings, period and sampling. It does not mean the whole region is unusable.</figcaption></figure>
+        <p><b>Next step:</b> compare fewer sites or another date and calculate again. Without a calculated window, the simulation uses a <b>manual</b> window from the chosen date, which is neither optimised nor favourable.</p>
+      </section>
+
+      <section id="mission">
+        <div class="section-title"><span>05</span><h2>From Earth to the Moon, and back</h2></div>
+        <ol class="steps">
+          <li>Repeat the 136 h window of step 04 and tap <b>Shackleton</b>.</li>
+          <li>Open <b>Simulate mission</b>. Check the destination and <b>Calculated window</b>. The explored site must be in the comparison to get that window.</li>
+          <li>Use <b>72 h out, 24 h on the surface and 72 h back</b> and click <b>Apply durations</b>. These are educational assumptions, not rocket data.</li>
+          <li>Click <b>Play</b> or tap a phase on the track above the bar. 1×, 2× and 4× change only the animation speed.</li>
+        </ol>
+        <ol class="mission-dates" aria-label="Example timeline, in UTC">
+          <li><span>Launch</span><b>20 Oct 2026</b><time datetime="2026-10-20T00:00:00Z">00:00 UTC</time><small>72 h before landing</small></li>
+          <li><span>Lunar landing</span><b>23 Oct 2026</b><time datetime="2026-10-23T00:00:00Z">00:00 UTC</time><small>Window start</small></li>
+          <li><span>Lunar departure</span><b>24 Oct 2026</b><time datetime="2026-10-24T00:00:00Z">00:00 UTC</time><small>After 24 h on the surface</small></li>
+          <li><span>Earth arrival</span><b>27 Oct 2026</b><time datetime="2026-10-27T00:00:00Z">00:00 UTC</time><small>After 72 h back</small></li>
+        </ol>
+        <div class="two-columns figures">
+          <figure><a href="tutorial/en/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/en/06-trajetoria.jpg" width="1440" height="900" loading="lazy" alt="The mission coasting to the Moon with the Whole trajectory camera."></a><figcaption><b>Whole trajectory:</b> out and back in space, at true distances. The vehicle is enlarged.</figcaption></figure>
+          <figure><a href="tutorial/en/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/en/05-missao.jpg" width="1440" height="900" loading="lazy" alt="The vehicle on the ground at Shackleton, on the 40 m LOLA relief."></a><figcaption><b>On the surface:</b> the generic ~14 m vehicle on the real 40 m relief.</figcaption></figure>
+        </div>
+        <p>The <b>Automatic</b> camera frames the 300 km Earth parking orbit and the 100 km lunar orbits before landing and after liftoff: 1.5 orbits at Earth and 1 orbit for each lunar leg, engines off. Periods are about 90.5 min at Earth and 117.8 min at the Moon. The full playback lasts 140 s at 1×; descent and ascent take 20 s each, close to the ground.</p>
+        <aside class="notice"><b>Read the UTC clock.</b> Time is compressed per phase. “At the destination” describes the lunar site at the moment shown, not the flight. If the destination is in shadow, the scene turns on the reading light and says so.</aside>
+      </section>
+
+      <section id="limits">
+        <div class="section-title"><span>06</span><h2>What it cannot do or let you conclude</h2></div>
+        <h3>Inputs the app refuses</h3>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Attempt</th><th scope="col">Why it fails</th><th scope="col">How to fix it</th></tr></thead><tbody>
+          <tr><td>Comparing four sites or none</td><td>The comparison takes 1 to 3 points.</td><td>Pick up to three and keep at least one.</td></tr>
+          <tr><td>A date in 1999 or 2051</td><td>The app covers 2000–2050.</td><td>Use a valid date; the mission timeline must fit in it too.</td></tr>
+          <tr><td>Staying 137 h in a 136 h window</td><td>The stay goes past the window.</td><td>Use at most 136 h; conditions still need checking.</td></tr>
+          <tr><td>Staying 48 h in a 24 h manual window</td><td>The stay goes past the manual interval.</td><td>Adjust the window or the stay; a longer window does not guarantee light and sight.</td></tr>
+          <tr><td>A 12 h trip out or back</td><td>The app accepts 24–240 h per leg.</td><td>Use an allowed value; this range belongs to the app, not to physics.</td></tr>
+        </tbody></table></div>
+        <h3>Conclusions that need other analyses</h3>
+        <div class="two-columns limit-cards">
+          <article><h4>“The link is guaranteed.”</h4><p>Earth in view means line of sight to its <b>centre</b>. Station, antenna, pointing, frequency and link budget are missing.</p></article>
+          <article><h4>“The mission has power.”</h4><p>Light on a panel leaves out area, efficiency, temperature, consumption and batteries.</p></article>
+          <article><h4>“This rocket can fly this path.”</h4><p>Only the parking orbits use the two-body circular solution. Transfers and burns are illustrative; there is no delta-v or fuel. A light window <b>is not</b> an orbital window.</p></article>
+          <article><h4>“Landing here is safe.”</h4><p>The relief has points every ~40 m near the observer and ~130 m elsewhere in the tile; it shows neither boulders nor leg contact. The points are regional references, not certified sites.</p></article>
+        </div>
+      </section>
+
+      <section id="troubleshooting">
+        <div class="section-title"><span>07</span><h2>If something does not open or looks different</h2></div>
+        <details open><summary>The 3D scene does not appear</summary><p>Read the notice on the page. If WebGL cannot start, the calculations and charts stay available. Turn on hardware acceleration or try another browser.</p></details>
+        <details><summary>The page is slow to load</summary><p>Each site’s real relief is a few megabytes. The first site opens first; the others load after it. On slow connections, wait for the loading notice to go away.</p></details>
+        <details><summary>My result does not match the example</summary><p>Check the UTC date and time, ticked sites, explored site, height and panel option. The app remembers your selection in this browser; opening the page does not restore this guide’s settings. Changed the comparison? Search for the window again.</p></details>
+      </section>
+
+      <section id="check">
+        <div class="section-title"><span>08</span><h2>Before you share a comparison</h2></div>
+        <ul class="checklist"><li>Note the <b>UTC</b> date and time, sites and coordinates.</li><li>Note the observer height and the panel option.</li><li>Read both margins and flag “On the edge” states.</li><li>Say whether the window is manual or calculated, with 1-hour steps.</li><li>Note the trip out, stay and trip back if you use the simulation.</li><li>Describe the result as exploring a model, not as approving a mission.</li></ul>
+        <p>For the data and approximations, open <b>Data &amp; method</b> in the app or <b>What is real and what is illustrative</b> in the mission. The images in this guide are real captures of the app with the settings shown.</p>
+        <p class="guide-end"><a class="btn btn-primary" href="app/">Open Horisite</a></p>
+        <p class="guide-foot">Horisite · educational tutorial · examples checked against the model itself.<br>Relief NASA GSFC PGDA · LRO/LOLA (Barker et al. 2023) · ephemerides Astronomy Engine · 3D Three.js.</p>
+      </section>
     </main>
   </div>
 </body>

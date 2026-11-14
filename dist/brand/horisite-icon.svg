@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Ícone do Horisite: o símbolo sobre preto, cantos arredondados (folha de marca, 14/11/2026). -->
+  <defs>
+    <linearGradient id="r" x1="0.1" y1="0.75" x2="0.95" y2="0.2"><stop offset="0" stop-color="#ff2f7d"/><stop offset=".48" stop-color="#ff7a3c"/><stop offset="1" stop-color="#ffe600"/></linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#000"/>
+  <g transform="translate(9 12) scale(.4)">
+    <path fill="url(#r)" d="M84.4 31.1A40 40 0 1 0 84.4 68.9L65.3 59.6A19 19 0 1 1 65.3 40.4Z"/>
+    <rect x="62" y="37.5" width="38" height="6.5" rx="3.2" fill="#ffe600"/>
+    <rect x="62" y="46.75" width="46" height="6.5" rx="3.2" fill="#ffe600"/>
+    <rect x="62" y="56" width="38" height="6.5" rx="3.2" fill="#ffe600"/>
+  </g>
+</svg>

@@ -6,7 +6,10 @@ import { buildMission } from '../dist/mission-model.js';
 const metadata=JSON.parse(await readFile('dist/data/metadata.json','utf8'));
 const terrains=new Map(await Promise.all(sites.map(async site=>{
   const bytes=await readFile(`dist/data/${site.id}.bin`);
-  return [site.id,new Terrain(site,new Float32Array(bytes.buffer,bytes.byteOffset,bytes.byteLength/4),metadata)];
+  const wide=metadata.wide?await readFile(`dist/data/${site.id}-wide.bin`).catch(()=>null):null;
+  const inner=metadata.inner?await readFile(`dist/data/${site.id}-inner.bin`).catch(()=>null):null;
+  const f32=b=>b?new Float32Array(b.buffer,b.byteOffset,b.byteLength/4):null;
+  return [site.id,new Terrain(site,f32(bytes),metadata,f32(wide),f32(inner))];
 })));
 const start=new Date('2026-10-02T12:00:00Z'),hour=36e5;
 const sample=(id,date=start)=>{

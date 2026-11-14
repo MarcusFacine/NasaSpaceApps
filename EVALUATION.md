@@ -59,3 +59,21 @@ Limites restantes: transferências Bézier corrigidas pela efeméride lunar; sub
 Restauradas as cenas de subida/descida próximas do terreno (cerca de 14–15 s em 1×, dentro de etapas de 20 s). A animação total passa a 140 s, sem alterar as datas UTC da missão. Relógio de apresentação com aceleração/desaceleração nas bordas das etapas; junções Bézier tangentes nas transferências; atitudes contínuas e prógradas durante o estacionamento lunar. A rotação para a vertical ocorre apenas com a descida já iniciada. A câmera interpola alvo, direção e zoom durante 1,8 s, preserva a pose ao trocar de referencial espacial/local e acompanha a aproximação/afastamento do terreno. Esses ajustes são de apresentação, não uma nova solução de dinâmica orbital.
 
 Verificações: continuidade de posição e atitude em todas as etapas, duração da cena local, altitude monotônica na subida/descida, orientação prógrada nas órbitas, conversão bidirecional dos referenciais da câmera, interpolação incremental sem saltos, períodos/velocidades circulares e ausência de interseção com os globos nas transferências de 24/72/240 h nos cinco locais.
+
+# Horisite: relevo PGDA de 20 m e redesenho (novembro de 2026)
+
+O DEM SVS de 474 m (`ldem_64`) foi trocado pelos DEMs LOLA do polo sul do NASA GSFC PGDA (produto 90, Barker et al. 2023), lidos como Cloud-Optimized GeoTIFF só na janela de cada local:
+
+| Camada | Fonte | Recorte | Espaçamento |
+| --- | --- | --- | --- |
+| Centro | `LDEM_80S_20MPP_ADJ`, versão de 40 m | 20 × 20 km | ~39 m |
+| Detalhe | `LDEM_80S_20MPP_ADJ`, versão de 80 m | 100 × 100 km | ~130 m |
+| Contexto | `LDEM_60S_240MPP_ADJ`, versão de 480 m | 400 × 400 km | ~1,56 km |
+
+Conferência da projeção (estereográfica polar sul, esfera de 1737,4 km): nos mesmos 257 × 257 pontos dos recortes antigos, a diferença média para o DEM SVS foi de 7,6 a 8,6 m e a correlação, de 0,99994 a 0,99999. A versão espelhada dá ~1,2 km de diferença, o que confirma a orientação. O horizonte passou a usar o relevo até ~195 km (antes, 50 km).
+
+Os resultados mudam onde o relevo fino importa. Em Shackleton, 2026-10-02 12:00 UTC, o horizonte na direção do Sol foi de +4,63° para **+8,52°**: o ponto fica numa encosta, e a 0,5 km nessa direção o terreno está ~80 m mais alto, algo que a malha de 474 m suavizava. O Sol passa de −3,41° para −7,30° em relação ao relevo; a Terra continua à vista (+5,79°). Malapert não muda de forma relevante (Sol +2,00°, Terra +12,91°, ≈1.357 W/m²). A maior janela comum Shackleton + Malapert a partir dessa data passou de 150 h para **136 h**, de 2026-10-23 00:00 a 2026-10-28 16:00 UTC; Shackleton + Malapert + Haworth continua sem janela. A comparação com o JPL Horizons (posições do Sol e da Terra) não depende do relevo e continua válida.
+
+Visual (sem efeito nos cálculos): sombreamento de regolito lunar-Lambert, sombras do Sol até ~125 km em computadores com GPU capaz, micro-relevo sintético abaixo da malha, céu do catálogo HYG v4.1, Terra orientada pelo tempo sideral de Greenwich (precessão ignorada, ~0,4°) com fase real, nuvens e luzes noturnas, e a camada de sombra eterna do mapa `LPSR_80S_20MPP_ADJ` (fração por célula da versão de 80 m).
+
+Verificações: `check-model` e `check-mission` passam com os recortes novos; o app foi exercitado no navegador em 1440 × 900 e 390 × 844 sem erros de execução.

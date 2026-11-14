@@ -21,9 +21,17 @@ async function download(url, destination) {
 }
 await Promise.all([
   download(base + 'lroc_color_2k.jpg', 'dist/assets/moon-color.jpg'),
-  download('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg', 'dist/assets/earth-color.jpg')
+  download('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg', 'dist/assets/earth-color.jpg'),
+  download('https://threejs.org/examples/textures/planets/earth_clouds_1024.png', 'dist/assets/earth-clouds.png'),
+  download('https://threejs.org/examples/textures/planets/earth_lights_2048.png', 'dist/assets/earth-lights.png')
 ]);
 
+// Terrain tiles now come from the NASA GSFC PGDA 20 m south pole DEM (scripts/prepare-terrain.mjs).
+// The SVS 474 m reading below is kept only as an optional cross-check: node scripts/prepare-data.mjs --svs-check
+if (!process.argv.includes('--svs-check')) {
+  await import('./prepare-terrain.mjs');
+  process.exit(0);
+}
 // HTTP ranges retrieve only the southern polar rows of the 16-bit LOLA DEM.
 const tiff = await fromUrl(base + 'ldem_64_uint.tif', { allowFullFile: false, blockSize: 65536 });
 const image = await tiff.getImage();

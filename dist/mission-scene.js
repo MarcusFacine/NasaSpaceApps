@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { AU_KM, RADIUS_KM, siteBasis } from './model.js';
 import { EARTH_RADIUS, moonPosition, parkingPath, parkingState, toInertial } from './mission-model.js';
+import { lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry } from './lunar-surface.js';
+import { loadStarCatalog, createStarField, setRotationRows } from './stars.js';
+
+const asset=path=>new URL(path,import.meta.url).href;
 
 const v=a=>new THREE.Vector3(a[0],a[2],-a[1]);
 const space=a=>v(a).multiplyScalar(.001);
@@ -26,55 +30,50 @@ function rocket(){
 }
 
 export class MissionScene {
-  constructor(canvas,container,terrain,onError){
-    this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';
-    this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.35;this.renderer.setClearColor(0x02050a);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
+  constructor(canvas,container,terrain,onError,{t=k=>k}={}){
+    this.t=t;this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';
+    this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;this.renderer.setClearColor(0x02050a);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
     this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});this.controls.addEventListener('start',()=>{this.cameraTween=null;this.manualCamera=true;});
     this.world=new THREE.Group();this.local=new THREE.Group();this.scene.add(this.world,this.local);
-    this.sunlight=new THREE.DirectionalLight(0xfff6e4,3.2);this.sunlight.shadow.mapSize.set(2048,2048);this.sunlight.shadow.normalBias=.00012;this.sunlight.shadow.bias=-.00001;this.scene.add(this.sunlight,this.sunlight.target);this.fill=new THREE.AmbientLight(0xa4c2df,.19);this.scene.add(this.fill);
-    const loader=new THREE.TextureLoader();this.moonTexture=loader.load('./assets/moon-color.jpg',()=>this.dirty=true,undefined,()=>onError('Textura lunar indisponível. A geometria continua visível.'));this.moonTexture.colorSpace=THREE.SRGBColorSpace;this.moonTexture.wrapS=THREE.RepeatWrapping;
-    this.earthTexture=loader.load('./assets/earth-color.jpg',()=>this.dirty=true,undefined,()=>onError('Textura terrestre indisponível.'));this.earthTexture.colorSpace=THREE.SRGBColorSpace;
+    this.sunlight=new THREE.DirectionalLight(0xfff6e4,3.2);this.sunlight.shadow.mapSize.set(2048,2048);this.sunlight.shadow.normalBias=.00012;this.sunlight.shadow.bias=-.00001;this.scene.add(this.sunlight,this.sunlight.target);this.fill=new THREE.AmbientLight(0xa4c2df,.03);this.scene.add(this.fill);
+    // Reading light, only when the destination is in shadow; the scale label says so.
+    this.earthlight=new THREE.DirectionalLight(0x9fc4ff,0);this.scene.add(this.earthlight,this.earthlight.target);
+    const loader=new THREE.TextureLoader();this.moonTexture=loader.load(asset('./assets/moon-color.jpg'),()=>this.dirty=true,undefined,()=>onError(t('error.moonTexture')));this.moonTexture.colorSpace=THREE.SRGBColorSpace;this.moonTexture.wrapS=THREE.RepeatWrapping;
+    this.earthTexture=loader.load(asset('./assets/earth-color.jpg'),()=>this.dirty=true,undefined,()=>onError(t('error.earthTexture')));this.earthTexture.colorSpace=THREE.SRGBColorSpace;
     this.earth=mesh(new THREE.SphereGeometry(EARTH_RADIUS/1000,64,48),new THREE.MeshStandardMaterial({map:this.earthTexture,roughness:1}),this.world);
-    this.moon=mesh(new THREE.SphereGeometry(RADIUS_KM/1000,64,48),new THREE.MeshStandardMaterial({map:this.moonTexture,roughness:1}),this.world);
+    this.moon=mesh(new THREE.SphereGeometry(RADIUS_KM/1000,128,96),lunarMaterial({vertexColors:false,map:this.moonTexture,color:0xf2efe8}),this.world);
     this.localEarth=mesh(new THREE.SphereGeometry(1,32,24),new THREE.MeshStandardMaterial({map:this.earthTexture,roughness:1}),this.local);
-    this.marker=mesh(new THREE.SphereGeometry(.0015,12,8),new THREE.MeshBasicMaterial({color:0xe6ff57}),this.local,[0,.0008,0]);
+    this.marker=mesh(new THREE.SphereGeometry(.0015,12,8),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false}),this.local,[0,.0008,0]);
     this.vehicle=rocket();this.world.add(this.vehicle);this.localVehicle=rocket();this.local.add(this.localVehicle);this.makeTerrain(terrain);
     this.trail=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.8}));this.world.add(this.trail);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
-    this.canvas=canvas;this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError('O contexto 3D foi perdido. Feche e reabra a simulação.');};canvas.addEventListener('webglcontextlost',this.onContextLost);
-    this.render=now=>{if(this.disposed)return;this.animateCamera(now??performance.now());if(this.dirty&&!document.hidden&&!this.contextLost){this.renderer.render(this.scene,this.camera);this.labels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};this.render();
+    this.canvas=canvas;this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError(t('error.contextLost'));};canvas.addEventListener('webglcontextlost',this.onContextLost);
+    loadStarCatalog().then(data=>{if(!data||this.disposed)return;this.stars=createStarField(data,4000);this.stars.material.uniforms.uPixelRatio.value=this.renderer.getPixelRatio();setRotationRows(this.stars,[1,0,0],[0,0,1],[0,-1,0]);this.stars.visible=this.world.visible;this.scene.add(this.stars);this.dirty=true;});
+    this.render=now=>{if(this.disposed)return;this.animateCamera(now??performance.now());if(this.dirty&&!document.hidden&&!this.contextLost){if(this.stars){this.stars.matrix.setPosition(this.camera.position);this.stars.matrixWorldNeedsUpdate=true;}this.renderer.render(this.scene,this.camera);this.labels();this.dirty=false;}this.frame=requestAnimationFrame(this.render);};this.render();
   }
   makeTerrain(terrain){
-    const n=terrain.size,extent=terrain.extent,g=new THREE.PlaneGeometry(extent,extent,n-1,n-1),pos=g.attributes.position,uv=g.attributes.uv,basis=siteBasis(terrain.site);
-    for(let row=0;row<n;row++)for(let col=0;col<n;col++){
-      const i=row*n+col,x=(col/(n-1)-.5)*extent,z=(row/(n-1)-.5)*extent;pos.setXYZ(i,x,terrain.height(x,z),z);
-      const body=basis.up.map((u,k)=>RADIUS_KM*u+x*basis.east[k]-z*basis.north[k]);uv.setXY(i,(Math.atan2(body[1],body[0])/Math.PI+1)/2,Math.asin(body[2]/Math.hypot(...body))/Math.PI+.5);
-    }
-    g.computeVertexNormals();
-    const material=new THREE.MeshStandardMaterial({map:this.moonTexture,color:0xbebbb4,roughness:1});
-    // Visual regolith grain only; does not displace or improve the measured DEM.
-    material.onBeforeCompile=shader=>{
-      shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 regolithPosition;').replace('#include <begin_vertex>','#include <begin_vertex>\nregolithPosition = position;');
-      shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 regolithPosition;').replace('#include <map_fragment>','#include <map_fragment>\nfloat grain = fract(sin(dot(floor(regolithPosition.xz * 22000.0), vec2(12.9898,78.233))) * 43758.5453);\ndiffuseColor.rgb *= 0.78 + grain * 0.32;');
-    };
-    mesh(g,material,this.local);
-    const ring=mesh(new THREE.RingGeometry(.007,.0074,64),new THREE.MeshBasicMaterial({color:0xe6ff57,side:THREE.DoubleSide,transparent:true,opacity:.7}),this.local,[0,.0003,0]);ring.rotation.x=-Math.PI/2;
+    // Same LOLA relief as the explorer, with regolith shading and sub-mesh micro-relief (visual only).
+    this.regolith=regolithNormalMap(512);
+    mesh(detailedTerrainGeometry(terrain),lunarMaterial({normalMap:this.regolith,normalScale:.6}),this.local);
+    const inner=innerTerrainGeometry(terrain);if(inner)mesh(inner,lunarMaterial({normalMap:this.regolith,normalScale:.7}),this.local);
+    const context=contextTerrainGeometry(terrain);if(context)mesh(context,lunarMaterial({normalMap:null}),this.local);
+    const ring=mesh(new THREE.RingGeometry(.007,.0074,64),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,opacity:.7,toneMapped:false}),this.local,[0,.0003,0]);ring.rotation.x=-Math.PI/2;
   }
   setPlan(plan){
     this.plan=plan;this.cameraKey='';this.cameraTween=null;this.lastLocal=undefined;
     for(const line of this.pathLines||[]){this.world.remove(line);line.geometry.dispose();line.material.dispose();}
-    this.pathLines=[plan.outboundPath,plan.inboundPath].map((points,i)=>{const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points.map(space)),new THREE.LineBasicMaterial({color:i?0x6dd9ff:0xe6ff57,transparent:true,opacity:.38}));this.world.add(line);return line;});
+    this.pathLines=[plan.outboundPath,plan.inboundPath].map((points,i)=>{const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points.map(space)),new THREE.LineBasicMaterial({color:i?0xd9d4ca:0xffffff,transparent:true,opacity:.62}));this.world.add(line);return line;});
     this.parkingLines=[plan.earthParking,plan.lunarParking,plan.lunarReturnParking].map((orbit,i)=>{
-      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(parkingPath(orbit).map(space)),new THREE.LineBasicMaterial({color:i===0?0xe6ff57:0x6dd9ff,transparent:true,opacity:.8}));
+      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(parkingPath(orbit).map(space)),new THREE.LineBasicMaterial({color:i===0?0x8ec5ff:0xd9d4ca,transparent:true,opacity:.85}));
       this.world.add(line);this.pathLines.push(line);return line;
     });
     const orbit=Array.from({length:65},(_,i)=>space(moonPosition(new Date(plan.launch+(plan.returnAt-plan.launch)*i/64),window.Astronomy)));
     this.bounds=new THREE.Box3().setFromPoints([...plan.outboundPath.map(space),...plan.inboundPath.map(space),...orbit,new THREE.Vector3(-7,-7,-7),new THREE.Vector3(7,7,7)]).getBoundingSphere(new THREE.Sphere());
-    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbit),new THREE.LineDashedMaterial({color:0x7a8896,dashSize:1,gapSize:1,transparent:true,opacity:.32}));line.computeLineDistances();this.world.add(line);this.pathLines.push(line);this.dirty=true;
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbit),new THREE.LineDashedMaterial({color:0x77776f,dashSize:1,gapSize:1,transparent:true,opacity:.4}));line.computeLineDistances();this.world.add(line);this.pathLines.push(line);this.dirty=true;
   }
   setMode(mode){this.mode=mode;this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);}
   update(sample,conditions,reset=false){
-    const previous=this.sample;this.sample=sample;this.conditions=conditions;const local=sample.local&&this.mode!=='overview';this.world.visible=!local;this.local.visible=local;
+    const previous=this.sample;this.sample=sample;this.conditions=conditions;const local=sample.local&&this.mode!=='overview';this.world.visible=!local;this.local.visible=local;if(this.stars)this.stars.visible=!local;
     this.moon.position.copy(space(sample.moon));
     this.parkingLines[1].position.copy(this.moon.position);this.parkingLines[2].position.copy(this.moon.position);
     this.parkingLines[1].visible=+sample.date<=this.plan.departure;this.parkingLines[2].visible=+sample.date>=this.plan.departure;
@@ -91,6 +90,8 @@ export class MissionScene {
     const sun=local?new THREE.Vector3(...conditions.sun.direction):v([earthHelio.x,earthHelio.y,earthHelio.z]).negate().normalize();
     this.sunlight.intensity=local?3.2*conditions.sun.diskFraction:3.2;
     this.sunlight.target.position.copy(local?localTarget:this.moon.position.clone().multiplyScalar(.5));this.sunlight.position.copy(this.sunlight.target.position).add(sun.multiplyScalar(local?200:1000));this.sunlight.castShadow=local;
+    const dark=local&&conditions.sun.diskFraction===0;this.earthlight.intensity=dark?.7:0;
+    if(local){this.earthlight.target.position.copy(localTarget);this.earthlight.position.copy(localTarget).add(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(200));}
     if(local){Object.assign(this.sunlight.shadow.camera,{left:-.6,right:.6,top:.6,bottom:-.6,near:.01,far:500});this.sunlight.shadow.camera.updateProjectionMatrix();this.localEarth.position.copy(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(350));this.localEarth.scale.setScalar(350*EARTH_RADIUS/conditions.earth.distanceKm);}
     const orbit=this.orbitForPhase(sample),key=local?'local':this.mode==='overview'?'overview':this.mode==='follow'?'follow':orbit?`orbit-${orbit===this.plan.lunarReturnParking?'return':orbit.body}`:sample.phase;
     if(reset||key!==this.cameraKey){
@@ -121,7 +122,7 @@ export class MissionScene {
     const close=['launch','arrival'].includes(sample.phase)||this.mode==='follow';
     const flight=['descent','ascent'].includes(sample.phase),size=this.camera.position.distanceTo(this.vehicle.position)*(close?.055:.022)/.014;this.vehicle.scale.setScalar(Math.max((flight||this.cameraTween)?.001:4,size));this.dirty=true;
     this.camera.near=local?.0001:Math.max(1e-8,Math.min(.0005,this.camera.position.distanceTo(this.controls.target)*.02));this.camera.updateProjectionMatrix();
-    document.getElementById('missionScale').textContent=local?'RELEVO LOLA 1× · VEÍCULO ~14 m':flight?'APROXIMAÇÃO LUNAR':sample.orbit?'ÓRBITA CIRCULAR · MODELO DE DOIS CORPOS':'DISTÂNCIAS REAIS · VEÍCULO AMPLIADO';
+    document.getElementById('missionScale').textContent=(local?this.t('msc.local'):flight?this.t('msc.approach'):sample.orbit?this.t('msc.orbit'):this.t('msc.space'))+(dark?` · ${this.t('light.reading')}`:'');
   }
   orbitForPhase(sample){
     if(['earthOrbit','tli'].includes(sample.phase))return this.plan.earthParking;
@@ -186,5 +187,5 @@ export class MissionScene {
     }
   }
   resize(){const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);this.dirty=true;}
-  dispose(){if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material])mat.dispose();}});this.moonTexture.dispose();this.earthTexture.dispose();this.renderer.dispose();this.renderer.forceContextLoss();}
+  dispose(){if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material])mat.dispose();}});this.moonTexture.dispose();this.earthTexture.dispose();this.regolith?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();}
 }
