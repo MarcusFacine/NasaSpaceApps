@@ -30,7 +30,7 @@
   </svg>
 
   <header class="bar">
-    <a class="wordmark" href="../" data-i18n-attr="aria-label:nav.home" style="--wm-size:27px"><span aria-hidden="true">h</span><img src="../brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a>
+    <a class="logo" href="../" aria-label="Horisite"><img src="../brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a>
     <nav class="bar-nav">
       <a href="../tutorial.html" data-i18n="nav.tutorial">Tutorial</a>
       <button id="helpButton" class="link-button" type="button" data-i18n="nav.method">Dados e método</button>
@@ -56,6 +56,16 @@
             <button type="button" data-view="globe" aria-pressed="false" data-i18n="view.globe">Globo</button>
           </div>
           <p class="stage-meta"><span id="lightingBadge"></span><span id="cameraHint"></span></p>
+        </div>
+
+        <div class="stage-tools" role="toolbar">
+          <button type="button" id="focusSun" data-i18n-attr="aria-label:tool.sun|title:tool.sun"><svg><use href="#i-sun"/></svg></button>
+          <button type="button" id="focusEarth" data-i18n-attr="aria-label:tool.earth|title:tool.earth"><svg><use href="#i-earth"/></svg></button>
+          <button type="button" id="resetCamera" data-i18n-attr="aria-label:tool.reset|title:tool.reset"><svg><use href="#i-center"/></svg></button>
+          <button type="button" id="readingLight" aria-pressed="false" data-i18n-attr="aria-label:tool.reading|title:tool.reading"><svg><use href="#i-lamp"/></svg></button>
+          <button type="button" id="psrLayer" aria-pressed="false" data-i18n-attr="aria-label:tool.psr|title:tool.psr"><svg><use href="#i-ice"/></svg></button>
+          <button type="button" id="fullscreenButton" data-i18n-attr="aria-label:tool.fullscreen|title:tool.fullscreen"><svg><use href="#i-full"/></svg></button>
+        </div>
         </div>
 
         <aside class="answer" aria-live="polite">
@@ -86,17 +96,12 @@
             </dl>
             <p class="answer-note" data-i18n="answer.earthNote"></p>
           </section>
+          <section class="answer-row answer-horizon">
+            <header class="horizon-head"><h2 data-i18n="horizon.title">O que o relevo esconde</h2><span data-i18n="horizon.next">próximas 24 h</span></header>
+            <svg id="horizonChart" viewBox="0 0 300 122" role="img" aria-labelledby="horizonTitle horizonDesc"><title id="horizonTitle">Horizon</title><desc id="horizonDesc"></desc></svg>
+            <footer class="chart-foot"><span class="legend"><i class="lg-relief"></i><span data-i18n="legend.relief">Relevo</span></span><span class="legend"><i class="lg-sun"></i><span data-i18n="legend.sun">Sol</span></span><span class="legend"><i class="lg-earth"></i><span data-i18n="legend.earth">Terra</span></span><span class="legend"><i class="lg-now"></i><span data-i18n="legend.now">agora</span></span></footer>
+          </section>
         </aside>
-
-        <div class="stage-tools" role="toolbar">
-          <button type="button" id="focusSun" data-i18n-attr="aria-label:tool.sun|title:tool.sun"><svg><use href="#i-sun"/></svg></button>
-          <button type="button" id="focusEarth" data-i18n-attr="aria-label:tool.earth|title:tool.earth"><svg><use href="#i-earth"/></svg></button>
-          <button type="button" id="resetCamera" data-i18n-attr="aria-label:tool.reset|title:tool.reset"><svg><use href="#i-center"/></svg></button>
-          <button type="button" id="readingLight" aria-pressed="false" data-i18n-attr="aria-label:tool.reading|title:tool.reading"><svg><use href="#i-lamp"/></svg></button>
-          <button type="button" id="psrLayer" aria-pressed="false" data-i18n-attr="aria-label:tool.psr|title:tool.psr"><svg><use href="#i-ice"/></svg></button>
-          <button type="button" id="fullscreenButton" data-i18n-attr="aria-label:tool.fullscreen|title:tool.fullscreen"><svg><use href="#i-full"/></svg></button>
-        </div>
-        </div>
 
         <div class="console">
           <div class="console-time">
@@ -130,11 +135,6 @@
 
     <section class="analysis">
       <div class="window-line"><span data-i18n="window.title">Janela da missão</span><b id="chosenWindow" class="num">—</b><small data-i18n="window.note"></small></div>
-      <article class="card horizon-card">
-        <header><h2 data-i18n="horizon.title">O que o relevo esconde</h2><p data-i18n="horizon.desc"></p></header>
-        <svg id="horizonChart" viewBox="0 0 960 280" role="img" aria-labelledby="horizonTitle"><title id="horizonTitle">Horizon</title></svg>
-        <footer class="chart-foot"><span class="legend"><i class="lg-relief"></i><span data-i18n="legend.relief">Relevo</span></span><span class="legend"><i class="lg-sun"></i><span data-i18n="legend.sunPath">Caminho do Sol</span></span><span class="legend"><i class="lg-earth"></i><span data-i18n="legend.earthPath">Caminho da Terra</span></span><span class="chart-axis"><span data-i18n="horizon.axis"></span> · <span data-i18n="horizon.note"></span></span></footer>
-      </article>
       <article class="card timeline-card">
         <header><h2 data-i18n="timeline.title">Próximas 24 horas</h2><p data-i18n="timeline.desc"></p></header>
         <div class="timeline-scale"><span></span><div id="timeScale" class="num"></div></div>
@@ -144,18 +144,15 @@
       <article class="card settings-card">
         <label for="height" class="height-label"><span data-i18n="height.label">Altura do observador</span><output id="heightOutput" class="num">2 m</output></label>
         <input id="height" type="range" min="2" max="20" step="2" value="2">
-        <p class="muted" data-i18n="height.note"></p>
-        <h2 data-i18n="data.title">De onde vêm os números</h2>
-        <p data-i18n="data.text"></p>
-        <p class="muted" data-i18n="data.limit"></p>
+        <p class="muted height-note" data-i18n="height.note"></p>
+        <p class="muted limit-note" data-i18n="data.limit"></p>
       </article>
     </section>
   </main>
 
   <footer class="foot">
-    <div class="foot-brand"><a class="wordmark" href="../" style="--wm-size:34px" data-i18n-attr="aria-label:nav.home"><span aria-hidden="true">h</span><img src="../brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a><span class="tagline" data-i18n="brand.tagline">lunar landing site navigator</span></div>
+    <div class="foot-brand"><a class="logo" href="../" aria-label="Horisite"><img src="../brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a><span class="tagline" data-i18n="brand.tagline">lunar landing site navigator</span></div>
     <p data-i18n="footer.made"></p>
-    <p class="muted" data-i18n="footer.data"></p>
     <button type="button" id="footerMethod" class="link-button" data-i18n="nav.method">Dados e método</button>
   </footer>
 
@@ -194,7 +191,7 @@
           </div>
           <button type="button" id="missionReplay" class="icon-button" data-i18n-attr="aria-label:mp.replay|title:mp.replay"><svg><use href="#i-replay"/></svg></button>
           <label for="missionSpeed" class="sr-only" data-i18n="mp.speed">Velocidade</label>
-          <select id="missionSpeed" class="num"><option value="1">1× · 140 s</option><option value="2">2× · 70 s</option><option value="4">4× · 35 s</option></select>
+          <select id="missionSpeed" class="num"><option value="1">1× · 150 s</option><option value="2">2× · 75 s</option><option value="4">4× · 38 s</option></select>
         </div>
         <p id="missionOrbitStatus" class="mission-status" role="status">—</p>
         <p class="muted mission-note" data-i18n="mp.note"></p>
@@ -207,9 +204,9 @@
         <div id="missionAssessment" class="mission-assessment" role="status"></div>
         <form id="missionForm">
           <label for="missionWindowHours"><span data-i18n="mission.windowHours">Janela manual</span><small data-i18n="unit.hours">horas</small></label><input id="missionWindowHours" class="num" type="number" min="1" max="720" step="1" value="24">
-          <label for="missionOutbound"><span data-i18n="mission.outbound">Viagem de ida</span><small data-i18n="unit.hours">horas</small></label><input id="missionOutbound" class="num" type="number" min="24" max="240" step="1" value="72">
-          <label for="missionStay"><span data-i18n="mission.stay">Permanência no solo</span><small data-i18n="unit.hours">horas</small></label><input id="missionStay" class="num" type="number" min="0.5" max="720" step="0.5" value="24">
-          <label for="missionInbound"><span data-i18n="mission.inbound">Viagem de volta</span><small data-i18n="unit.hours">horas</small></label><input id="missionInbound" class="num" type="number" min="24" max="240" step="1" value="72">
+          <label for="missionOutbound"><span data-i18n="mission.outbound">Viagem de ida</span><small data-i18n="unit.hours">horas</small></label><input id="missionOutbound" class="num" type="number" min="24" max="240" step="1" value="103">
+          <label for="missionStay"><span data-i18n="mission.stay">Permanência no solo</span><small data-i18n="unit.hours">horas</small></label><input id="missionStay" class="num" type="number" min="0.5" max="720" step="0.5" value="22">
+          <label for="missionInbound"><span data-i18n="mission.inbound">Viagem de volta</span><small data-i18n="unit.hours">horas</small></label><input id="missionInbound" class="num" type="number" min="24" max="240" step="1" value="71">
           <button type="submit" class="btn btn-ghost" data-i18n="mission.apply">Aplicar durações</button>
         </form>
         <p id="missionError" role="alert" class="mission-error"></p>

@@ -5,7 +5,7 @@ colors:
   sun: "#ffe600"
   pink: "#ff2f7d"
   orange: "#ff7a3c"
-  earth: "#8ec5ff"
+  earth: "#ff5c9a"
   psr-violet: "#8a7dff"
   ink: "#0a0a0a"
   paper: "#f2f1ec"
@@ -107,7 +107,7 @@ components:
 
 ## Overview
 
-Duas superfícies, um mundo. A **landing** é clara (papel cinza-quente, preto, amarelo vivo, manchas de degradê amarelo e rosa, cartões arredondados), seguindo a referência que a equipe mandou. O **app** (`/app`) é a cena 3D escura de borda a borda, porque o assunto é o espaço e a luz rasante do polo sul; a marca e os controles são os mesmos da landing. O logotipo é a assinatura: "horisite" em minúsculas pesadas, letras sobrepostas com sombra própria, e o "o" como símbolo (anel em degradê rosa→amarelo com três feixes).
+Duas superfícies, um mundo. O logotipo é o arquivo oficial da equipe (`dist/brand/horisite-logo-black.png` no claro, `-white.png` no escuro), nunca redesenhado em texto; o símbolo do "o" existe em SVG só para ícone e selo. Os créditos dos dados ficam no rodapé (e em "Dados e método"), não repetidos pela página. O site abre sempre em português. A **landing** é clara (papel cinza-quente, preto, amarelo vivo, manchas de degradê amarelo e rosa, cartões arredondados), seguindo a referência que a equipe mandou. O **app** (`/app`) é a cena 3D escura de borda a borda, porque o assunto é o espaço e a luz rasante do polo sul; a marca e os controles são os mesmos da landing. O logotipo é a assinatura: "horisite" em minúsculas pesadas, letras sobrepostas com sombra própria, e o "o" como símbolo (anel em degradê rosa→amarelo com três feixes).
 
 O 3D é o produto, não decoração: relevo LOLA real em três camadas, sombreamento de regolito, estrelas reais, a Terra com fase e orientação reais. A resposta ("visível ou bloqueado pelo relevo") aparece na própria cena, nos raios até o Sol e a Terra.
 
@@ -117,8 +117,8 @@ O 3D é o produto, não decoração: relevo LOLA real em três camadas, sombream
 - **sun `#ffe600`**: a luz. Marca (marcação de palavras, ponto do botão, símbolo) e, nos dados, o Sol à vista. Nunca como texto sobre fundo claro.
 
 ### Secondary
-- **earth `#8ec5ff`**: só a Terra (estado, raio, caminho, metade de baixo das células).
-- **pink `#ff2f7d` / orange `#ff7a3c`**: degradê da marca; no app, rosa marca as etapas da missão na Lua (a janela).
+- **earth `#ff5c9a`**: rosa da paleta, só para a Terra (estado, raio, caminho, metade de baixo das células). Pedido da equipe em 14/11/2026: nada de azul-claro na interface. O halo azul da atmosfera no 3D é físico e fica.
+- **pink `#ff2f7d` / orange `#ff7a3c`**: degradê da marca; no app, laranja marca as etapas da missão na Lua (a janela).
 - **psr-violet `#8a7dff`**: só a camada de sombra eterna.
 
 ### Neutral
@@ -126,7 +126,7 @@ O 3D é o produto, não decoração: relevo LOLA real em três camadas, sombream
 - App: fundo `#050505`, painéis `#0f0f10` e vidro escuro `rgba(9,9,10,.9)`, linhas `#26262a`, texto `#f4f4f1`, secundário `#b4b4ad`, terciário `#8f8f88` (≥ 5:1 sobre os painéis).
 
 ### Named Rules
-- **Um significado por cor.** Amarelo = Sol, azul = Terra, violeta = sombra eterna, hachura cinza = atrás do relevo. Os locais não têm cor: são números de 1 a 5.
+- **Um significado por cor.** Amarelo = Sol, rosa = Terra, violeta = sombra eterna, laranja = missão na Lua, hachura cinza = atrás do relevo. Os locais não têm cor: são números de 1 a 5.
 - **Ação não é cor de dado.** Botões são pretos (claro) ou brancos (escuro), com o ponto amarelo do logotipo.
 
 ## Typography
@@ -145,8 +145,8 @@ Jost (linha do Futura, a família da placa da Apollo) em tudo o que é texto; Je
 ## Layout
 
 - Landing: coluna de até 1240 px, seções com 72–128 px de respiro, mosaico de 12 colunas, faixas arredondadas de borda a borda (recurso, link, chamada final). No celular, tudo vira uma coluna com margem de 16 px.
-- App: a cena ocupa a tela menos a barra de 64 px. Por cima: título e vistas (canto superior esquerdo), resposta Sol/Terra (superior direito, 330 px), ferramentas (lateral esquerda), console (rodapé: tempo + ações na primeira linha, data + locais na segunda). Abaixo de 1180 px, resposta e console descem para baixo da cena.
-- Análise do app: horizonte (7/12) e 24 horas (5/12), depois altura e fonte dos dados.
+- App: a cena ocupa a tela menos a barra de 64 px. Por cima: título e vistas (canto superior esquerdo), coluna da direita (330 px) com a resposta Sol/Terra e, logo abaixo, o gráfico "O que o relevo esconde" (para acompanhar o tempo passando), ferramentas numa fileira logo acima do console, console no rodapé terminando antes da coluna (tempo + ações na primeira linha, data + locais na segunda). Abaixo de 1180 px, resposta, gráfico e console descem para baixo da cena, nessa ordem.
+- Análise do app: 24 horas em largura total, depois altura e limite dos dados.
 
 ## Elevation & Depth
 
@@ -171,7 +171,7 @@ Landing: cartões de 28 px de raio com fundo de cor inteira (amarelo, ardósia, 
 Barra simples com o logotipo, links e o seletor PT/EN em pílula com contorno.
 
 ### Células de 24 horas (assinatura de dados)
-Cada hora é uma célula dividida: metade de cima amarela se o Sol está à vista, metade de baixo azul se a Terra está à vista, hachura quando atrás do relevo. Aparece no console (local em exploração) e na análise (locais comparados).
+Cada hora é uma célula dividida: metade de cima amarela se o Sol está à vista, metade de baixo rosa se a Terra está à vista, hachura quando atrás do relevo. Aparece no console (local em exploração) e na análise (locais comparados).
 
 ### Cena 3D (assinatura)
 Relevo LOLA (40 m / 130 m / 1,56 km), regolito lunar-Lambert, sombras do Sol, estrelas HYG, raios até o Sol e a Terra com o ponto de bloqueio marcado, caminho de 24 h, linha do horizonte calculado na superfície, lente que mostra a Terra com fase real, camada violeta de sombra eterna. Abertura: a cena acende e o tempo corre até o Sol sair da borda no início da melhor janela.
@@ -184,6 +184,7 @@ Relevo LOLA (40 m / 130 m / 1,56 km), regolito lunar-Lambert, sombras do Sol, es
 - Abrir num momento com luz; quando o destino está no escuro, dizer por quê (e ligar a luz de leitura com aviso).
 
 ### Don't:
-- Usar amarelo, azul ou violeta para outra coisa que não Sol, Terra e sombra eterna.
+- Usar amarelo, rosa ou violeta para outra coisa que não Sol, Terra e sombra eterna.
+- Recriar o logotipo em texto ou trocar o arquivo oficial.
 - Pôr rótulo em maiúsculas acima de títulos.
 - Prometer instalação, loja de apps ou login: o produto abre no navegador e não tem contas.

@@ -77,3 +77,21 @@ Os resultados mudam onde o relevo fino importa. Em Shackleton, 2026-10-02 12:00 
 Visual (sem efeito nos cálculos): sombreamento de regolito lunar-Lambert, sombras do Sol até ~125 km em computadores com GPU capaz, micro-relevo sintético abaixo da malha, céu do catálogo HYG v4.1, Terra orientada pelo tempo sideral de Greenwich (precessão ignorada, ~0,4°) com fase real, nuvens e luzes noturnas, e a camada de sombra eterna do mapa `LPSR_80S_20MPP_ADJ` (fração por célula da versão de 80 m).
 
 Verificações: `check-model` e `check-mission` passam com os recortes novos; o app foi exercitado no navegador em 1440 × 900 e 390 × 844 sem erros de execução.
+
+## Revisão da missão: perfil Apollo (15/11/2026)
+
+Pedido da equipe: a decolagem e a volta não correspondiam a nenhuma missão real, e a nave e o solo pareciam artificiais. A missão passou a seguir o perfil das Apollo que pousaram na Lua, com os números da Apollo 11 (NASA, Apollo 11 Mission Report, MSC-00171):
+
+- Lançamento do Kennedy (LC-39A) a 72° de azimute, em curva de gravidade, com os estágios do Saturn V soltos em 2 min 41 s e 9 min 9 s; órbita de espera de 185 km (88,2 min), 1,5 volta; injeção translunar.
+- Nave-mãe e módulo lunar acoplados até a Lua; órbita lunar de 110 km (118,8 min), 13 voltas antes do pouso e 5 depois da decolagem (menos quando a viagem escolhida é mais curta). Ida padrão 103 h, solo 22 h, volta 71 h; os trechos de cruzeiro ficam em ~74 h e ~60 h, como na Apollo 11.
+- Descida freando com o motor à frente e pouso vertical; na decolagem só o estágio de subida sobe, e o de descida fica no solo.
+- Reentrada só da cápsula, a 121,9 km e −6,5°, com a bola de plasma; paraquedas de arrasto a 7,3 km e os três principais a 3,2 km; amerissagem no Pacífico (faixa de 150° L a 120° O, na latitude do resgate da Apollo 11), num ponto com o Sol a pelo menos 15°. Se todo o Pacífico estiver no escuro, a volta é ajustada pelo menor tempo possível (até ±10 h) e o painel avisa.
+- Antes, a volta terminava com o veículo descendo na vertical sobre o Cabo Canaveral e o arco de volta mergulhava reto na Terra.
+
+Visual: naves com proporções publicadas (Saturn V, CSM, LM com folha dourada, cápsula com escudo e paraquedas de 25 m); local de pouso de 800 × 800 m em malha de 2 m sobre o LOLA, com crateras pequenas, ondulação e pedras ilustrativas (o LOLA não resolve nada menor que ~40 m); poeira soprada pelo motor; sombras longas do Sol rasante; cena do oceano com o Sol real no ponto e na hora da amerissagem; a Terra com nuvens (a máscara das nuvens é o canal alfa da imagem; antes era lido o canal verde, e a camada saía branca com furos). Ao abrir a simulação com a hora escolhida sem Sol e Terra no destino, a missão usa a próxima janela com os dois.
+
+Continua ilustrativo: as transferências (curvas, não Lambert nem três corpos), as queimas, a subida, a descida e a reentrada, sem delta-v nem combustível. `check-mission` verifica o perfil (configuração de cada etapa, períodos, voltas, cruzeiros, altitude de reentrada, plasma, ponto no Pacífico) além das verificações anteriores.
+
+## Gráfico do relevo junto da resposta (15/11/2026)
+
+"O que o relevo esconde" saiu da análise, no pé da página, e foi para o painel do Sol e da Terra, ao lado da cena: com o tempo correndo, dá para acompanhar o Sol e a Terra passando atrás do relevo. O console termina antes do painel, as ferramentas da cena ficam numa fileira logo acima do console, e no tablet e no celular o painel (que antes ficava escondido atrás da cena) aparece entre a cena e o console.

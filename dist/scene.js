@@ -5,12 +5,12 @@ import { number } from './i18n.js';
 // Short distances read in metres: a ridge 250 m away is not "0 km".
 const distance = km => (km < 1 ? `${number(Math.round(km * 100) * 10)} m` : km < 10 ? `${number(km, 1)} km` : `${number(Math.round(km))} km`);
 import { loadStarCatalog, createStarField, setRotationRows, combine } from './stars.js';
-import { lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry } from './lunar-surface.js';
+import { cloudMaterial, lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry } from './lunar-surface.js';
 
 const asset = path => new URL(path, import.meta.url).href;
 const v3 = a => new THREE.Vector3(...a);
 const bodyToScene = a => new THREE.Vector3(a[0], a[2], -a[1]);
-export const SCENE_COLORS = { sun: 0xffe600, earth: 0x8ec5ff, blocked: 0x8a8a82 };
+export const SCENE_COLORS = { sun: 0xffe600, earth: 0xff5c9a, blocked: 0x8a8a82 };
 const BODY_DISTANCE = 1400, PATH_RADIUS = 1250, HORIZON_RADIUS = 1150, STAR_RADIUS = 1800;
 const lowPower = () => matchMedia('(max-width: 820px)').matches || (navigator.hardwareConcurrency || 8) <= 4;
 
@@ -142,7 +142,7 @@ uniform vec3 uSunView;`)
 totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView));`);
     };
     this.earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), earthMaterial);
-    this.earth.add(new THREE.Mesh(new THREE.SphereGeometry(1.012, 96, 64), new THREE.MeshStandardMaterial({ color: 0xffffff, alphaMap: earthClouds, transparent: true, depthWrite: false, roughness: 1 })));
+    this.earth.add(new THREE.Mesh(new THREE.SphereGeometry(1.012, 96, 64), cloudMaterial(earthClouds)));
     this.earthGlow = glowSprite([[0, 'rgba(150,200,255,0)'], [0.36, 'rgba(150,200,255,0)'], [0.42, 'rgba(150,200,255,.55)'], [0.62, 'rgba(120,170,255,.12)'], [1, 'rgba(120,170,255,0)']], 3.2);
     this.earth.add(this.earthGlow);
     // Sun: disc at true angular size, a bright core and a wide soft bloom.

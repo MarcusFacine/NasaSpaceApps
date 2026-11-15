@@ -41,6 +41,14 @@ totalEmissiveRadiance += uPsrColor * smoothstep(.35, .95, vPsr) * uPsr * .32;`);
   return material;
 }
 
+// Earth clouds (three.js earth_clouds_1024.png): the cloud mask is the alpha channel, RGB is not.
+export function cloudMaterial(texture) {
+  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, map: texture, transparent: true, depthWrite: false, roughness: 1 });
+  material.onBeforeCompile = shader => { shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', 'diffuseColor.a *= texture2D( map, vMapUv ).a;'); };
+  material.customProgramCacheKey = () => 'cloud-alpha';
+  return material;
+}
+
 // Deterministic hash and tileable value noise.
 function hash(x, y, seed) {
   let n = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 982451653)) | 0;
@@ -62,7 +70,7 @@ export function fbm(x, y, octaves = 4, seed = 1) {
 
 // Small-scale relief below the DEM sampling (craterlets and roughness), as a tileable normal map.
 // Synthetic and visual only; the elevation model and every number come from LOLA.
-export function regolithNormalMap(size = 512, seed = 11) {
+export function regolithNormalMap(size = 512, seed = 11, { craters = 200 } = {}) {
   const h = new Float32Array(size * size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     let v = 0, amp = 1;
@@ -72,7 +80,7 @@ export function regolithNormalMap(size = 512, seed = 11) {
   let s = seed * 7919;
   const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
   // Crater size-frequency: many small, few large (power law).
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < craters; i++) {
     const cx = rnd() * size, cy = rnd() * size, r = 1.5 + Math.pow(rnd(), 3.4) * 26, depth = r * 0.08;
     const reach = Math.ceil(r * 1.6);
     for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
@@ -116,7 +124,8 @@ function addPsr(geometry, terrain) {
 }
 
 // Finest tile at the centre (real 40 m relief near the observer).
-export function innerTerrainGeometry(terrain, { stride = 1, uvRepeat = 46 } = {}) {
+// hole (km, half-size): leave out cells fully inside a centred square another mesh covers.
+export function innerTerrainGeometry(terrain, { stride = 1, uvRepeat = 46, hole = 0 } = {}) {
   const inner = terrain.inner; if (!inner) return null;
   const n = Math.floor((inner.size - 1) / stride) + 1, extent = inner.extent;
   const geometry = new THREE.PlaneGeometry(extent, extent, n - 1, n - 1);
@@ -130,6 +139,14 @@ export function innerTerrainGeometry(terrain, { stride = 1, uvRepeat = 46 } = {}
   const normal = geometry.attributes.normal, colors = new Float32Array(n * n * 3);
   for (let i = 0; i < n * n; i++) { const a = albedo(pos.getX(i), pos.getZ(i), 1 - normal.getY(i)); colors.set([a, a * 0.985, a * 0.955], i * 3); }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  if (hole) {
+    const index = geometry.index.array, kept = [];
+    for (let f = 0; f < index.length; f += 3) {
+      const inside = [0, 1, 2].every(k => { const v = index[f + k]; return Math.abs(pos.getX(v)) <= hole + 1e-6 && Math.abs(pos.getZ(v)) <= hole + 1e-6; });
+      if (!inside) kept.push(index[f], index[f + 1], index[f + 2]);
+    }
+    geometry.setIndex(kept);
+  }
   addPsr(geometry, terrain); geometry.computeBoundingSphere();
   return geometry;
 }

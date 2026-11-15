@@ -5,16 +5,27 @@ export const EARTH_RADIUS = 6378.137;
 // JPL DE440, km³/s²: https://ssd.jpl.nasa.gov/astro_par.html
 export const EARTH_MU = 398600.435507;
 export const MOON_MU = 4902.800118;
-export const PARKING = Object.freeze({ earthAltitudeKm:300, lunarAltitudeKm:100, earthTurns:1.5, lunarTurns:1 });
-export const ANIMATION_SECONDS=140;
+// Mission profile of the crewed lunar landings that actually flew (Apollo 11–17), with the numbers of
+// Apollo 11: NASA, Apollo 11 Mission Report (MSC-00171, 1969). Parking orbits: 185 km around the
+// Earth, ~110 km around the Moon; 13 lunar orbits before the landing and 5 after the liftoff.
+export const PARKING = Object.freeze({ earthAltitudeKm:185, lunarAltitudeKm:110, earthTurns:1.5, lunarTurns:13, lunarReturnTurns:5 });
+export const APOLLO = Object.freeze({
+  launchSite:{ lat:28.6083, lon:-80.6041 }, launchAzimuth:72.06,
+  outboundHours:103, stayHours:22, inboundHours:71,
+  // Splashdown in the Pacific (Apollo 11: 13°19' N, 169°09' W), entry 15.5 min before it.
+  splashdown:{ lat:13.32, lon:-169.15 }, entryAltitudeKm:121.9, entryRangeKm:2600, entryAngleDeg:6.5,
+  entryMinutes:15.5, chuteMinutes:7, drogueAltitudeKm:7.3, mainAltitudeKm:3.2
+});
 // Presentation time is independent of the mission's UTC timeline.
-export const PHASES = [
+const PHASE_TABLE = [
   ['launch','Lançamento',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
   ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',10],
   ['descent','Pouso lunar',20],['surface','No solo',8],['ascent','Decolagem lunar',20],
   ['lunarReturnOrbit','Órbita lunar / volta',12],['tei','Injeção à Terra',4],['inbound','Volta à Terra',16],
-  ['arrival','Reentrada terrestre',6]
-].map(([id,label,seconds],i,all)=>{const before=all.slice(0,i).reduce((sum,p)=>sum+p[2],0);return {id,label,seconds,start:before/ANIMATION_SECONDS,end:(before+seconds)/ANIMATION_SECONDS};});
+  ['arrival','Reentrada',8],['splashdown','Paraquedas e amerissagem',8]
+];
+export const ANIMATION_SECONDS=PHASE_TABLE.reduce((sum,p)=>sum+p[2],0);
+export const PHASES = PHASE_TABLE.map(([id,label,seconds],i,all)=>{const before=all.slice(0,i).reduce((sum,p)=>sum+p[2],0);return {id,label,seconds,start:before/ANIMATION_SECONDS,end:(before+seconds)/ANIMATION_SECONDS};});
 export const LOCAL_DESCENT_START=.25,LOCAL_ASCENT_END=.70;
 const TAU = 2*Math.PI;
 const add = (a,b) => a.map((v,i)=>v+b[i]);
@@ -40,9 +51,39 @@ const hermite=(a,b,da,db,t)=>(2*t**3-3*t*t+1)*a+(t**3-2*t*t+t)*da+(-2*t**3+3*t*t
 const phaseWidth=id=>{const p=PHASES.find(p=>p.id===id);return p.end-p.start;};
 export function toInertial(v,frame){return v.map((_,i)=>frame.x[i]*v[0]+frame.y[i]*v[1]+frame.z[i]*v[2]);}
 export function moonPosition(date,astronomy){const v=astronomy.GeoMoon(date);return [v.x*AU_KM,v.y*AU_KM,v.z*AU_KM];}
-export function terrestrialPoint(date,astronomy,altitudeKm=0){
-  const v=astronomy.ObserverVector(date,new astronomy.Observer(28.5,-80.6,altitudeKm*1000),false);
+export function geoPoint(lat,lon,date,astronomy,altitudeKm=0){
+  const v=astronomy.ObserverVector(date,new astronomy.Observer(lat,lon,altitudeKm*1000),false);
   return [v.x*AU_KM,v.y*AU_KM,v.z*AU_KM];
+}
+export function terrestrialPoint(date,astronomy,altitudeKm=0){return geoPoint(APOLLO.launchSite.lat,APOLLO.launchSite.lon,date,astronomy,altitudeKm);}
+// Local east and north at a geographic point, in the inertial (EQJ) frame.
+function geoAxes(lat,lon,date,astronomy){
+  const p=geoPoint(lat,lon,date,astronomy),east=unit(subtract(geoPoint(lat,lon+.01,date,astronomy),p)),north=unit(subtract(geoPoint(lat+.01,lon,date,astronomy),p));
+  return {p,up:unit(p),east,north};
+}
+const RAD=Math.PI/180;
+const fixed=(lat,lon)=>[Math.cos(lat*RAD)*Math.cos(lon*RAD),Math.cos(lat*RAD)*Math.sin(lon*RAD),Math.sin(lat*RAD)];
+const geographic=e=>({lat:Math.asin(clamp(e[2],-1,1))/RAD,lon:Math.atan2(e[1],e[0])/RAD});
+// Point at a fraction of the great circle between two geographic points.
+function alongTrack(a,b,f){
+  const p=fixed(a.lat,a.lon),q=fixed(b.lat,b.lon),omega=Math.acos(clamp(dot(p,q),-1,1));
+  if(omega<1e-9)return {...b};
+  return geographic(add(scale(p,Math.sin((1-f)*omega)/Math.sin(omega)),scale(q,Math.sin(f*omega)/Math.sin(omega))));
+}
+// Entry: from the entry interface (121.9 km) to the drogue chutes (7.3 km) over the Pacific.
+export function entryPoint(plan,s,astronomy){
+  const [begin,end]=plan.times.arrival,date=new Date(mix(begin,end,s));
+  // Ends at the drogue deployment falling at the speed the chute phase starts with (~80 m/s).
+  const [c0,c1]=plan.times.splashdown,fall=(APOLLO.drogueAltitudeKm-APOLLO.mainAltitudeKm)/.12*(end-begin)/(c1-c0);
+  const g=1-Math.pow(1-s,2.2),altitudeKm=APOLLO.drogueAltitudeKm+fall*(1-s)+(APOLLO.entryAltitudeKm-APOLLO.drogueAltitudeKm-fall)*Math.pow(1-s,2.5);
+  const at=alongTrack(plan.entry.from,plan.entry.to,g);
+  return {position:geoPoint(at.lat,at.lon,date,astronomy,altitudeKm),altitudeKm};
+}
+// Drogues at 7.3 km, three mains at 3.2 km, splashdown at the target.
+export function splashdownPoint(plan,s,astronomy){
+  const [begin,end]=plan.times.splashdown,date=new Date(mix(begin,end,s)),to=plan.entry.to;
+  const altitudeKm=s<.12?mix(APOLLO.drogueAltitudeKm,APOLLO.mainAltitudeKm,s/.12):APOLLO.mainAltitudeKm*(1-(s-.12)/.88);
+  return {position:geoPoint(to.lat,to.lon,date,astronomy,Math.max(0,altitudeKm)),altitudeKm:Math.max(0,altitudeKm)};
 }
 export function lunarPoint(site,date,astronomy,elevationKm=0,altitudeKm=0){
   return add(moonPosition(date,astronomy),toInertial(scale(siteBasis(site).up,RADIUS_KM+elevationKm+altitudeKm),lunarFrame(date,astronomy)));
@@ -99,7 +140,7 @@ function burnPoint(plan,id,t,astronomy){
 function makeTransferLinks(plan,id,astronomy){
   const span=plan[id+'LinkSpan'];
   const outbound=id==='outbound',before=outbound?'tli':'tei',after=outbound?'loi':'arrival';
-  const endpoint=(phase,t)=>phase==='arrival'?terrestrialPoint(new Date(mix(...plan.times.arrival,t)),astronomy,120*(1-smooth(t))):burnPoint(plan,phase,t,astronomy);
+  const endpoint=(phase,t)=>phase==='arrival'?entryPoint(plan,t,astronomy).position:burnPoint(plan,phase,t,astronomy);
   const derivative=(fn,t)=>{const a=Math.max(0,t-.001),b=Math.min(1,t+.001);return scale(subtract(fn(b),fn(a)),1/(b-a));};
   const raw=t=>rawTransferPoint(plan,id,t,astronomy),a=raw(0),b=raw(span),c=raw(1-span),d=raw(1);
   // Match d(position)/d(animation progress) at both ends. The UTC mapping is
@@ -138,34 +179,71 @@ function selectTransferCurve(plan,id,astronomy){
   throw new Error('Não foi possível ligar as órbitas sem cruzar os globos. Experimente outra data ou duração de viagem.');
 }
 
-export function buildMission({site,windowStart,windowEnd,outboundHours=72,stayHours=24,inboundHours=72,elevationKm=0},astronomy){
+export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.outboundHours,stayHours=APOLLO.stayHours,inboundHours=APOLLO.inboundHours,elevationKm=0},astronomy){
   const start=new Date(windowStart),end=new Date(windowEnd),arrival=+start,departure=arrival+stayHours*HOUR;
   if(!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start)throw new Error('Janela inválida.');
   for(const hours of [outboundHours,inboundHours])if(!Number.isFinite(hours)||hours<24||hours>240)throw new Error('As viagens devem durar de 24 a 240 horas.');
   if(!Number.isFinite(stayHours)||stayHours<.5||departure>+end)throw new Error('A permanência precisa caber na janela escolhida (mínimo de 0,5 h).');
   if(!Number.isFinite(elevationKm)||Math.abs(elevationKm)>20)throw new Error('Elevação lunar inválida.');
-  const launch=arrival-outboundHours*HOUR,returnAt=departure+inboundHours*HOUR;
+  // Recovery in daylight, as the Apollo flight planners targeted: when the whole Pacific recovery band is
+  // dark at the nominal return, the trip back is lengthened or shortened by the smallest amount that puts
+  // the Sun at least 15° up over some point of it (at most ±10 h, staying within 24–240 h).
+  const sunOverPacific=date=>{let best=-90;for(let east=150;east<=240;east+=5){const lon=east>180?east-360:east,observer=new astronomy.Observer(APOLLO.splashdown.lat,lon,0),eq=astronomy.Equator(astronomy.Body.Sun,date,observer,true,true);best=Math.max(best,astronomy.Horizon(date,observer,eq.ra,eq.dec,'normal').altitude);}return best;};
+  let returnShiftHours=0;
+  if(sunOverPacific(new Date(departure+inboundHours*HOUR))<15){
+    for(const step of Array.from({length:40},(_,i)=>(i>>1)*.5+.5).map((h,i)=>i%2?-h:h)){
+      const hours=inboundHours+step;if(hours<24||hours>240)continue;
+      if(sunOverPacific(new Date(departure+hours*HOUR))>=15){returnShiftHours=step;break;}
+    }
+  }
+  const launch=arrival-outboundHours*HOUR,returnAt=departure+(inboundHours+returnShiftHours)*HOUR;
   if(launch<+new Date('2000-01-01T00:00Z')||returnAt>+new Date('2050-12-31T23:59Z'))throw new Error('Toda a missão deve ficar entre 2000 e 2050.');
-  const plan={site,windowStart:start,windowEnd:end,outboundHours,stayHours,inboundHours,elevationKm,launch,arrival,departure,returnAt,landingArc:Math.PI/5};
-  const ground=terrestrialPoint(new Date(launch),astronomy),p=unit(ground),q=unit(cross([0,0,1],p));
-  plan.launchFrame={p,q,radiusKm:norm(ground),angle:.28};
+  const plan={site,windowStart:start,windowEnd:end,outboundHours,stayHours,inboundHours,returnShiftHours,elevationKm,launch,arrival,departure,returnAt,landingArc:Math.PI/5};
+  // Launch from Kennedy LC-39A along the Apollo 11 flight azimuth (72°); orbit insertion ~1,800 km downrange.
+  const pad=geoAxes(APOLLO.launchSite.lat,APOLLO.launchSite.lon,new Date(launch),astronomy),az=APOLLO.launchAzimuth*RAD;
+  const p=pad.up,heading=add(scale(pad.north,Math.cos(az)),scale(pad.east,Math.sin(az))),q=unit(subtract(heading,scale(p,dot(heading,p))));
+  plan.launchFrame={p,q,radiusKm:norm(pad.p),angle:.28};
+  // Lunar orbits: Apollo 11 numbers, fewer when the chosen trip is shorter.
+  const lunarPeriodHours=TAU*Math.sqrt((RADIUS_KM+PARKING.lunarAltitudeKm)**3/MOON_MU)/3600;
+  const backHours=inboundHours+returnShiftHours,coastOut=outboundHours>=100?72:.7*(outboundHours-3),coastBack=backHours>=70?59:.75*(backHours-.6);
+  plan.lunarTurns=clamp(Math.floor((outboundHours-3-coastOut)/lunarPeriodHours),1,PARKING.lunarTurns);
+  plan.lunarReturnTurns=clamp(Math.floor((backHours-.6-coastBack)/lunarPeriodHours),1,PARKING.lunarReturnTurns);
   plan.earthParking=circularOrbit({body:'Earth',radiusKm:EARTH_RADIUS+PARKING.earthAltitudeKm,mu:EARTH_MU,
     p:rotate(p,q,plan.launchFrame.angle),q:tangent(p,q,plan.launchFrame.angle),start:launch+.2*HOUR,turns:PARKING.earthTurns});
   const descentStart=arrival-.25*HOUR,ascentEnd=departure+.25*HOUR;
   const descentEntry=lunarArc(plan,descentStart,0,false,astronomy),ascentExit=lunarArc(plan,ascentEnd,1,true,astronomy);
   const lunarPeriod=TAU*Math.sqrt((RADIUS_KM+PARKING.lunarAltitudeKm)**3/MOON_MU);
   plan.lunarParking=circularOrbit({body:'Moon',radiusKm:RADIUS_KM+PARKING.lunarAltitudeKm,mu:MOON_MU,
-    p:descentEntry.relative,q:descentEntry.direction,start:descentStart-PARKING.lunarTurns*lunarPeriod*1000,turns:PARKING.lunarTurns});
+    p:descentEntry.relative,q:descentEntry.direction,start:descentStart-plan.lunarTurns*lunarPeriod*1000,turns:plan.lunarTurns});
   plan.lunarReturnParking=circularOrbit({body:'Moon',radiusKm:RADIUS_KM+PARKING.lunarAltitudeKm,mu:MOON_MU,
-    p:ascentExit.relative,q:ascentExit.direction,start:ascentEnd,turns:PARKING.lunarTurns});
+    p:ascentExit.relative,q:ascentExit.direction,start:ascentEnd,turns:plan.lunarReturnTurns});
   const tliStart=plan.earthParking.end,tliEnd=tliStart+.1*HOUR;
   const loiEnd=plan.lunarParking.start,loiStart=loiEnd-.1*HOUR;
-  const teiStart=plan.lunarReturnParking.end,teiEnd=teiStart+.05*HOUR,reentryStart=returnAt-.25*HOUR;
+  const teiStart=plan.lunarReturnParking.end,teiEnd=teiStart+.05*HOUR,reentryStart=returnAt-APOLLO.entryMinutes*60000,chuteStart=returnAt-APOLLO.chuteMinutes*60000;
   if(tliEnd>=loiStart||teiEnd>=reentryStart)throw new Error('A duração não comporta as órbitas e manobras.');
   plan.times={launch:[launch,plan.earthParking.start],earthOrbit:[plan.earthParking.start,tliStart],tli:[tliStart,tliEnd],
     outbound:[tliEnd,loiStart],loi:[loiStart,loiEnd],lunarOrbit:[loiEnd,descentStart],descent:[descentStart,arrival],
     surface:[arrival,departure],ascent:[departure,ascentEnd],lunarReturnOrbit:[ascentEnd,teiStart],tei:[teiStart,teiEnd],
-    inbound:[teiEnd,reentryStart],arrival:[reentryStart,returnAt]};
+    inbound:[teiEnd,reentryStart],arrival:[reentryStart,chuteStart],splashdown:[chuteStart,returnAt]};
+  // Entry ground track: comes in along the plane of the trip back (from the Moon's direction at the
+  // trans-Earth injection), 6.5° below the horizon, and ends at the splashdown point in the Pacific.
+  {
+    // Recovery needs daylight: the splashdown longitude is chosen inside the Pacific (150° E to 120° W),
+    // closest to Apollo 11's point among those with the Sun at least 15° up; otherwise the highest Sun.
+    let to=APOLLO.splashdown,bestScore=-Infinity;
+    for(let east=150;east<=240;east+=2.5){
+      const lon=east>180?east-360:east,observer=new astronomy.Observer(APOLLO.splashdown.lat,lon,0),eq=astronomy.Equator(astronomy.Body.Sun,new Date(returnAt),observer,true,true);
+      const sun=astronomy.Horizon(new Date(returnAt),observer,eq.ra,eq.dec,'normal').altitude,score=sun>=15?1000-Math.abs(((lon-APOLLO.splashdown.lon+540)%360)-180):sun;
+      if(score>bestScore){bestScore=score;to={lat:APOLLO.splashdown.lat,lon};}
+    }
+    const moonAtTei=moonPosition(new Date(teiEnd),astronomy),at=geoAxes(to.lat,to.lon,new Date(reentryStart),astronomy);
+    let normal=cross(moonAtTei,at.p);if(norm(normal)<1e-6*norm(moonAtTei)*norm(at.p))normal=cross(at.p,[0,0,1]);
+    const track=unit(cross(unit(normal),at.up)),bearing=Math.atan2(dot(track,at.east),dot(track,at.north));
+    const back=APOLLO.entryRangeKm/EARTH_RADIUS,lat1=to.lat*RAD,b=bearing+Math.PI;
+    const lat2=Math.asin(Math.sin(lat1)*Math.cos(back)+Math.cos(lat1)*Math.sin(back)*Math.cos(b));
+    const lon2=to.lon*RAD+Math.atan2(Math.sin(b)*Math.sin(back)*Math.cos(lat1),Math.cos(back)-Math.sin(lat1)*Math.sin(lat2));
+    plan.entry={from:{lat:lat2/RAD,lon:((lon2/RAD+540)%360)-180},to:{...to}};
+  }
   // Burn arcs and transfers are illustrative links between the
   // analytic parking orbits. No Lambert targeting, delta-v, or n-body dynamics.
   const earthExit=parkingState(plan.earthParking,tliEnd,plan.earthParking.radiusKm+80);
@@ -175,9 +253,9 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=72,stayHo
   const makeCurve=(a,d,da,dd)=>{const handle=norm(subtract(d,a))*.22;return [a,add(a,scale(unit(da),handle)),subtract(d,scale(unit(dd),handle)),d];};
   plan.outboundCurve=makeCurve(earthExit.relative,add(moonPosition(new Date(loiStart),astronomy),moonEntry.relative),add(earthExit.direction,scale(unit(earthExit.relative),.8)),
     add(add(scale(moonEntry.direction,plan.lunarParking.speedKmS),moonVelocity(loiStart)),scale(unit(moonEntry.relative),-1.5)));
-  const endEarth=terrestrialPoint(new Date(reentryStart),astronomy,120);
+  const endEarth=entryPoint(plan,0,astronomy).position,entryDirection=unit(subtract(entryPoint(plan,.002,astronomy).position,endEarth));
   plan.inboundCurve=makeCurve(add(moonPosition(new Date(teiEnd),astronomy),moonExit.relative),endEarth,
-    add(add(scale(moonExit.direction,plan.lunarReturnParking.speedKmS),moonVelocity(teiEnd)),scale(unit(moonExit.relative),1.5)),scale(unit(endEarth),-1));
+    add(add(scale(moonExit.direction,plan.lunarReturnParking.speedKmS),moonVelocity(teiEnd)),scale(unit(moonExit.relative),1.5)),entryDirection);
   plan.outboundMoonReference=moonPosition(new Date(loiStart),astronomy);plan.inboundMoonReference=moonPosition(new Date(teiEnd),astronomy);
   selectTransferCurve(plan,'outbound',astronomy);selectTransferCurve(plan,'inbound',astronomy);
   plan.outboundPath=Array.from({length:201},(_,i)=>transferPoint(plan,'outbound',i/200,astronomy));
@@ -188,39 +266,52 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=72,stayHo
 export function sampleMission(plan,progress,astronomy){
   const p=clamp(progress,0,1),phase=PHASES.find(s=>p<s.end)||PHASES.at(-1),t=presentationTime(clamp((p-phase.start)/(phase.end-phase.start),0,1)),u=smooth(t);
   const [begin,end]=plan.times[phase.id],ms=mix(begin,end,t),date=new Date(ms),moon=moonPosition(date,astronomy),frame=lunarFrame(date,astronomy);
-  let position,direction,altitudeKm=0,local=false,engine=false,orbit=null,arc=null,altitudeReference='Terra';
+  let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false;
   const around=(parking,radius)=>{const state=parkingState(parking,ms,radius);direction=state.direction;position=parking.body==='Earth'?state.relative:add(moon,state.relative);altitudeReference=parking.body==='Earth'?'Terra':'Lua';altitudeKm=norm(state.relative)-(parking.body==='Earth'?EARTH_RADIUS:RADIUS_KM);};
   switch(phase.id){
     case 'launch':{
-      const f=plan.launchFrame,angle=f.angle*u,radial=rotate(f.p,f.q,angle);
-      position=scale(radial,mix(f.radiusKm,plan.earthParking.radiusKm,u));direction=unit(add(scale(radial,1-u),scale(tangent(f.p,f.q,angle),u)));
-      altitudeKm=PARKING.earthAltitudeKm*u;engine=true;break;
+      // Gravity turn: climbs almost vertically, then pitches over to orbital speed at 185 km.
+      const f=plan.launchFrame,at=s=>{const k=clamp(s,0,1),h=1-Math.pow(1-k,2.2);return scale(rotate(f.p,f.q,f.angle*Math.pow(k,1.8)),mix(f.radiusKm,plan.earthParking.radiusKm,h));};
+      position=at(t);direction=unit(subtract(at(t+1e-4),at(t-1e-4)));
+      altitudeKm=PARKING.earthAltitudeKm*(1-Math.pow(1-t,2.2));engine=true;throttle=1;
+      // S-IC burns 2 min 41 s, S-II until 9 min 9 s, S-IVB to orbit insertion at 11 min 39 s.
+      config=t<.23?'saturnV':t<.785?'stage2':'sivb';break;
     }
-    case 'earthOrbit':orbit=plan.earthParking;around(orbit);break;
-    case 'tli':around(plan.earthParking,plan.earthParking.radiusKm+80*u);engine=true;break;
-    case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u));engine=true;break;
-    case 'lunarOrbit':orbit=plan.lunarParking;around(orbit);break;
-    case 'lunarReturnOrbit':orbit=plan.lunarReturnParking;around(orbit);break;
-    case 'tei':around(plan.lunarReturnParking,plan.lunarReturnParking.radiusKm+200*u);engine=true;break;
+    case 'earthOrbit':orbit=plan.earthParking;around(orbit);config='sivb';break;
+    case 'tli':around(plan.earthParking,plan.earthParking.radiusKm+80*u);engine=true;throttle=1;config='sivb';break;
+    case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u));engine=true;throttle=1;config='stack';break;
+    case 'lunarOrbit':orbit=plan.lunarParking;around(orbit);config='stack';break;
+    case 'lunarReturnOrbit':orbit=plan.lunarReturnParking;around(orbit);config=t<.36?'csmAscent':'csm';break;
+    case 'tei':around(plan.lunarReturnParking,plan.lunarReturnParking.radiusKm+200*u);engine=true;throttle=1;config='csm';break;
     case 'descent':case 'ascent':{
       arc=lunarArc(plan,ms,t,phase.id==='ascent',astronomy);position=add(moon,arc.relative);altitudeKm=Math.max(0,arc.altitudeKm);
       local=arc.local;engine=phase.id==='descent'?t<.999:t>.001;altitudeReference='solo lunar';
-      // Start pitching only AFTER leaving parking; descent starts immediately.
-      // Never reverse the attitude while coasting around the lunar parking orbit.
+      // Descent brakes with the engine forward, then pitches up to land vertically; the ascent stage
+      // rises vertically and pitches over towards the orbit. The descent stage stays on the Moon.
       const pitch=phase.id==='descent'?smooth(clamp(t/LOCAL_DESCENT_START,0,1)):1-smooth(clamp((t-LOCAL_ASCENT_END)/(1-LOCAL_ASCENT_END),0,1));
-      direction=rotate(arc.direction,arc.radial,pitch*Math.PI/2);break;
+      direction=rotate(arc.direction,arc.radial,pitch*Math.PI/2);
+      if(phase.id==='descent')attitude=rotate(scale(arc.direction,-1),arc.radial,pitch*Math.PI/2);
+      throttle=!engine?0:phase.id==='descent'?(altitudeKm>.6?1:.55+.45*clamp(altitudeKm/.6,0,1)):1;
+      config=phase.id==='descent'?'lm':'ascent';break;
     }
-    case 'surface':position=lunarPoint(plan.site,date,astronomy,plan.elevationKm);local=true;altitudeReference='solo lunar';break;
+    case 'surface':position=lunarPoint(plan.site,date,astronomy,plan.elevationKm);local=true;altitudeReference='solo lunar';config='lm';break;
     case 'outbound':case 'inbound':{
+      config=phase.id==='outbound'?'stack':'csm';
       position=transferPoint(plan,phase.id,t,astronomy);direction=unit(subtract(transferPoint(plan,phase.id,clamp(t+1e-7,0,1),astronomy),transferPoint(plan,phase.id,clamp(t-1e-7,0,1),astronomy)));
       // Refer to the closer body rather than reporting a misleading lunar altitude near Earth.
       const earthAltitude=norm(position)-EARTH_RADIUS,moonAltitude=norm(subtract(position,moon))-RADIUS_KM;
       altitudeReference=earthAltitude<moonAltitude?'Terra':'Lua';altitudeKm=Math.min(earthAltitude,moonAltitude);break;
     }
     case 'arrival':{
-      altitudeKm=120*(1-u);position=terrestrialPoint(date,astronomy,altitudeKm);
-      const motion=unit(subtract(terrestrialPoint(new Date(ms+500),astronomy,altitudeKm),terrestrialPoint(new Date(ms-500),astronomy,altitudeKm))),pitch=smooth(clamp(t/.25,0,1));
-      direction=unit(add(scale(motion,1-pitch),scale(unit(position),pitch)));break;
+      // Command module alone, heat shield first, in the plasma sheath.
+      const e=entryPoint(plan,t,astronomy);position=e.position;altitudeKm=e.altitudeKm;
+      direction=unit(subtract(entryPoint(plan,Math.min(1,t+1e-3),astronomy).position,entryPoint(plan,Math.max(0,t-1e-3),astronomy).position));
+      attitude=scale(direction,-1);config='cm';plasma=Math.pow(Math.sin(Math.PI*clamp(t/.92,0,1)),.7);break;
+    }
+    case 'splashdown':{
+      const e=splashdownPoint(plan,t,astronomy);position=e.position;altitudeKm=e.altitudeKm;attitude=unit(position);
+      direction=unit(subtract(splashdownPoint(plan,Math.min(1,t+1e-3),astronomy).position,splashdownPoint(plan,Math.max(0,t-1e-3),astronomy).position));
+      config='cmChutes';chutes=t<.12?'drogue':'main';ocean=true;altitudeReference='mar';break;
     }
   }
   if(!direction)direction=unit(subtract(position,moon));
@@ -228,13 +319,17 @@ export function sampleMission(plan,progress,astronomy){
     const a=clamp(t-.001,0,1),b=clamp(t+.001,0,1),motion=unit(subtract(burnPoint(plan,phase.id,b,astronomy),burnPoint(plan,phase.id,a,astronomy)));
     const blend=phase.id==='loi'?1-u:u;direction=unit(add(scale(direction,1-blend),scale(motion,blend)));
   }
+  // Lunar orbit insertion is a braking burn: the service engine points along the motion.
+  if(phase.id==='loi')attitude=scale(direction,-1);
+  if(!attitude)attitude=direction;
   let localPosition=null,localDirection=null;
   if(local){
-    const basis=siteBasis(plan.site),relative=frame.transform(subtract(position,moon)),bodyDirection=frame.transform(direction);
+    const basis=siteBasis(plan.site),relative=frame.transform(subtract(position,moon)),bodyDirection=frame.transform(attitude);
     localPosition=[dot(relative,basis.east),dot(relative,basis.up)-RADIUS_KM-plan.elevationKm,-dot(relative,basis.north)];
     localDirection=[dot(bodyDirection,basis.east),dot(bodyDirection,basis.up),-dot(bodyDirection,basis.north)];
   }
-  return {phase:phase.id,label:phase.label,t,date,position,direction,moon,frame,local,localPosition,localDirection,engine,orbit,
+  if(ocean){localPosition=[0,altitudeKm,0];localDirection=[0,1,0];}
+  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,orbit,
     orbitTurns:orbit?clamp((ms-orbit.start)/(orbit.periodSeconds*1000),0,orbit.turns):null,
     altitudeKm:Math.max(0,altitudeKm),altitudeReference,elapsedHours:(ms-plan.launch)/HOUR,distanceKm:norm(moon)};
 }

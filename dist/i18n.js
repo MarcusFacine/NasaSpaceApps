@@ -1,4 +1,4 @@
-// Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, idioma do navegador.
+// Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, português.
 const KEY = 'horisite-lang';
 const listeners = new Set();
 
@@ -17,7 +17,7 @@ const DICT = {
     'answer.above': '{v} acima do relevo', 'answer.below': '{v} abaixo do relevo',
     'answer.elevation': 'Altura no céu', 'answer.azimuth': 'Direção', 'answer.horizon': 'Relevo nessa direção',
     'answer.irradiance': 'Luz num painel', 'answer.distance': 'Distância',
-    'answer.earthNote': 'Visada para o centro da Terra. Um enlace de rádio depende da antena e da estação.',
+    'answer.earthNote': 'Visada ao centro da Terra, não a uma antena.',
     'panel.legend': 'Painel', 'panel.tracking': 'Segue o Sol', 'panel.horizontal': 'Deitado',
     'light.real': 'Luz real do Sol', 'light.partial': 'Sol parcialmente atrás do relevo', 'light.dark': 'Local na sombra',
     'light.reading': 'Luz de leitura ligada · não física',
@@ -50,6 +50,7 @@ const DICT = {
     'horizon.desc': 'A silhueta do relevo em volta do local, e por onde o Sol e a Terra passam nas próximas 24 horas.',
     'horizon.axis': 'Direção · Norte 0° · Leste 90°', 'horizon.note': 'Sem atmosfera, sem refração.',
     'legend.relief': 'Relevo', 'legend.sunPath': 'Caminho do Sol', 'legend.earthPath': 'Caminho da Terra', 'legend.now': 'agora',
+    'legend.sun': 'Sol', 'legend.earth': 'Terra', 'horizon.next': 'próximas 24 h', 'horizon.cardinal': 'N,L,S,O',
     'timeline.title': 'Próximas 24 horas',
     'timeline.desc': 'Em cada hora, a metade de cima é o Sol e a de baixo, a Terra. Hachura: atrás do relevo.',
     'timeline.best': 'maior trecho com os dois', 'timeline.cell': '{site}, {date}: {sun}; {earth}',
@@ -82,27 +83,28 @@ const DICT = {
     'mission.apply': 'Aplicar durações', 'mission.errorWindow': 'A janela manual deve durar de 1 a 720 horas.',
     'mission.noScene': 'A cena 3D não pôde iniciar. O cronograma da missão continua disponível.', 'mission.fullscreen': 'Tela cheia indisponível neste navegador.',
     'mission.orbits': 'Órbitas de estacionamento', 'orbit.earth': 'Terra', 'orbit.moon': 'Lua',
-    'orbit.period': 'Período {min} min · {speed} km/s', 'orbit.earthNote': '1,5 volta antes da ida', 'orbit.moonNote': '1 volta antes do pouso e outra após a decolagem',
+    'orbit.period': 'Período {min} min · {speed} km/s', 'orbit.earthNote': '1,5 volta antes da ida, como a Apollo 11', 'orbit.moonNote': '{before} voltas antes do pouso e {after} depois da decolagem (Apollo 11: 13 e 5)',
     'mission.orbitsNote': 'Modelo circular de dois corpos. Sem efeito estilingue.',
     'mission.events': 'Cronograma',
-    'event.launch': 'Lançamento', 'event.tli': 'Injeção translunar', 'event.loi': 'Inserção lunar', 'event.landing': 'Pouso lunar', 'event.departure': 'Saída da Lua', 'event.tei': 'Injeção à Terra', 'event.return': 'Chegada à Terra',
+    'event.launch': 'Lançamento', 'event.tli': 'Injeção translunar', 'event.loi': 'Inserção lunar', 'event.landing': 'Pouso lunar', 'event.departure': 'Saída da Lua', 'event.tei': 'Injeção à Terra', 'event.return': 'Amerissagem no Pacífico', 'event.entry': 'Reentrada a 122 km',
     'mission.good': 'Destino com Sol e Terra em {n}/{n} amostras da permanência (passo de até 1 h).',
+    'mission.returnShift': 'Volta ajustada em {h} h para amerissar de dia no Pacífico, como nas missões Apollo.',
     'mission.warn': 'Atenção: Sol e Terra juntos em só {good}/{total} amostras da permanência. A cena pode mostrar o destino no escuro.',
     'mission.methodTitle': 'O que é real e o que é ilustrativo',
-    'mission.method': 'Datas, coordenadas, posição e orientação da Lua, luz e relevo vêm do modelo do Horisite. As órbitas de estacionamento (300 km da Terra, 100 km da Lua) usam T = 2π√(r³/μ) e v = √(μ/r) com os parâmetros do JPL DE440: 1,5 volta na Terra, 1 volta na Lua antes do pouso e 1 depois da decolagem. As transferências são curvas ilustrativas; as queimas, a subida, a descida e a reentrada são interpolações visuais. Não há solução de Lambert, integração de três corpos, delta-v nem combustível. O veículo mede ~14 m na cena local e é ampliado no espaço. Janela de luz e visada não é janela orbital.',
+    'mission.method': 'Perfil das missões Apollo que pousaram na Lua (1969–1972), com os números da Apollo 11 (NASA, Apollo 11 Mission Report): Saturn V lançado do Kennedy a 72° de azimute; órbita de espera de 185 km, com 1,5 volta; injeção translunar de cerca de 6 min; órbita lunar de 110 km, com 13 voltas antes do pouso e 5 depois da decolagem; só o estágio de subida do módulo lunar decola, e o de descida fica no solo; a cápsula reentra a 122 km e −6,5°, abre os paraquedas a 7,3 e 3,2 km e amerissa no Pacífico. Datas, coordenadas, posição e orientação da Lua, luz e relevo vêm do modelo do Horisite; as órbitas usam T = 2π√(r³/μ) e v = √(μ/r) com os parâmetros do JPL DE440. As transferências são curvas ilustrativas, sem solução de Lambert nem integração de três corpos; queimas, subida, descida e reentrada são interpolações visuais, sem delta-v nem combustível. As naves são modelos simplificados, em escala real na Lua e no oceano e ampliadas no espaço; as crateras pequenas e as pedras do local de pouso são ilustrativas, porque o LOLA não mostra nada menor que ~40 m. Janela de luz e visada não é janela orbital.',
     'mt.elapsed': 'Tempo de missão', 'mt.distance': 'Distância Terra–Lua', 'mt.altitude': 'Altitude', 'mt.conditions': 'No destino',
     'cond': 'Sol {sun} · Terra {earth}', 'cond.visible': 'à vista', 'cond.blocked': 'atrás do relevo',
-    'alt.Terra': 'acima da Terra', 'alt.Lua': 'acima da Lua', 'alt.solo lunar': 'acima do solo lunar',
+    'alt.Terra': 'acima da Terra', 'alt.mar': 'acima do mar', 'alt.Lua': 'acima da Lua', 'alt.solo lunar': 'acima do solo lunar',
     'ms.orbit': '{turns} de {total} voltas · {speed} km/s · motores desligados', 'ms.burn': 'Queima ilustrativa · sem cálculo de delta-v',
     'ms.thrust': 'Propulsão ilustrativa', 'ms.surface': 'Veículo no solo lunar', 'ms.flight': 'Voo ilustrativo · sem solução orbital',
     'mc.camera': 'Câmera', 'mc.auto': 'Automática', 'mc.overview': 'Trajetória inteira', 'mc.follow': 'Seguir o veículo', 'mc.reset': 'Recentrar câmera', 'mc.fullscreen': 'Tela cheia',
-    'msc.local': 'Relevo LOLA 1× · veículo ~14 m', 'msc.approach': 'Aproximação lunar', 'msc.orbit': 'Órbita circular · modelo de dois corpos', 'msc.space': 'Distâncias reais · veículo ampliado',
+    'msc.local': 'Relevo LOLA 1× · LM em escala (7 m) · pedras e crateras pequenas ilustrativas', 'msc.approach': 'Aproximação lunar', 'msc.orbit': 'Órbita circular · modelo de dois corpos', 'msc.space': 'Distâncias reais · nave ampliada', 'msc.localAscent': 'Relevo LOLA 1× · só o estágio de subida decola; o de descida fica na Lua', 'msc.ocean': 'Oceano Pacífico · cápsula em escala (3,9 m) · paraquedas de 25 m', 'msc.night': 'noite no local',
     'mp.play': 'Reproduzir', 'mp.pause': 'Pausar', 'mp.replay': 'Recomeçar', 'mp.progress': 'Percorrer a missão', 'mp.speed': 'Velocidade', 'mp.phases': 'Etapas da missão',
-    'mp.note': 'Ida e volta incluem as órbitas e as manobras. O tempo é comprimido por etapa; o relógio mostra o UTC simulado. As condições são as do destino, não as do voo.',
+    'mp.note': 'Os tempos seguem a Apollo 11: 103 h até o pouso e 71 h da decolagem lunar à amerissagem. O tempo é comprimido por etapa; o relógio mostra o UTC simulado. As condições são as do destino, não as do voo.',
     'body.earth': 'Terra', 'body.moon': 'Lua',
     'phase.launch': 'Lançamento', 'phase.earthOrbit': 'Órbita terrestre', 'phase.tli': 'Injeção translunar', 'phase.outbound': 'Ida à Lua', 'phase.loi': 'Inserção lunar',
     'phase.lunarOrbit': 'Órbita lunar', 'phase.descent': 'Pouso lunar', 'phase.surface': 'No solo', 'phase.ascent': 'Decolagem lunar', 'phase.lunarReturnOrbit': 'Órbita lunar de volta',
-    'phase.tei': 'Injeção à Terra', 'phase.inbound': 'Volta à Terra', 'phase.arrival': 'Reentrada'
+    'phase.tei': 'Injeção à Terra', 'phase.inbound': 'Volta à Terra', 'phase.arrival': 'Reentrada', 'phase.splashdown': 'Paraquedas e amerissagem',
   },
   en: {
     'meta.appTitle': 'Horisite · Lunar south pole explorer',
@@ -118,7 +120,7 @@ const DICT = {
     'answer.above': '{v} above the relief', 'answer.below': '{v} below the relief',
     'answer.elevation': 'Height in the sky', 'answer.azimuth': 'Direction', 'answer.horizon': 'Relief in that direction',
     'answer.irradiance': 'Light on a panel', 'answer.distance': 'Distance',
-    'answer.earthNote': "Line of sight to Earth's centre. A radio link depends on the antenna and the station.",
+    'answer.earthNote': "Line of sight to Earth's centre, not to an antenna.",
     'panel.legend': 'Panel', 'panel.tracking': 'Tracks the Sun', 'panel.horizontal': 'Flat',
     'light.real': 'Real sunlight', 'light.partial': 'Sun partly behind the relief', 'light.dark': 'Site in shadow',
     'light.reading': 'Reading light on · not physical',
@@ -151,6 +153,7 @@ const DICT = {
     'horizon.desc': 'The relief silhouette around the site, and where the Sun and Earth travel in the next 24 hours.',
     'horizon.axis': 'Direction · North 0° · East 90°', 'horizon.note': 'No atmosphere, no refraction.',
     'legend.relief': 'Relief', 'legend.sunPath': 'Sun path', 'legend.earthPath': 'Earth path', 'legend.now': 'now',
+    'legend.sun': 'Sun', 'legend.earth': 'Earth', 'horizon.next': 'next 24 h', 'horizon.cardinal': 'N,E,S,W',
     'timeline.title': 'Next 24 hours',
     'timeline.desc': 'In each hour, the top half is the Sun and the bottom half is Earth. Hatched: behind the relief.',
     'timeline.best': 'longest stretch with both', 'timeline.cell': '{site}, {date}: {sun}; {earth}',
@@ -183,27 +186,28 @@ const DICT = {
     'mission.apply': 'Apply durations', 'mission.errorWindow': 'The manual window must last 1 to 720 hours.',
     'mission.noScene': 'The 3D scene could not start. The mission timeline is still available.', 'mission.fullscreen': 'Full screen is not available in this browser.',
     'mission.orbits': 'Parking orbits', 'orbit.earth': 'Earth', 'orbit.moon': 'Moon',
-    'orbit.period': 'Period {min} min · {speed} km/s', 'orbit.earthNote': '1.5 orbits before departure', 'orbit.moonNote': '1 orbit before landing and 1 after liftoff',
+    'orbit.period': 'Period {min} min · {speed} km/s', 'orbit.earthNote': '1.5 orbits before departure, as on Apollo 11', 'orbit.moonNote': '{before} orbits before landing and {after} after liftoff (Apollo 11: 13 and 5)',
     'mission.orbitsNote': 'Two-body circular model. No gravity assist.',
     'mission.events': 'Timeline',
-    'event.launch': 'Launch', 'event.tli': 'Translunar injection', 'event.loi': 'Lunar orbit insertion', 'event.landing': 'Lunar landing', 'event.departure': 'Lunar departure', 'event.tei': 'Trans-Earth injection', 'event.return': 'Earth arrival',
+    'event.launch': 'Launch', 'event.tli': 'Translunar injection', 'event.loi': 'Lunar orbit insertion', 'event.landing': 'Lunar landing', 'event.departure': 'Lunar departure', 'event.tei': 'Trans-Earth injection', 'event.return': 'Splashdown in the Pacific', 'event.entry': 'Entry interface, 122 km',
     'mission.good': 'Sun and Earth at the destination in {n}/{n} samples of the stay (steps of up to 1 h).',
+    'mission.returnShift': 'Trip back adjusted by {h} h to splash down in daylight in the Pacific, as on the Apollo missions.',
     'mission.warn': 'Note: Sun and Earth together in only {good}/{total} samples of the stay. The scene may show the destination in the dark.',
     'mission.methodTitle': 'What is real and what is illustrative',
-    'mission.method': 'Dates, coordinates, the Moon’s position and orientation, light and relief come from the Horisite model. Parking orbits (300 km above Earth, 100 km above the Moon) use T = 2π√(r³/μ) and v = √(μ/r) with JPL DE440 parameters: 1.5 orbits at Earth, 1 lunar orbit before landing and 1 after liftoff. Transfers are illustrative curves; burns, ascent, descent and re-entry are visual interpolations. No Lambert solution, three-body integration, delta-v or fuel. The vehicle is ~14 m in the local scene and enlarged in space. A light and line-of-sight window is not an orbital window.',
+    'mission.method': 'The profile of the Apollo missions that landed on the Moon (1969–1972), with Apollo 11 numbers (NASA, Apollo 11 Mission Report): Saturn V launched from Kennedy on a 72° azimuth; 185 km parking orbit, 1.5 revolutions; translunar injection of about 6 min; 110 km lunar orbit, 13 revolutions before landing and 5 after liftoff; only the lunar module ascent stage lifts off, the descent stage stays on the surface; the capsule enters at 122 km and −6.5°, opens its parachutes at 7.3 and 3.2 km and splashes down in the Pacific. Dates, coordinates, the Moon’s position and orientation, light and relief come from the Horisite model; orbits use T = 2π√(r³/μ) and v = √(μ/r) with JPL DE440 parameters. Transfers are illustrative curves, with no Lambert solution or three-body integration; burns, ascent, descent and entry are visual interpolations, with no delta-v or fuel. The spacecraft are simplified models, true size on the Moon and on the ocean and enlarged in space; the small craters and rocks at the landing site are illustrative, because LOLA shows nothing smaller than ~40 m. A light and line-of-sight window is not an orbital window.',
     'mt.elapsed': 'Mission time', 'mt.distance': 'Earth–Moon distance', 'mt.altitude': 'Altitude', 'mt.conditions': 'At the destination',
     'cond': 'Sun {sun} · Earth {earth}', 'cond.visible': 'in view', 'cond.blocked': 'behind the relief',
-    'alt.Terra': 'above Earth', 'alt.Lua': 'above the Moon', 'alt.solo lunar': 'above the lunar surface',
+    'alt.Terra': 'above Earth', 'alt.mar': 'above the sea', 'alt.Lua': 'above the Moon', 'alt.solo lunar': 'above the lunar surface',
     'ms.orbit': '{turns} of {total} orbits · {speed} km/s · engines off', 'ms.burn': 'Illustrative burn · no delta-v computed',
     'ms.thrust': 'Illustrative thrust', 'ms.surface': 'Vehicle on the lunar surface', 'ms.flight': 'Illustrative flight · no orbital solution',
     'mc.camera': 'Camera', 'mc.auto': 'Automatic', 'mc.overview': 'Whole trajectory', 'mc.follow': 'Follow the vehicle', 'mc.reset': 'Recenter camera', 'mc.fullscreen': 'Full screen',
-    'msc.local': 'LOLA relief 1× · vehicle ~14 m', 'msc.approach': 'Lunar approach', 'msc.orbit': 'Circular orbit · two-body model', 'msc.space': 'True distances · vehicle enlarged',
+    'msc.local': 'LOLA relief 1× · LM to scale (7 m) · small craters and rocks illustrative', 'msc.approach': 'Lunar approach', 'msc.orbit': 'Circular orbit · two-body model', 'msc.space': 'True distances · spacecraft enlarged', 'msc.localAscent': 'LOLA relief 1× · only the ascent stage lifts off; the descent stage stays on the Moon', 'msc.ocean': 'Pacific Ocean · capsule to scale (3.9 m) · 25 m parachutes', 'msc.night': 'night at the site',
     'mp.play': 'Play', 'mp.pause': 'Pause', 'mp.replay': 'Restart', 'mp.progress': 'Scrub the mission', 'mp.speed': 'Speed', 'mp.phases': 'Mission phases',
-    'mp.note': 'Outbound and return include the orbits and manoeuvres. Time is compressed per phase; the clock shows simulated UTC. Conditions are those at the destination, not during flight.',
+    'mp.note': 'Durations follow Apollo 11: 103 h to the landing and 71 h from lunar liftoff to splashdown. Time is compressed per stage; the clock shows simulated UTC. Conditions are those at the destination, not along the flight.',
     'body.earth': 'Earth', 'body.moon': 'Moon',
     'phase.launch': 'Launch', 'phase.earthOrbit': 'Earth orbit', 'phase.tli': 'Translunar injection', 'phase.outbound': 'Coast to the Moon', 'phase.loi': 'Lunar orbit insertion',
     'phase.lunarOrbit': 'Lunar orbit', 'phase.descent': 'Lunar landing', 'phase.surface': 'On the surface', 'phase.ascent': 'Lunar liftoff', 'phase.lunarReturnOrbit': 'Return lunar orbit',
-    'phase.tei': 'Trans-Earth injection', 'phase.inbound': 'Coast to Earth', 'phase.arrival': 'Re-entry'
+    'phase.tei': 'Trans-Earth injection', 'phase.inbound': 'Coast to Earth', 'phase.arrival': 'Re-entry', 'phase.splashdown': 'Parachutes and splashdown',
   }
 };
 
@@ -211,7 +215,7 @@ function detect() {
   const fromUrl = new URLSearchParams(location.search).get('lang');
   if (fromUrl === 'pt' || fromUrl === 'en') return fromUrl;
   try { const saved = localStorage.getItem(KEY); if (saved === 'pt' || saved === 'en') return saved; } catch { /* storage optional */ }
-  return (navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+  return 'pt'; // Sempre abre em português (decisão da equipe, 14/11/2026); o inglês fica no botão.
 }
 let lang = detect();
 

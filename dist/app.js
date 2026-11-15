@@ -128,24 +128,25 @@ function render() {
 }
 
 function renderHorizon(terrain, result, paths) {
-  const horizon = terrain.horizon(state.heightM), W = 960, H = 280, L = 46, T = 18, B = 30, R = 14;
+  // Small chart next to the Sun/Earth answer, so it can be followed while time runs.
+  const horizon = terrain.horizon(state.heightM), W = 300, H = 122, L = 30, T = 8, B = 18, R = 4;
   const els = [...horizon, ...paths.sun.map(p => p.elevation), ...paths.earth.map(p => p.elevation)];
   const lower = Math.min(-4, Math.floor(Math.min(...els) / 2) * 2), upper = Math.max(8, Math.ceil(Math.max(...els) / 2) * 2);
   const x = az => L + az / 360 * (W - L - R), y = el => T + (upper - el) / (upper - lower) * (H - T - B);
-  let out = `<title id="horizonTitle">${t('horizon.title')}</title>`;
-  for (let i = 0; i <= 4; i++) { const el = lower + (upper - lower) * i / 4; out += `<line x1="${L}" x2="${W - R}" y1="${y(el)}" y2="${y(el)}" class="hz-grid"/><text x="${L - 8}" y="${y(el) + 4}" text-anchor="end" class="hz-text">${number(el)}°</text>`; }
-  for (let az = 0; az <= 360; az += 45) out += `<text x="${x(az)}" y="${H - 8}" text-anchor="middle" class="hz-text">${az}°</text>`;
+  let out = `<title id="horizonTitle">${t('horizon.title')}</title><desc id="horizonDesc">${t('horizon.desc')} ${t('horizon.axis')}. ${t('horizon.note')}</desc>`;
+  for (const el of [lower, 0, upper]) out += `<line x1="${L}" x2="${W - R}" y1="${y(el)}" y2="${y(el)}" class="${el === 0 ? 'hz-zero' : 'hz-grid'}"/><text x="${L - 5}" y="${y(el) + 3.5}" text-anchor="end" class="hz-text">${number(el)}°</text>`;
+  t('horizon.cardinal').split(',').forEach((c, i) => { out += `<text x="${x(i * 90)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : 'middle'}" class="hz-text">${c}</text>`; });
+  out += `<text x="${W - R}" y="${H - 4}" text-anchor="end" class="hz-text">${t('horizon.cardinal').split(',')[0]}</text>`;
   const relief = Array.from(horizon, (h, i) => `${i ? 'L' : 'M'}${x(i / 2).toFixed(1)},${y(h).toFixed(1)}`).join(' ');
-  out += `<path d="${relief} L${x(360)},${y(lower)} L${x(0)},${y(lower)} Z" class="hz-relief"/><line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="hz-zero"/>`;
+  out += `<path d="${relief} L${x(360)},${y(lower)} L${x(0)},${y(lower)} Z" class="hz-relief"/>`;
   for (const body of ['sun', 'earth']) {
     let d = '', prev = null;
     for (const p of paths[body]) { d += `${prev === null || Math.abs(p.azimuth - prev) > 180 ? 'M' : 'L'}${x(p.azimuth).toFixed(1)},${y(p.elevation).toFixed(1)} `; prev = p.azimuth; }
     out += `<path d="${d}" class="hz-path-${body}"/>`;
   }
   for (const body of ['sun', 'earth']) {
-    const m = result[body], cx = x(m.azimuth), cy = y(m.elevation), right = cx < W - 120;
-    out += `<circle cx="${cx}" cy="${cy}" r="7" class="hz-now-${body}"><title>${t(body)} · ${signedDegrees(m.elevation)} · ${degrees(m.azimuth)}</title></circle>`;
-    out += `<text x="${cx + (right ? 12 : -12)}" y="${cy - 10}" text-anchor="${right ? 'start' : 'end'}" class="hz-label">${t(body)} · ${t('legend.now')}</text>`;
+    const m = result[body];
+    out += `<circle cx="${x(m.azimuth).toFixed(1)}" cy="${y(m.elevation).toFixed(1)}" r="5" class="hz-now-${body}"><title>${t(body)} · ${t('legend.now')} · ${signedDegrees(m.elevation)} · ${degrees(m.azimuth)}</title></circle>`;
   }
   $('#horizonChart').innerHTML = out;
 }
@@ -301,12 +302,24 @@ window.addEventListener('pagehide', () => { stopPlayback(); scene?.dispose(); })
 const mission = new MissionUI(astronomy, () => { if (scene) { scene.suspended = false; scene.invalidate(); } });
 $('#missionButton').addEventListener('click', async () => {
   if (!ready) return; cancelRitual(); stopPlayback();
-  const terrain = await loadTerrain(primarySite());
+  const site = primarySite(), terrain = await loadTerrain(site);
+  let win = chosenWindow();
+  // If the chosen hour leaves the destination without Sun and Earth, land at the next window that has
+  // both, as the Apollo planners chose a low, rising Sun for each landing site.
+  const now = evaluate(site, state.date, terrain, astronomy, state.heightM, state.panel);
+  if (win.source === 'manual' && !(now.sun.available && now.earth.available)) {
+    const button = $('#missionButton'); button.disabled = true; button.textContent = t('action.searching');
+    try { const found = await searchWindow(new Date(state.date), [site], state.heightM, state.panel); if (found) win = { start: found.start, end: found.end, source: 'search' }; }
+    finally { button.disabled = false; button.textContent = t('action.mission'); }
+  }
   if (scene) scene.suspended = true;
-  mission.open({ site: primarySite(), terrain, window: chosenWindow(), heightM: state.heightM, panel: state.panel });
+  mission.open({ site, terrain, window: win, heightM: state.heightM, panel: state.panel });
 });
 
 bindLanguageSwitch();
+// The scene tools sit right above the console, whatever its height.
+const consoleBox = $('.console');
+new ResizeObserver(() => $('#sceneViewport').style.setProperty('--console-h', `${consoleBox.offsetHeight}px`)).observe(consoleBox);
 onLangChange(() => { document.title = t('meta.appTitle'); timelineKey = ''; stripKey = ''; renderSites(); render(); mission.refreshLanguage(); if (!searching) $('#bestWindow').textContent = t('action.best'); });
 document.title = t('meta.appTitle');
 

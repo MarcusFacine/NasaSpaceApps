@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as Astronomy from 'astronomy-engine';
 import { sites } from '../dist/sites.js';
-import { PHASES,ANIMATION_SECONDS,presentationTime,HOUR,EARTH_RADIUS,PARKING,buildMission,sampleMission,lunarPoint,terrestrialPoint,parkingState } from '../dist/mission-model.js';
+import { PHASES,ANIMATION_SECONDS,presentationTime,HOUR,EARTH_RADIUS,PARKING,APOLLO,buildMission,sampleMission,lunarPoint,geoPoint,parkingState } from '../dist/mission-model.js';
 import { RADIUS_KM } from '../dist/model.js';
 import * as THREE from 'three';
 import { MissionScene } from '../dist/mission-scene.js';
@@ -9,7 +9,8 @@ const magnitude=v=>Math.hypot(...v),difference=(a,b)=>a.map((v,i)=>v-b[i]);
 const progressAt=(id,t=0)=>{const p=PHASES.find(p=>p.id===id);return p.start+(p.end-p.start)*t;};
 const plan=buildMission({site:sites[0],windowStart:'2026-10-22T18:00:00Z',windowEnd:'2026-10-29T00:00:00Z',outboundHours:72,stayHours:24,inboundHours:72},Astronomy);
 assert.equal(new Date(plan.launch).toISOString(),'2026-10-19T18:00:00.000Z');
-assert.equal(new Date(plan.returnAt).toISOString(),'2026-10-26T18:00:00.000Z');
+assert.equal(plan.returnAt,Date.parse('2026-10-26T18:00:00.000Z')+plan.returnShiftHours*HOUR,'Return = nominal + daylight shift');
+assert.ok(Math.abs(plan.returnShiftHours)<=10);
 let previous=-Infinity;
 for(let i=0;i<=1000;i++){
   const s=sampleMission(plan,i/1000,Astronomy);assert.ok(+s.date>=previous);previous=+s.date;
@@ -24,7 +25,13 @@ for(const phase of PHASES.slice(1)){
 const landed=sampleMission(plan,progressAt('surface'),Astronomy),returned=sampleMission(plan,1,Astronomy);
 assert.equal(+landed.date,plan.arrival);assert.equal(landed.altitudeKm,0);assert.equal(landed.phase,'surface');
 assert.deepEqual(landed.position,lunarPoint(plan.site,landed.date,Astronomy));
-assert.equal(+returned.date,plan.returnAt);assert.equal(returned.altitudeKm,0);assert.deepEqual(returned.position,terrestrialPoint(returned.date,Astronomy));
+assert.equal(+returned.date,plan.returnAt);assert.equal(returned.altitudeKm,0);assert.deepEqual(returned.position,geoPoint(plan.entry.to.lat,plan.entry.to.lon,returned.date,Astronomy));
+assert.ok(plan.entry.to.lon>=150||plan.entry.to.lon<=-120,'Splashdown in the Pacific recovery band');
+assert.equal(returned.phase,'splashdown');assert.equal(returned.config,'cmChutes');
+// Apollo profile: S-IVB to orbit, CSM+LM out, LM down, ascent stage up, CSM back, CM alone at entry.
+for(const [id,t,config] of [['launch',.1,'saturnV'],['launch',.5,'stage2'],['earthOrbit',.5,'sivb'],['outbound',.5,'stack'],['descent',.5,'lm'],['ascent',.5,'ascent'],['inbound',.5,'csm'],['arrival',.5,'cm']])assert.equal(sampleMission(plan,progressAt(id,t),Astronomy).config,config,`${id} config`);
+const entry=sampleMission(plan,progressAt('arrival',0),Astronomy);assert.ok(Math.abs(entry.altitudeKm-APOLLO.entryAltitudeKm)<.01,'Entry interface at 121.9 km');
+assert.ok(sampleMission(plan,progressAt('arrival',.5),Astronomy).plasma>.5,'Plasma sheath during entry');
 assert.throws(()=>buildMission({...plan,stayHours:151},Astronomy),/caber/);
 assert.throws(()=>buildMission({...plan,outboundHours:0},Astronomy),/24 a 240/);
 assert.equal(plan.departure-plan.arrival,24*HOUR);
@@ -32,8 +39,8 @@ assert.equal(plan.times.earthOrbit[1],plan.times.tli[0]);
 assert.equal(plan.times.lunarOrbit[1],plan.times.descent[0]);
 assert.equal(plan.times.ascent[1],plan.times.lunarReturnOrbit[0]);
 assert.equal(plan.times.lunarReturnOrbit[1],plan.times.tei[0]);
-assert.ok(plan.earthParking.periodSeconds/60>90&&plan.earthParking.periodSeconds/60<91);
-assert.ok(plan.lunarParking.periodSeconds/60>117&&plan.lunarParking.periodSeconds/60<119);
+assert.ok(plan.earthParking.periodSeconds/60>88&&plan.earthParking.periodSeconds/60<89,'185 km Earth parking orbit: ~88 min');
+assert.ok(plan.lunarParking.periodSeconds/60>118&&plan.lunarParking.periodSeconds/60<120,'110 km lunar orbit: ~119 min');
 for(const [id,orbit] of [['earthOrbit',plan.earthParking],['lunarOrbit',plan.lunarParking],['lunarReturnOrbit',plan.lunarReturnParking]]){
   assert.ok(Math.abs((orbit.end-orbit.start)/1000-orbit.turns*orbit.periodSeconds)<1e-6);
   const first=parkingState(orbit,orbit.start),full=parkingState(orbit,orbit.start+orbit.periodSeconds*1000);
@@ -54,7 +61,11 @@ for(const [id,orbit] of [['earthOrbit',plan.earthParking],['lunarOrbit',plan.lun
   }
 }
 assert.equal(plan.earthParking.turns,PARKING.earthTurns);
-assert.equal(plan.lunarParking.turns,PARKING.lunarTurns);
+assert.equal(plan.lunarParking.turns,plan.lunarTurns);
+const apollo=buildMission({site:sites[0],windowStart:'2026-10-22T18:00:00Z',windowEnd:'2026-10-29T00:00:00Z'},Astronomy);
+assert.equal(apollo.lunarTurns,PARKING.lunarTurns,'Apollo 11: 13 lunar orbits before the landing');assert.equal(apollo.lunarReturnTurns,PARKING.lunarReturnTurns);
+const coast=(apollo.times.outbound[1]-apollo.times.outbound[0])/HOUR,back=(apollo.times.inbound[1]-apollo.times.inbound[0])/HOUR;
+assert.ok(coast>70&&coast<78,`Apollo 11 translunar coast ~73 h, got ${coast}`);assert.ok(back>57&&back<63,`Apollo 11 trans-Earth coast ~60 h, got ${back}`);
 for(const site of sites){
   for(const hours of [24,72,240]){
     const candidate=buildMission({site,windowStart:plan.windowStart,windowEnd:plan.windowEnd,outboundHours:hours,inboundHours:hours,elevationKm:4.5},Astronomy);
@@ -103,6 +114,6 @@ for(const local of [false,true]){
   assert.ok(scene.camera.position.distanceTo(to.position)<1e-8);assert.equal(scene.cameraTween,null);
 }
 const climbSample=sampleMission(plan,progressAt('ascent',.85),Astronomy);
-scene.vehicle={position:new THREE.Vector3(climbSample.position[0],climbSample.position[2],-climbSample.position[1]).multiplyScalar(.001)};scene.mode='auto';scene.setCamera(climbSample,false);
+scene.vehicle={group:{position:new THREE.Vector3(climbSample.position[0],climbSample.position[2],-climbSample.position[1]).multiplyScalar(.001)}};scene.mode='auto';scene.setCamera(climbSample,false);
 assert.ok(scene.controls.minDistance<scene.camera.position.distanceTo(scene.controls.target),'World controls must allow the close surface camera without forcing a zoom-out');
-console.log('PASS: 13 phases, preserved mission/window dates, continuous positions and attitudes, forward unpowered parking, Kepler periods/speeds, extended surface cutscenes, monotonic ascent/descent, eased presentation clock, camera-frame roundtrip and smooth camera interpolation, transfer clearance for five sites and 24/72/240 h. Transfers/burns remain illustrative.');
+console.log('PASS: 14 phases (Apollo 11 profile), preserved mission/window dates, continuous positions and attitudes, forward unpowered parking, Kepler periods/speeds, extended surface cutscenes, monotonic ascent/descent, eased presentation clock, camera-frame roundtrip and smooth camera interpolation, transfer clearance for five sites and 24/72/240 h. Transfers/burns remain illustrative.');

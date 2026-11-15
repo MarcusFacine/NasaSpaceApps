@@ -1,5 +1,5 @@
 import { evaluate } from './model.js';
-import { HOUR, PHASES, ANIMATION_SECONDS, buildMission, sampleMission } from './mission-model.js';
+import { HOUR, PHASES, ANIMATION_SECONDS, APOLLO, buildMission, sampleMission } from './mission-model.js';
 import { MissionScene } from './mission-scene.js';
 import { t, number, utcDate } from './i18n.js';
 
@@ -25,6 +25,8 @@ export class MissionUI {
     $('#missionPhases').innerHTML = PHASES.map(p => `<button type="button" data-mission-phase="${p.id}" class="${AT_MOON.has(p.id) ? 'at-moon' : ''}" style="--w:${p.seconds}"></button>`).join('');
     document.querySelectorAll('[data-mission-phase]').forEach(button => button.addEventListener('click', () => { this.stop(); this.progress = PHASES.find(p => p.id === button.dataset.missionPhase).start; this.draw(true); }));
     this.labelPhases();
+    // Speed labels from the real length of the playback.
+    document.querySelectorAll('#missionSpeed option').forEach(o => { o.textContent = `${o.value}× · ${Math.round(ANIMATION_SECONDS / Number(o.value))} s`; });
   }
   labelPhases() {
     document.querySelectorAll('[data-mission-phase]').forEach(b => { const label = t(`phase.${b.dataset.missionPhase}`); b.setAttribute('aria-label', label); b.title = label; });
@@ -37,7 +39,8 @@ export class MissionUI {
     this.context = context; this.progress = 0; this.stop(); this.plan = null; this.last = performance.now(); this.lastDraw = 0; this.conditionKey = '';
     $('#missionSite').textContent = t(`site.${context.site.id}`); $('#missionCoordinates').textContent = coords(context.site);
     $('#missionWindowHours').value = Math.round((context.window.end - context.window.start) / HOUR); $('#missionWindowHours').disabled = context.window.source === 'search';
-    $('#missionOutbound').value = 72; $('#missionInbound').value = 72; $('#missionStay').value = Math.min(24, (context.window.end - context.window.start) / HOUR); $('#missionStay').max = (context.window.end - context.window.start) / HOUR;
+    // Apollo 11 durations by default.
+    $('#missionOutbound').value = APOLLO.outboundHours; $('#missionInbound').value = APOLLO.inboundHours; $('#missionStay').value = Math.min(APOLLO.stayHours, (context.window.end - context.window.start) / HOUR); $('#missionStay').max = (context.window.end - context.window.start) / HOUR;
     $('#missionCamera').value = 'auto'; $('#missionSceneMessage').textContent = ''; $('#missionError').textContent = '';
     this.dialog.showModal();
     // A disposed WebGL context cannot be reused until asynchronously restored:
@@ -67,14 +70,15 @@ export class MissionUI {
       this.plan = plan; this.progress = keepProgress ? keep : 0; this.conditionKey = ''; $('#missionError').textContent = ''; $('#missionStay').max = (end - c.window.start) / HOUR;
       $('#missionWindowSource').textContent = t(c.window.source === 'search' ? 'mission.windowSearch' : 'mission.windowManual');
       $('#missionWindowStart').textContent = utcDate(c.window.start, true); $('#missionWindowEnd').textContent = t('mission.until', { date: utcDate(end, true) });
-      $('#missionEvents').innerHTML = [['launch', plan.launch], ['tli', plan.times.tli[0]], ['loi', plan.times.loi[0]], ['landing', plan.arrival], ['departure', plan.departure], ['tei', plan.times.tei[0]], ['return', plan.returnAt]]
+      $('#missionEvents').innerHTML = [['launch', plan.launch], ['tli', plan.times.tli[0]], ['loi', plan.times.loi[0]], ['landing', plan.arrival], ['departure', plan.departure], ['tei', plan.times.tei[0]], ['entry', plan.times.arrival[0]], ['return', plan.returnAt]]
         .map(([id, time]) => `<div><dt>${t(`event.${id}`)}</dt><dd class="num">${utcDate(time)}</dd></div>`).join('');
       $('#missionOrbitSummary').innerHTML = [['earth', plan.earthParking, 6378.137], ['moon', plan.lunarParking, 1737.4]]
-        .map(([body, orbit, radius]) => `<div><b>${t(`orbit.${body}`)} · ${number(Math.round(orbit.radiusKm - radius))} km</b><span class="num">${t('orbit.period', { min: number(orbit.periodSeconds / 60, 1), speed: number(orbit.speedKmS, 2) })}</span><small>${t(`orbit.${body}Note`)}</small></div>`).join('');
+        .map(([body, orbit, radius]) => `<div><b>${t(`orbit.${body}`)} · ${number(Math.round(orbit.radiusKm - radius))} km</b><span class="num">${t('orbit.period', { min: number(orbit.periodSeconds / 60, 1), speed: number(orbit.speedKmS, 2) })}</span><small>${t(`orbit.${body}Note`, { before: plan.lunarTurns, after: plan.lunarReturnTurns })}</small></div>`).join('');
       let total = 0, good = 0;
       for (let h = 0; h < plan.stayHours; h++) { const m = evaluate(c.site, new Date(plan.arrival + h * HOUR), c.terrain, this.astronomy, c.heightM, c.panel); total++; if (m.sun.available && m.earth.available) good++; }
       const last = evaluate(c.site, new Date(plan.departure), c.terrain, this.astronomy, c.heightM, c.panel); total++; if (last.sun.available && last.earth.available) good++;
-      $('#missionAssessment').textContent = good === total ? t('mission.good', { n: total }) : t('mission.warn', { good, total });
+      $('#missionAssessment').textContent = (good === total ? t('mission.good', { n: total }) : t('mission.warn', { good, total }))
+        + (plan.returnShiftHours ? ` ${t('mission.returnShift', { h: `${plan.returnShiftHours > 0 ? '+' : '−'}${number(Math.abs(plan.returnShiftHours), 1)}` })}` : '');
       $('#missionAssessment').classList.toggle('warning', good !== total);
       this.scene?.setPlan(plan); this.draw(true);
     } catch (error) { $('#missionError').textContent = error.message; }
