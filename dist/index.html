@@ -2,103 +2,181 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a0e12">
-  <title>Lunar Horizon 3D — Polo sul lunar</title>
-  <meta name="description" content="Explore o terreno lunar em 3D e compare iluminação solar e linha de visada para a Terra com efemérides astronômicas e dados LOLA.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f1ec">
+  <title>Horisite · Pouse onde a luz dura</title>
+  <meta name="description" content="Explorador gratuito do polo sul da Lua: veja no relevo real se há luz do Sol para energia e a Terra no céu para comunicação.">
+  <meta property="og:title" content="Horisite · lunar landing site navigator">
+  <meta property="og:description" content="Relevo LOLA real do polo sul da Lua, luz do Sol e visada para a Terra, hora a hora.">
+  <meta property="og:image" content="assets/landing/en/app-desktop.jpg">
+  <link rel="icon" type="image/svg+xml" href="brand/horisite-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0e12'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%239eaab2' stroke-width='3'/%3E%3Cpath d='M12 41l11-13 8 8 10-17 11 22' fill='none' stroke='%23e6ff57' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="brand/brand.css">
+  <link rel="stylesheet" href="landing.css">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js"}}</script>
-  <script src="vendor/astronomy.browser.min.js"></script>
+  <script src="vendor/astronomy.browser.min.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="./"><span class="brand-mark">◒</span><span><b>LUNAR</b> HORIZON <small>3D</small></span></a>
-    <span class="topbar-context">EXPLORADOR DO POLO SUL</span>
-    <div class="topbar-actions"><a class="tutorial-link" href="tutorial.html" target="_blank" rel="noopener">Tutorial</a><button id="helpButton" class="text-button">Dados e método <span aria-hidden="true">ⓘ</span></button></div>
+  <svg width="0" height="0" class="sr-only" aria-hidden="true">
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-half" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="currentColor"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5.4l3.4 2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-relief" viewBox="0 0 24 24"><path d="M2.5 18.5 8 10l3.6 5 3-4 6.9 7.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  </svg>
+
+  <header class="top">
+    <div class="wrap">
+      <a class="wordmark" href="./" aria-label="Horisite" style="--wm-size:30px"><span aria-hidden="true">h</span><img src="brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a>
+      <nav>
+        <a href="#como" data-i18n="l.nav.how">Como funciona</a>
+        <a href="#ciencia" data-i18n="l.nav.science">O que mostra</a>
+        <a href="#para-quem" data-i18n="l.nav.who">Para quem</a>
+        <a href="tutorial.html" data-i18n="nav.tutorial">Tutorial</a>
+      </nav>
+      <div class="lang-switch" role="group" data-i18n-attr="aria-label:lang.label"><button type="button" data-lang-option="pt"><span>PT</span></button><button type="button" data-lang-option="en"><span>EN</span></button></div>
+      <a class="btn btn-primary" href="app/" data-i18n="nav.app">Abrir o Horisite</a>
+    </div>
   </header>
+
   <main>
-    <div class="page-heading"><div><p class="eyebrow">PLANEJAMENTO EXPLORATÓRIO</p><h1>Um novo ponto de vista.</h1></div><p>Compare o relevo, a luz e a conexão com a Terra.</p></div>
-    <section class="control-deck" aria-label="Controles de tempo">
-      <div class="date-control"><label for="dateTime">DATA E HORA <span>UTC</span></label><input id="dateTime" type="datetime-local" min="2000-01-01T00:00" max="2050-12-31T23:59" value="2026-10-02T12:00"></div>
-      <div class="time-buttons"><button id="nowButton">Agora</button><button data-shift="-24">−1 dia</button><button data-shift="24">+1 dia</button><button data-shift="168">+7 dias</button><button id="bestWindow" class="accent-button">Melhor janela</button><button id="missionButton" class="mission-button" disabled>Simular missão</button></div>
-      <div class="clock"><span id="clock">12:00 UTC</span><small id="dayOfYear">DIA 275 / 2026</small></div>
-    </section>
-    <p id="appMessage" class="message" role="status" aria-live="polite"></p>
-    <div class="chosen-window"><span>JANELA PARA A MISSÃO</span><b id="chosenWindow">Data selecionada · intervalo manual de 24 h</b><small>O pouso usa o início da janela; o lançamento acontece antes.</small></div>
-    <section class="workspace" aria-label="Comparador lunar">
-      <aside class="sites-panel">
-        <div class="panel-title"><div><p class="eyebrow">REGIÕES DE REFERÊNCIA</p><h2>Locais para comparar</h2></div><span id="selectionCount" class="count">2/3</span></div>
-        <p class="small-note">Marque até três. Clique no nome para explorar.</p>
-        <div id="siteList" class="site-list"></div>
-        <div class="site-settings"><label for="height">ALTURA DO OBSERVADOR <output id="heightOutput">2 m</output></label><input id="height" type="range" min="2" max="20" step="2" value="2"><span>Altura sobre o terreno local</span></div>
-        <div class="data-note"><span class="source-dot"></span><div><b>Terreno LOLA / LRO</b><p>Malha regional de 100 × 100 km.<br>Escala vertical real: 1×.</p></div></div>
-      </aside>
-      <section class="scene-panel">
-        <div class="scene-header"><div><p class="eyebrow">LOCAL EM EXPLORAÇÃO</p><h2 id="primarySiteName">Borda de Shackleton</h2></div><div class="view-tabs" role="group" aria-label="Câmera"><button data-view="terrain" class="active" aria-pressed="true">Relevo 3D</button><button data-view="surface" aria-pressed="false">Superfície</button><button data-view="globe" aria-pressed="false">Globo</button></div></div>
-        <div id="sceneViewport" class="scene-viewport">
-          <canvas id="sceneCanvas" aria-label="Cena interativa do terreno lunar em três dimensões" tabindex="0"></canvas>
-          <div id="sceneLoading" class="scene-loading"><span class="loader"></span><b>Reconstruindo o terreno lunar</b><span>Dados LOLA e efemérides astronômicas</span></div>
-          <div class="scene-topline"><span id="sceneCoordinates">89.66° S · 129.20° W</span><span id="lightingBadge">ILUMINAÇÃO SOLAR</span></div>
-          <div id="sunLabel" class="body-label sun-label"><span>☀</span> SOL <b>—</b></div>
-          <div id="earthLabel" class="body-label earth-label"><span>◉</span> TERRA <b>—</b></div>
-          <div class="scene-toolbar"><button id="focusSun" title="Olhar na direção do Sol">☀ <span>Sol</span></button><button id="focusEarth" title="Olhar na direção da Terra">◉ <span>Terra</span></button><button id="resetCamera" title="Restaurar câmera">↺ <span>Recentrar</span></button><button id="fullscreenButton" title="Ampliar cena">⛶ <span>Ampliar</span></button></div>
-          <div class="scene-bottomline"><span id="cameraHint">Arraste para orbitar · Role para aproximar</span><span id="scaleLabel">ESCALA 1:1</span></div>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <h1><span data-i18n="l.hero.a">Pouse onde a </span><span class="mark" data-i18n="l.hero.b">luz</span><span data-i18n="l.hero.c"> dura.</span></h1>
+          <p class="lead" data-i18n="l.hero.lead">O Horisite é um explorador gratuito do polo sul da Lua. Escolha um lugar e uma data e veja, no relevo real, se há luz do Sol para gerar energia e a Terra no céu para falar com casa.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="app/" data-i18n="l.cta.open">Abrir no navegador</a>
+            <a class="btn btn-ghost" href="#como" data-i18n="l.cta.how">Ver como funciona</a>
+          </div>
+          <p class="proof" data-i18n="l.hero.proof">Relevo LOLA de 20 m da NASA · posições conferidas contra o JPL Horizons</p>
         </div>
-        <div class="time-scrubber"><button id="playButton" aria-label="Animar passagem do tempo" aria-pressed="false">▶</button><div><div class="scrubber-label"><label for="hourSlider">PERCORRA O DIA</label><output id="hourOutput">12:00 UTC</output></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div><span class="scrubber-end">24h</span></div>
-      </section>
-      <aside class="telemetry-panel">
-        <article class="body-card sun-card"><div class="card-header"><span>☀ SOL</span><span id="sunStatus" class="visibility">—</span></div><div class="big-value" id="sunElevation">—</div><span class="value-caption">elevação sobre o plano local</span><dl><div><dt>Azimute</dt><dd id="sunAzimuth">—</dd></div><div><dt>Horizonte LOLA</dt><dd id="sunHorizon">—</dd></div><div><dt>Margem</dt><dd id="sunMargin">—</dd></div></dl><div class="irradiance"><span>IRRADIÂNCIA INCIDENTE</span><strong id="irradiance">— <small>W/m²</small></strong><div class="solar-meter"><i id="solarMeter"></i></div></div><fieldset class="panel-orientation"><legend>Orientação do painel</legend><label><input type="radio" name="panel" value="tracking" checked> Rastreado</label><label><input type="radio" name="panel" value="horizontal"> Horizontal</label></fieldset></article>
-        <article class="body-card earth-card"><div class="card-header"><span>◉ TERRA</span><span id="earthStatus" class="visibility">—</span></div><div class="big-value" id="earthElevation">—</div><span class="value-caption">elevação sobre o plano local</span><dl><div><dt>Azimute</dt><dd id="earthAzimuth">—</dd></div><div><dt>Horizonte LOLA</dt><dd id="earthHorizon">—</dd></div><div><dt>Margem</dt><dd id="earthMargin">—</dd></div></dl><div class="earth-distance"><span>DISTÂNCIA</span><b id="earthDistance">— km</b></div><p class="small-note">Visada para o centro da Terra. O enlace depende da estação e do sistema de comunicação.</p></article>
-        <div class="precision-note">Resolução do DEM: ~474 m norte–sul. Margens pequenas exigem análise mais fina.</div>
-      </aside>
+        <div class="moon-stage" aria-hidden="true">
+          <div class="moon-fallback"></div>
+          <canvas id="moonCanvas"></canvas>
+          <div class="orbit-ring"></div>
+          <div class="live-card live-sun" id="liveSun" data-state=""><span class="where" data-i18n="l.live.where">Agora na borda de Shackleton</span><b>—</b><span class="val num">—</span></div>
+          <div class="live-card live-earth" id="liveEarth" data-state=""><span class="where" data-i18n="l.live.where">Agora na borda de Shackleton</span><b>—</b><span class="val num">—</span></div>
+          <div class="spin-badge">
+            <svg viewBox="0 0 120 120"><defs><path id="circ" d="M60 60m-46 0a46 46 0 1 1 92 0a46 46 0 1 1-92 0"/></defs><text><textPath href="#circ" id="badgeText">POLO SUL LUNAR · 89,66° S · POLO SUL LUNAR · 89,66° S ·</textPath></text></svg>
+            <div class="core"><img src="brand/horisite-o.svg" alt=""></div>
+          </div>
+        </div>
+      </div>
+      <div class="wrap">
+        <div class="stats">
+          <div><b>5</b><span data-i18n="l.s1">regiões de referência no polo sul</span></div>
+          <div><b data-i18n="l.s2.n">30 dias</b><span data-i18n="l.s2">de busca pela melhor janela</span></div>
+          <div><b data-i18n="l.s3.n">0,0024°</b><span data-i18n="l.s3">maior diferença para o JPL Horizons no caso de referência</span></div>
+          <div><b data-i18n="l.s4.n">~130 m</b><span data-i18n="l.s4">entre pontos do relevo 3D, do modelo LOLA de 20 m</span></div>
+          <div><b>13</b><span data-i18n="l.s5">etapas na missão Terra–Lua–Terra</span></div>
+        </div>
+      </div>
     </section>
-    <section class="analysis-grid">
-      <div class="horizon-panel"><div class="section-heading"><div><p class="eyebrow">CÉU LOCAL</p><h2>O que o relevo esconde</h2></div><span class="chart-key"><i></i> Horizonte</span></div><svg id="horizonChart" viewBox="0 0 650 190" role="img" aria-label="Perfil de elevação do horizonte em 360 graus"></svg><div class="horizon-foot"><span>Azimute · Norte 0° / Leste 90°</span><span>Sem refração atmosférica</span></div></div>
-      <div class="timeline-panel"><div class="section-heading"><div><p class="eyebrow">PRÓXIMAS 24 HORAS</p><h2>Luz e visada, lado a lado</h2></div><span id="bestSpan" class="window-value">—</span></div><div class="time-scale" id="timeScale"></div><div id="timelineRows" class="timeline-rows"></div><div class="timeline-legend"><span><i class="both"></i>Sol + Terra</span><span><i class="sun-only"></i>Sol</span><span><i class="earth-only"></i>Terra</span><span><i class="none"></i>Obstruído</span></div></div>
+
+    <section class="section" id="como">
+      <div class="wrap">
+        <div class="why-head">
+          <h2 class="section-title"><span data-i18n="l.why.a">No polo sul, </span><span class="mark" data-i18n="l.why.b">cada metro</span><span data-i18n="l.why.c"> de relevo conta.</span></h2>
+          <p data-i18n="l.why.p">Ali o Sol passa rente ao horizonte e a Terra quase não sai do lugar no céu. Uma crista a 20 km pode apagar um painel solar ou cortar a visada para casa; meio quilômetro para o lado pode devolver as duas.</p>
+        </div>
+        <div class="why-cards">
+          <article class="why-card why-power"><span class="num">01</span><svg class="icon"><use href="#i-sun"/></svg><h3 data-i18n="l.c1.t">Vai ter energia?</h3><p data-i18n="l.c1.p">A altura do Sol sobre o relevo de verdade e a luz que chega num painel, em W/m².</p></article>
+          <article class="why-card why-earth"><span class="num">02</span><svg class="icon"><use href="#i-half"/></svg><h3 data-i18n="l.c2.t">Dá para falar com a Terra?</h3><p data-i18n="l.c2.p">Se o centro da Terra está acima do horizonte do local, e com quantos graus de folga.</p></article>
+          <article class="why-card why-time"><span class="num">03</span><svg class="icon"><use href="#i-clock"/></svg><h3 data-i18n="l.c3.t">Por quanto tempo?</h3><p data-i18n="l.c3.p">O maior trecho contínuo com Sol e Terra juntos nos próximos 30 dias.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <div class="feature">
+        <div>
+          <h2 data-i18n="l.f.t">Tudo para comparar luz e visada em cinco regiões.</h2>
+          <p data-i18n="l.f.p">Escolha até três locais, mude o momento e leia a resposta na própria cena 3D: raios até o Sol e a Terra mostram onde o relevo bloqueia.</p>
+          <ul>
+            <li><svg><use href="#i-relief"/></svg><div><b data-i18n="l.f1.t">Relevo real em 3D</b><span data-i18n="l.f1.p">Recortes de 100 km do modelo LOLA do polo sul, com 400 km de contexto até o horizonte.</span></div></li>
+            <li><svg><use href="#i-sun"/></svg><div><b data-i18n="l.f2.t">Luz do Sol e da Terra</b><span data-i18n="l.f2.p">Altura no céu, relevo em cada direção e folga, hora a hora.</span></div></li>
+            <li><svg><use href="#i-window"/></svg><div><b data-i18n="l.f3.t">Melhor janela e missão</b><span data-i18n="l.f3.p">O maior intervalo comum em 30 dias, com a ida e a volta animadas.</span></div></li>
+          </ul>
+        </div>
+        <div class="shot"><img src="assets/landing/pt/app-desktop.jpg" data-shot="app-desktop" width="1440" height="900" alt="" data-i18n-attr="alt:l.f.alt" loading="lazy"></div>
+      </div>
+    </section>
+
+    <section class="section" id="ciencia">
+      <div class="wrap">
+        <h2 class="section-title"><span data-i18n="l.sci.a">Ciência que dá para </span><span class="mark" data-i18n="l.sci.b">ver</span><span data-i18n="l.sci.c">.</span></h2>
+        <div class="bento">
+          <article class="tile t-relief"><img src="assets/landing/pt/relief.jpg" data-shot="relief" alt="" loading="lazy" width="1200" height="760"><h3 data-i18n="l.b1.t">O polo sul real, em 3D, na escala real.</h3><p data-i18n="l.b1.p">Escala vertical 1× · curvatura lunar · sombras do Sol</p></article>
+          <article class="tile t-window"><b>136 h</b><p data-i18n="l.b2.p">maior janela comum entre Shackleton e Malapert a partir de 2 de outubro de 2026, em amostras de 1 hora.</p></article>
+          <article class="tile t-horizon"><h3 data-i18n="l.b3.t">O que o relevo esconde</h3><p data-i18n="l.b3.p">Silhueta real em volta da borda de Shackleton e o caminho do Sol nas próximas 24 horas, calculados agora.</p><svg id="liveHorizon" viewBox="0 0 560 170" role="img" data-i18n-attr="aria-label:l.b3.t"></svg></article>
+          <article class="tile t-earth"><img src="assets/landing/pt/earth.jpg" data-shot="earth" alt="" loading="lazy" width="800" height="500"><h3 data-i18n="l.b7.t">A Terra vista do polo sul, agora.</h3><p data-i18n="l.b7.p">Na lente do app, com a fase real do instante e as luzes das cidades no lado da noite.</p></article>
+          <article class="tile t-lit"><img class="swatch" src="assets/landing/pt/lit.jpg" data-shot="lit" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b4">Sol à vista, a cena acende.</h3></article>
+          <article class="tile t-dark"><img class="swatch" src="assets/landing/pt/dark.jpg" data-shot="dark" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b5">Crista no caminho, fica escuro.</h3></article>
+          <article class="tile t-jpl"><h3>NASA JPL Horizons</h3><div><b>0,0024°</b><p data-i18n="l.b6.p">maior diferença no caso de referência: Shackleton, 2 de outubro de 2026.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section steps">
+      <div class="wrap">
+        <h2 class="section-title"><span data-i18n="l.st.a">De um lugar a uma resposta em </span><span class="mark" data-i18n="l.st.b">quatro passos</span><span data-i18n="l.st.c">.</span></h2>
+        <ol class="step-list">
+          <li><span class="n">01</span><h3 data-i18n="l.st1.t">Escolha os locais</h3><p data-i18n="l.st1.p">Marque até três das cinco regiões de referência do polo sul.</p></li>
+          <li><span class="n">02</span><h3 data-i18n="l.st2.t">Escolha o momento</h3><p data-i18n="l.st2.p">Data e hora UTC, com a barra de 24 horas e a passagem do tempo.</p></li>
+          <li><span class="n">03</span><h3 data-i18n="l.st3.t">Leia a resposta</h3><p data-i18n="l.st3.p">Raios, caminho do Sol e da Terra e a folga sobre o relevo, na cena.</p></li>
+          <li><span class="n">04</span><h3 data-i18n="l.st4.t">Ache a janela</h3><p data-i18n="l.st4.p">O maior trecho com Sol e Terra juntos, e a missão até ele.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="para-quem">
+      <div class="wrap">
+        <h2 class="section-title"><span data-i18n="l.who.a">Feito para quem quer </span><span class="mark" data-i18n="l.who.b">entender</span><span data-i18n="l.who.c"> a Lua.</span></h2>
+        <div class="who-cards">
+          <article class="who-card"><span class="label" data-i18n="l.w1.l">Estudantes e professores</span><h3 data-i18n="l.w1.t">Uma aula que dá para girar.</h3><p data-i18n="l.w1.p">Abra o relevo, mude a data e veja a sombra andar. O tutorial traz exemplos que dá para reproduzir.</p></article>
+          <article class="who-card"><span class="label" data-i18n="l.w2.l">Entusiastas do espaço</span><h3 data-i18n="l.w2.t">Vá aonde as missões querem ir.</h3><p data-i18n="l.w2.p">As cinco regiões ficam na área do polo sul que a NASA estuda para os pousos da Artemis.</p></article>
+          <article class="who-card"><span class="label" data-i18n="l.w3.l">Planejamento inicial</span><h3 data-i18n="l.w3.t">Uma primeira olhada rápida.</h3><p data-i18n="l.w3.p">Compare luz e visada em minutos, antes de partir para análises de missão mais finas.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <div class="link-band">
+        <div>
+          <h2 data-i18n="l.link.t">Abre com um link.</h2>
+          <p data-i18n="l.link.p">Roda no navegador do computador e do celular, sem cadastro e sem instalar nada.</p>
+          <a class="btn btn-primary" href="app/" data-i18n="l.cta.open" style="background:var(--white);color:var(--ink)">Abrir no navegador</a>
+        </div>
+        <div class="phone"><img src="assets/landing/pt/app-mobile.jpg" data-shot="app-mobile" alt="" data-i18n-attr="alt:l.link.alt" loading="lazy" width="390" height="820"></div>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <div class="cta">
+        <h2 data-i18n="l.cta.t">Sua primeira missão ao polo sul começa agora.</h2>
+        <a class="btn btn-primary" href="app/" data-i18n="l.cta.go">Explorar o polo sul</a>
+      </div>
     </section>
   </main>
-  <dialog id="missionDialog" class="mission-dialog" aria-labelledby="missionTitle">
-    <div class="mission-heading"><div><p class="eyebrow">TERRA / LUA / TERRA</p><h2 id="missionTitle">Sua janela, uma missão.</h2></div><button id="closeMission" aria-label="Fechar simulação">×</button></div>
-    <div class="mission-layout">
-      <aside class="mission-plan">
-        <p class="eyebrow">DESTINO SELECIONADO</p><h3 id="missionSite">—</h3><p id="missionCoordinates" class="mission-subtle">—</p>
-        <div class="mission-window"><span id="missionWindowSource">JANELA</span><b id="missionWindowStart">—</b><b id="missionWindowEnd">—</b></div>
-        <form id="missionForm">
-          <label for="missionWindowHours">Janela manual <span>horas</span></label><input id="missionWindowHours" type="number" min="1" max="720" step="1" value="24">
-          <label for="missionOutbound">Viagem de ida <span>horas</span></label><input id="missionOutbound" type="number" min="24" max="240" step="1" value="72">
-          <label for="missionStay">Permanência no solo <span>horas</span></label><input id="missionStay" type="number" min="0.5" max="720" step="0.5" value="24">
-          <label for="missionInbound">Viagem de volta <span>horas</span></label><input id="missionInbound" type="number" min="24" max="240" step="1" value="72">
-          <button type="submit">Aplicar durações</button>
-        </form>
-        <p id="missionError" role="alert" class="mission-error"></p>
-        <div class="mission-orbit-summary"><span class="eyebrow">ÓRBITAS DE ESTACIONAMENTO</span><div id="missionOrbitSummary"></div><p>Períodos e velocidades por modelo circular de dois corpos. Sem efeito estilingue.</p></div>
-        <dl id="missionEvents" class="mission-events"></dl>
-        <div id="missionAssessment" class="mission-assessment" role="status"></div>
-        <p class="mission-disclaimer">Modelo educativo: órbitas circulares analíticas; transferências, queimas, descida e subida ilustrativas. Sem solução orbital completa, combustível ou validação de lançamento. Veículo genérico; referência terrestre no Cabo Canaveral.</p>
-      </aside>
-      <section class="mission-stage">
-        <div id="missionViewport" class="mission-viewport"><canvas id="missionCanvas" tabindex="0" aria-label="Simulação tridimensional da missão de ida e volta à Lua"></canvas>
-          <div class="mission-hud"><span id="missionPhase">Lançamento da Terra</span><time id="missionClock">—</time></div>
-          <div id="missionEarthLabel" class="mission-body-label">TERRA</div><div id="missionMoonLabel" class="mission-body-label">LUA</div>
-          <div id="missionSceneMessage" class="mission-scene-message" role="status"></div>
-          <div class="mission-camera"><label for="missionCamera">Câmera</label><select id="missionCamera"><option value="auto">Automática</option><option value="overview">Trajetória completa</option><option value="follow">Acompanhar veículo</option></select><button id="missionResetCamera" title="Recentrar câmera">↺</button><button id="missionFullscreen" title="Ampliar simulação">⛶</button></div>
-          <div class="mission-view-note"><span id="missionScale">DISTÂNCIAS REAIS · VEÍCULO AMPLIADO</span><span>Arraste para orbitar · Role para aproximar</span></div>
+
+  <footer class="site-foot">
+    <div class="wrap">
+      <div class="foot-grid">
+        <div>
+          <a class="wordmark on-dark" href="./" aria-label="Horisite" style="--wm-size:34px"><span aria-hidden="true">h</span><img src="brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a>
+          <p data-i18n="footer.made">Explorador independente do polo sul lunar.</p>
         </div>
-        <div class="mission-telemetry"><div><span>TEMPO DE MISSÃO</span><b id="missionElapsed">—</b></div><div><span>DISTÂNCIA TERRA–LUA</span><b id="missionDistance">—</b></div><div><span>ALTITUDE / REFERÊNCIA</span><b id="missionAltitude">—</b></div><div><span>CONDIÇÃO NO DESTINO</span><b id="missionConditions">—</b></div></div>
-        <p id="missionOrbitStatus" class="mission-orbit-status" role="status">—</p>
-        <div id="missionPhases" class="mission-phases" role="group" aria-label="Etapas da missão"></div>
-        <div class="mission-playback"><button id="missionPlay" aria-label="Reproduzir missão" aria-pressed="false">▶ Reproduzir</button><button id="missionReplay" aria-label="Reiniciar missão">↺</button><label for="missionProgress" class="sr-only">Percorrer a missão</label><input id="missionProgress" type="range" min="0" max="1000" step="1" value="0"><label for="missionSpeed" class="sr-only">Velocidade da animação</label><select id="missionSpeed"><option value="1">1× / 140 s</option><option value="2">2× / 70 s</option><option value="4">4× / 35 s</option></select></div>
-        <p class="mission-playback-note">Ida e volta incluem as órbitas e manobras. O pouso continua no início da janela escolhida. Em 1×, subida e descida duram 20 s cada, com cenas próximas do solo de 14–15 s. Tempo comprimido por etapa; o relógio mostra o UTC simulado. Condições avaliadas no destino, não durante o voo.</p>
-        <details class="mission-method"><summary>O que usa dados reais e o que é ilustrativo?</summary><p>Datas, coordenadas, posição e orientação da Lua, iluminação e terreno usam o modelo do Lunar Horizon. Órbitas circulares de estacionamento a 300 km da Terra e 100 km do raio médio da Lua usam T = 2π√(r³/μ) e v = √(μ/r), com parâmetros gravitacionais JPL DE440. São 1,5 volta terrestre, 1 volta lunar antes do pouso e 1 após a decolagem, em planos inerciais fixos. A Lua acompanha a efeméride; o plano polar educativo passa pela região escolhida. As transferências ainda são curvas Bézier; queimas TLI, LOI e TEI, subida, descida e reentrada são interpolações visuais. Não há solução de Lambert, integração de três corpos, continuidade de velocidade nas transições, cálculo de delta-v ou combustível. Não é uma reconstrução de uma missão Apollo nem um estilingue. A câmera passa ao DEM LOLA nos últimos 400 m acima do nível do destino; o veículo mede ~14 m na cena local e é ampliado na visão espacial. Não verifica obstáculos do relevo durante a descida. O retorno ao ponto terrestre é uma convenção visual. Janela de luz e visada não é janela orbital.</p><a href="https://science.nasa.gov/learn/basics-of-space-flight/chapter4-1/" target="_blank" rel="noopener">NASA · fundamentos de trajetórias</a> · <a href="https://ssd.jpl.nasa.gov/astro_par.html" target="_blank" rel="noopener">JPL · parâmetros gravitacionais</a></details>
-      </section>
+        <div><h2 data-i18n="l.fo.product">Produto</h2><ul><li><a href="#como" data-i18n="l.nav.how">Como funciona</a></li><li><a href="#ciencia" data-i18n="l.nav.science">O que mostra</a></li><li><a href="tutorial.html" data-i18n="nav.tutorial">Tutorial</a></li></ul></div>
+        <div><h2 data-i18n="l.fo.data">Dados</h2><ul><li><a href="https://pgda.gsfc.nasa.gov/products/90" target="_blank" rel="noopener">NASA PGDA · LOLA</a></li><li><a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a></li><li><a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener">HYG Database</a></li></ul></div>
+        <div><h2 data-i18n="l.fo.open">Abrir</h2><ul><li><a href="app/" data-i18n="nav.app">Abrir o Horisite</a></li><li><a href="app/" data-i18n="l.fo.method">Dados e método no app</a></li></ul></div>
+      </div>
+      <p class="credits" data-i18n="footer.data">Dados: NASA PGDA · LRO/LOLA · NASA SVS · LROC. Estrelas: HYG v4.1 (CC BY-SA 4.0). Efemérides: Astronomy Engine. 3D: Three.js.</p>
+      <div class="giant"><span class="wordmark on-dark" aria-hidden="true"><span>h</span><img src="brand/horisite-o.svg" alt=""><span>r</span><span>i</span><span>s</span><span>i</span><span>t</span><span>e</span></span></div>
     </div>
-  </dialog>
-  <footer><span>LUNAR HORIZON / THREE.JS</span><span>NASA SVS · LRO / LOLA · Astronomy Engine <button id="footerMethod">Fontes e limitações</button></span></footer>
-  <dialog id="aboutDialog"><button class="dialog-close" aria-label="Fechar">×</button><p class="eyebrow">DADOS E MÉTODO</p><h2>O relevo e o céu usam a mesma geometria.</h2><p>Esta versão combina terreno medido e efemérides astronômicas. Os pontos selecionados são referências regionais, não elipses de pouso certificadas.</p><dl class="method-list"><div><dt>Terreno</dt><dd>LOLA LDEM 64 pixels/grau, NASA SVS. Alturas de 16 bits em unidades de 0,5 m, reamostradas em malhas de 100 km. Curvatura lunar e escala vertical real.</dd></div><div><dt>Posições</dt><dd>Astronomy Engine 2.1.19, vetores geométricos J2000 e orientação lunar IAU_MOON aproximada. Paralaxe do observador incluída; sem refração.</dd></div><div><dt>Visibilidade</dt><dd>Horizonte a cada 0,5°, amostrado até 50 km. Sol e centro da Terra avaliados contra esse perfil. Terreno além de 50 km e estruturas subpixel não entram no cálculo.</dd></div><div><dt>Energia</dt><dd>Irradiância incidente aproximada, usando 1361 W/m² a 1 UA e fração do disco solar visível. Sem eficiência do painel, perdas elétricas, temperatura ou armazenamento.</dd></div><div><dt>Renderização</dt><dd>Three.js, sombras solares e textura LROC/NASA. Luz de preenchimento suave permite ler o relevo na sombra. Texturas e sombreamento têm finalidade visual.</dd></div><div><dt>Janelas</dt><dd>Melhor intervalo contínuo comum aos locais selecionados nos próximos 30 dias, amostrado a cada hora. Transições entre amostras não são resolvidas.</dd></div></dl><p class="method-limits">Uso exploratório e educativo. Uma decisão de missão precisa de DEM polar de alta resolução, orientação binária SPICE e validação do enlace. Não há certificação operacional nesta versão.</p><div class="source-links"><a href="https://svs.gsfc.nasa.gov/4720/" target="_blank" rel="noopener">NASA CGI Moon Kit</a><a href="https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc" target="_blank" rel="noopener">NAIF / orientação lunar</a><a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a><a href="https://threejs.org/" target="_blank" rel="noopener">Three.js</a></div><p class="credits">Terreno e Lua: NASA's Scientific Visualization Studio, LRO LOLA e LROC. Textura da Terra: exemplo de planetas do Three.js. Bibliotecas sob licença MIT.</p></dialog>
-  <script type="module" src="app.js"></script>
+  </footer>
+  <script type="module" src="landing.js"></script>
 </body>
 </html>

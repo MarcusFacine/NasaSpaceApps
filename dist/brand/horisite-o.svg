@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" role="img" aria-label="Horisite">
+  <!-- Símbolo do Horisite: o "o" do logotipo, anel aberto à direita com três feixes.
+       Redesenhado em SVG a partir da folha de marca enviada pela equipe em 14/11/2026. -->
+  <defs>
+    <linearGradient id="hs-ring" x1="0.1" y1="0.75" x2="0.95" y2="0.2">
+      <stop offset="0" stop-color="#ff2f7d"/>
+      <stop offset="0.48" stop-color="#ff7a3c"/>
+      <stop offset="1" stop-color="#ffe600"/>
+    </linearGradient>
+    <linearGradient id="hs-beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd21f"/>
+      <stop offset="1" stop-color="#ffe600"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#hs-ring)" d="M84.4 31.1A40 40 0 1 0 84.4 68.9L65.3 59.6A19 19 0 1 1 65.3 40.4Z"/>
+  <rect x="62" y="37.5" width="38" height="6.5" rx="3.2" fill="url(#hs-beam)"/>
+  <rect x="62" y="46.75" width="46" height="6.5" rx="3.2" fill="url(#hs-beam)"/>
+  <rect x="62" y="56" width="38" height="6.5" rx="3.2" fill="url(#hs-beam)"/>
+</svg>
