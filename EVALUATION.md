@@ -196,3 +196,13 @@ Pedido do Ricardo: "na visão da superfície, como se fôssemos o astronauta, at
 - **Capacete.** Borda desfocada do casco, anel do pescoço e peito embaixo (como na Apollo, onde mal se viam os pés), reflexos na bolha e clarão do Sol no visor. O visor solar dourado imita o filme de ouro.
 - **"Aqui".** Sol e Terra são testados contra o relevo a partir da posição do caminhante (centro do disco). Os números do painel continuam sendo os do ponto de referência; longe dele, os rótulos do Sol e da Terra na cena somem.
 - **Medido no notebook de desenvolvimento** (1536×864): ~48 quadros por segundo andando, sem erros no console. Também conferido no celular (390×820) e em inglês.
+
+## Módulo lunar na superfície e inglês para quem já tinha escolhido PT (15/11/2026)
+
+- **Módulo lunar.** A vista Superfície ganhou o módulo lunar da Apollo: o modelo 3D oficial da NASA (`lunar-module.glb`, NASA 3D Resources, o mesmo da missão), com os materiais da missão (folha dourada e âmbar, alumínio, preto) e reflexos de um ambiente de regolito.
+  - Fica a ~30 m do ponto, logo à direita da primeira vista (que olha para o Sol), no lugar mais plano entre 33 candidatos, inclinado conforme o chão e com os pés afundados 3 cm no regolito.
+  - Projeta sombra (no Sol rasante, centenas de metros) e não pode ser atravessado (círculo de 4,8 m em volta das pernas).
+  - Na sombra dele, o painel da caminhada diz "na sombra do módulo lunar" (raio até o Sol contra um cilindro de 2,3 × 7 m).
+  - Liga e desliga no botão "Módulo lunar".
+- **Defeito encontrado:** com a sombra próxima redesenhada só durante a caminhada, o mapa dela não existia ao abrir o app, e o WebGL descartava desenhos (`GL_INVALID_OPERATION: Mismatch between texture format and sampler type`). Agora o mapa é criado no primeiro quadro.
+- **Idioma.** A escolha salva passou para a chave `horisite-lang-v2`. Quem tinha clicado em PT antes da mudança (a equipe, por exemplo) agora também abre em inglês, e uma escolha nova continua sendo lembrada. Uma varredura do texto visível em inglês (landing, tutorial, app, guia, "Dados e método" e missão) não achou português.

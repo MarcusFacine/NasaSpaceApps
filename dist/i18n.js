@@ -1,5 +1,5 @@
 // Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, inglês.
-const KEY = 'horisite-lang';
+const KEY = 'horisite-lang-v2'; // v2: English first since 15/11/2026; earlier saved choices no longer apply
 const listeners = new Set();
 
 const DICT = {
@@ -40,7 +40,7 @@ const DICT = {
     'walk.where': '{d} m a {dir} do ponto de referência', 'walk.here': 'Aqui: {sun}, {earth}',
     'walk.sun.lit': 'Sol à vista', 'walk.sun.shade': 'na sombra do relevo', 'walk.sun.eclipse': 'Sol eclipsado pela Terra',
     'walk.earth.on': 'Terra à vista', 'walk.earth.off': 'Terra escondida', 'walk.edge': 'fim da área detalhada (800 × 800 m)',
-    'walk.helmet': 'Capacete', 'walk.visor': 'Visor solar', 'walk.run': 'Correr', 'walk.back': 'Voltar ao ponto',
+    'walk.helmet': 'Capacete', 'walk.lander': 'Módulo lunar', 'walk.sun.lander': 'na sombra do módulo lunar', 'walk.visor': 'Visor solar', 'walk.run': 'Correr', 'walk.back': 'Voltar ao ponto',
     'walk.pad': 'Andar', 'walk.forward': 'Andar para a frente', 'walk.backward': 'Andar para trás', 'walk.turnLeft': 'Virar à esquerda', 'walk.turnRight': 'Virar à direita',
     'state.eclipse': 'Eclipse total', 'state.partialEclipse': ' · eclipse parcial', 'light.eclipse': 'Eclipse: a Terra cobre o Sol',
     'verdict.sun.eclipseTotal': 'A Terra cobre todo o disco do Sol: eclipse total, sem luz direta para os painéis.',
@@ -130,7 +130,7 @@ const DICT = {
     'about.mission.t': 'Missão 3D',
     'about.mission.d': 'Perfil da Apollo 11 (órbitas de 185 km na Terra e ~110 km na Lua, 13 voltas antes do pouso e 5 depois da decolagem), com os corpos em escala real; manobras e tempos são ilustrativos. Terra com atmosfera física (Hillaire 2020) sobre o Blue Marble Next Generation de setembro de 2004 (NASA Earth Observatory), luzes do Black Marble 2016 (NASA GSFC, VIIRS), nuvens do Blue Marble 2002 e máscara de água MODIS MOD44W (NASA GIBS). Lua: mosaico de cor LROC WAC (NASA/GSFC/Arizona State University, CGI Moon Kit do SVS) e relevo LOLA, com crateras pequenas sintéticas. Mar por espectro de ondas (Tessendorf; Elfouhaily et al. 1997). Licenças declaradas: luzes das cidades, airglow e luar da Terra ampliados para aparecer; luz da Terra no lado escuro da Lua ampliada 400× no espaço; chamas e plasma mais fracos que o real para a nave continuar legível; nos diagramas da trajetória, o céu aparece como numa exposição longa (~20 pontos).',
     'about.walk.t': 'Caminhada',
-    'about.walk.d': 'Na vista Superfície você anda pelos 800 × 800 m em volta do ponto, a 1,2 m/s (2,5 m/s correndo), com os olhos na altura do observador. O chão segue o relevo LOLA com crateras e pedras sintéticas, e a sua sombra, as das pedras e as das crateras vêm da luz real do Sol. Sol e Terra são testados contra o relevo a partir de onde você está; os números do painel continuam sendo os do ponto de referência. O capacete é uma moldura ilustrativa, e o visor solar imita o filme de ouro dos visores da Apollo.',
+    'about.walk.d': 'Na vista Superfície você anda pelos 800 × 800 m em volta do ponto, a 1,2 m/s (2,5 m/s correndo), com os olhos na altura do observador. O chão segue o relevo LOLA com crateras e pedras sintéticas, e a sua sombra, as das pedras e as das crateras vêm da luz real do Sol. Sol e Terra são testados contra o relevo a partir de onde você está; os números do painel continuam sendo os do ponto de referência. O módulo lunar é o modelo 3D oficial da NASA (NASA 3D Resources), pousado a ~30 m do ponto no lugar mais plano por perto. O capacete é uma moldura ilustrativa, e o visor solar imita o filme de ouro dos visores da Apollo.',
     'about.windows.t': 'Janelas',
     'about.windows.d': 'Maior intervalo contínuo comum aos locais escolhidos nos próximos 30 dias, amostrado a cada hora. O que acontece entre uma amostra e outra não é resolvido.',
     'about.limits': 'Uso exploratório e educativo. Uma decisão de missão precisa de análise de iluminação mais fina, orientação SPICE e validação do enlace. Não há certificação operacional.',
@@ -203,7 +203,7 @@ const DICT = {
     'walk.where': '{d} m {dir} of the reference point', 'walk.here': 'Here: {sun}, {earth}',
     'walk.sun.lit': 'Sun in view', 'walk.sun.shade': 'in the shadow of the relief', 'walk.sun.eclipse': 'Sun eclipsed by Earth',
     'walk.earth.on': 'Earth in view', 'walk.earth.off': 'Earth hidden', 'walk.edge': 'edge of the detailed area (800 × 800 m)',
-    'walk.helmet': 'Helmet', 'walk.visor': 'Sun visor', 'walk.run': 'Run', 'walk.back': 'Back to the point',
+    'walk.helmet': 'Helmet', 'walk.lander': 'Lunar module', 'walk.sun.lander': 'in the lunar module’s shadow', 'walk.visor': 'Sun visor', 'walk.run': 'Run', 'walk.back': 'Back to the point',
     'walk.pad': 'Walk', 'walk.forward': 'Walk forward', 'walk.backward': 'Walk back', 'walk.turnLeft': 'Turn left', 'walk.turnRight': 'Turn right',
     'state.eclipse': 'Total eclipse', 'state.partialEclipse': ' · partial eclipse', 'light.eclipse': 'Eclipse: Earth covers the Sun',
     'verdict.sun.eclipseTotal': 'Earth covers the whole solar disc: a total eclipse, no direct light for the panels.',
@@ -293,7 +293,7 @@ const DICT = {
     'about.mission.t': '3D mission',
     'about.mission.d': 'The Apollo 11 profile (parking orbits of 185 km at Earth and ~110 km at the Moon, 13 laps before the landing and 5 after the liftoff), with the bodies at true scale; manoeuvres and timings are illustrative. Earth with a physical atmosphere (Hillaire 2020) over the Blue Marble Next Generation of September 2004 (NASA Earth Observatory), lights from Black Marble 2016 (NASA GSFC, VIIRS), clouds from Blue Marble 2002 and the MODIS MOD44W water mask (NASA GIBS). Moon: the LROC WAC colour mosaic (NASA/GSFC/Arizona State University, SVS CGI Moon Kit) and LOLA relief, with synthetic small craters. Sea from a wave spectrum (Tessendorf; Elfouhaily et al. 1997). Stated licences: city lights, airglow and moonlight on Earth boosted to show; earthshine on the Moon’s night side boosted 400× in space; flames and plasma dimmer than real so the spacecraft stays readable; in the trajectory diagrams the sky shows as in a long exposure (~20 stops).',
     'about.walk.t': 'Walking',
-    'about.walk.d': 'In the Surface view you walk the 800 × 800 m around the point at 1.2 m/s (2.5 m/s running), eyes at the observer height. The ground follows the LOLA relief with synthetic craters and rocks, and your shadow and those of the rocks and craters come from the real sunlight. Sun and Earth are checked against the relief from where you stand; the panel numbers stay those of the reference point. The helmet is an illustrative frame, and the sun visor imitates the gold film of the Apollo visors.',
+    'about.walk.d': 'In the Surface view you walk the 800 × 800 m around the point at 1.2 m/s (2.5 m/s running), eyes at the observer height. The ground follows the LOLA relief with synthetic craters and rocks, and your shadow and those of the rocks and craters come from the real sunlight. Sun and Earth are checked against the relief from where you stand; the panel numbers stay those of the reference point. The lunar module is NASA’s official 3D model (NASA 3D Resources), landed ~30 m from the point on the flattest spot nearby. The helmet is an illustrative frame, and the sun visor imitates the gold film of the Apollo visors.',
     'about.windows.t': 'Windows',
     'about.windows.d': 'The longest continuous interval common to the chosen sites in the next 30 days, sampled every hour. What happens between samples is not resolved.',
     'about.limits': 'For exploration and education. A mission decision needs finer illumination analysis, SPICE orientation and link validation. There is no operational certification.',

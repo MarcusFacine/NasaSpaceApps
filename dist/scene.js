@@ -7,6 +7,8 @@ const distance = km => (km < 1 ? `${number(Math.round(km * 100) * 10)} m` : km <
 import { loadStarCatalog, createStarField, setRotationRows, combine } from './stars.js';
 import { cloudMaterial, lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry, siteSpace } from './lunar-surface.js';
 import { LandingSite } from './landing-site.js';
+import { loadNasaModels } from './nasa-models.js';
+import { makeEnvironment, createMaterials, buildLM } from './spacecraft.js';
 
 const asset = path => new URL(path, import.meta.url).href;
 const v3 = a => new THREE.Vector3(...a);
@@ -19,6 +21,7 @@ const lowPower = () => matchMedia('(max-width: 820px)').matches || (navigator.ha
 // the reference point, and the walk stays inside it.
 const WALK_SPEED = .0012, RUN_SPEED = .0025, WALK_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const Y_UP = new THREE.Vector3(0, 1, 0);
 
 function discTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -209,7 +212,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
 
     this.makeObserver();
     // Walking in the surface view: the walker, an invisible body for its shadow, the helmet and the controls.
-    this.walker = { x: 0, z: 0, keys: new Set(), last: performance.now(), phase: 0, checked: 0, helmet: true, visor: false, run: false, here: null };
+    this.walker = { x: 0, z: 0, keys: new Set(), last: performance.now(), phase: 0, checked: 0, helmet: true, visor: false, run: false, here: null, lander: true };
     this.makeAstronaut(); this.makeHelmet(canvas); this.makeWalkHud(container);
     this.onWalkKey = e => {
       if (this.view !== 'surface' || this.disposed) return;
@@ -260,7 +263,8 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
         // Shadow maps: the far one (whole tiles) only when the light, the relief or the view change; the near one every
         // frame while walking, with the big tiles left out (the ground at the feet is the detailed patch).
         const walking = this.view === 'surface' && Boolean(this.landing), far = this.sunlight.shadow.needsUpdate;
-        this.nearSun.shadow.needsUpdate = walking;
+        // The near map must exist from the first frame (materials sample it), and follows the walker afterwards.
+        if (walking || !this.nearSun.shadow.map) this.nearSun.shadow.needsUpdate = true;
         for (const mesh of [this.terrainMesh, this.innerMesh, this.contextMesh]) if (mesh) { mesh.userData.cast ??= mesh.castShadow; mesh.castShadow = mesh.userData.cast && (far || !walking); }
         this.sunView.value.copy(this.sunlight.position).normalize().transformDirection(this.camera.matrixWorldInverse);
         this.renderer.render(this.scene, this.camera); this.updateLabels(); this.dirty = false;
@@ -305,6 +309,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     } else this.contextMesh = null;
     this.horizonKey = '';
     if (this.landing) { this.localGroup.remove(this.landing.group); this.landing.dispose(); this.landing = null; }
+    if (this.lander) { this.localGroup.remove(this.lander); this.lander = null; }
     this.walker.x = this.walker.z = 0; this.walker.here = null;
     if (this.view === 'surface') this.ensureGround();
     // Rays and horizon need the terrain: refresh them now if directions already arrived.
@@ -429,6 +434,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     this.horizonLine.visible = surface && atPoint;
     this.helmet.classList.toggle('on', surface && this.walker.helmet); this.helmet.classList.toggle('visor', this.walker.visor);
     this.walkHud.hidden = !surface; this.astronaut.visible = surface && Boolean(this.landing);
+    if (this.lander) this.lander.visible = surface && this.walker.lander;
     if (surface) this.ensureGround();
     this.paths.visible = local && !this.telephoto;
     for (const p of this.sitePins) { p.pin.visible = local && p.shown && !this.telephoto; p.link.visible = this.view === 'terrain' && p.shown; }
@@ -597,11 +603,49 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
         const inner = innerTerrainGeometry(terrain, { stride: this.lowPower ? 2 : 1, hole: this.landing.half });
         if (inner) { this.innerMesh.geometry.dispose(); this.innerMesh.geometry = inner; }
       }
-      delete this.walkHud.dataset.state;
+      delete this.walkHud.dataset.state; this.landLander();
       if (this.view === 'surface') { this.placeWalker(true); this.checkHere(true); }
       if (this.result) this.applyLights();
       this.applyView(); this.walkTexts(); this.invalidate();
     }, 40);
+  }
+  // The Apollo lunar module, NASA's own model (nasa-models.js, the same as in the mission), landed ~30 m from the
+  // reference point on the flattest spot nearby, tilted with the ground under it, plumes off.
+  landLander() {
+    if (this.lander || this.landerPending || !this.landing) return;
+    this.landerPending = true;
+    loadNasaModels().then(nasa => {
+      this.landerPending = false; if (this.disposed || !this.landing || this.lander) return;
+      if (!this.landerMaterials) { this.landerEnv = makeEnvironment(this.renderer, { ground: [.34, .33, .31] }); this.landerMaterials = createMaterials(this.landerEnv.texture); }
+      const lm = buildLM(this.landerMaterials, nasa);
+      for (const stage of [lm.userData.descent, lm.userData.ascent]) if (stage?.userData.plume) stage.userData.plume.visible = false;
+      lm.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      // Where: in front-right of the first view (which faces the Sun), on the least sloping of a ring of candidates.
+      const sun = this.result ? v3(this.result.sun.direction) : new THREE.Vector3(0, 0, -1), base = Math.atan2(sun.x, -sun.z) + .35;
+      let best = null;
+      for (let i = -5; i <= 5; i++) for (const r of [.026, .032, .038]) {
+        const a = base + i * .05, x = Math.sin(a) * r, z = -Math.cos(a) * r, n = this.groundNormal(x, z);
+        if (!best || n.y > best.n.y) best = { x, z, n };
+      }
+      const g = this.lander = new THREE.Group(), body = new THREE.Group(); body.scale.setScalar(.001); body.add(lm); g.add(body);
+      g.position.set(best.x, this.groundAt(best.x, best.z) - .00003, best.z); // footpads pressed a few centimetres into the regolith
+      const tilt = new THREE.Quaternion().setFromUnitVectors(Y_UP, best.n), face = new THREE.Quaternion().setFromAxisAngle(Y_UP, Math.atan2(-best.x, -best.z) + Math.PI);
+      g.quaternion.copy(tilt).multiply(face); g.userData.at = { x: best.x, z: best.z };
+      this.localGroup.add(g); this.applyView(); if (this.result) this.applyLights(); this.checkHere(true); this.invalidate();
+    });
+  }
+  // Ground normal from the heights 2 m around a point.
+  groundNormal(x, z) {
+    const e = .002, dx = (this.groundAt(x + e, z) - this.groundAt(x - e, z)) / (2 * e), dz = (this.groundAt(x, z + e) - this.groundAt(x, z - e)) / (2 * e);
+    return new THREE.Vector3(-dx, 1, -dz).normalize();
+  }
+  // Is the walker's eye in the lander's shadow? The sunward ray against the lander as a 2.3 m × 7 m cylinder.
+  inLanderShadow(eye, sun) {
+    if (!this.lander?.visible) return false;
+    const L = this.lander.position, dx = eye.x - L.x, dz = eye.z - L.z, h = Math.hypot(sun.x, sun.z); if (h < 1e-6) return false;
+    const ux = sun.x / h, uz = sun.z / h, along = -(dx * ux + dz * uz); if (along <= 0) return false;
+    const miss = Math.abs(dx * uz - dz * ux); if (miss > .0023) return false;
+    const y = eye.y + along * sun.y / h - L.y; return y >= 0 && y <= .007;
   }
   groundAt(x, z) {
     const l = this.landing;
@@ -638,6 +682,8 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       const limit = (this.landing ? this.landing.half : .4) - .006, nx = w.x + move.x, nz = w.z + move.z;
       w.edge = Math.abs(nx) > limit || Math.abs(nz) > limit;
       w.x = THREE.MathUtils.clamp(nx, -limit, limit); w.z = THREE.MathUtils.clamp(nz, -limit, limit);
+      // The lander's legs and footpads span ~9.4 m: stay outside a 4.8 m circle around it.
+      if (this.lander?.visible) { const L = this.lander.userData.at, dx = w.x - L.x, dz = w.z - L.z, d = Math.hypot(dx, dz), r = .0048; if (d < r) { const k = r / Math.max(d, 1e-9); w.x = L.x + dx * k; w.z = L.z + dz * k; } }
       w.phase += dt * (w.run ? 6.6 : 9.4);
     }
     this.placeWalker(); this.checkHere(); this.applyView();
@@ -649,7 +695,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     w.checked = now;
     const h0 = this.groundAt(w.x, w.z) + (this.heightM || 2) / 1000;
     const sun = traceFrom(this.terrain, w.x, w.z, h0, v3(this.result.sun.direction)), earth = traceFrom(this.terrain, w.x, w.z, h0, v3(this.result.earth.direction));
-    w.here = { sun, earth, eclipse: this.result.sun.eclipse || 0 };
+    w.here = { sun, earth, eclipse: this.result.sun.eclipse || 0, lander: sun && this.inLanderShadow(new THREE.Vector3(w.x, h0, w.z), v3(this.result.sun.direction)) };
     // The main light follows what the walker sees of the Sun only through the shadows; nothing to change here.
     this.walkTexts();
   }
@@ -696,6 +742,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
           <button type="button" class="walk-toggle" data-walk-opt="helmet" aria-pressed="true"></button>
           <button type="button" class="walk-toggle" data-walk-opt="visor" aria-pressed="false"></button>
           <button type="button" class="walk-toggle" data-walk-opt="run" aria-pressed="false"></button>
+          <button type="button" class="walk-toggle" data-walk-opt="lander" aria-pressed="true"></button>
           <button type="button" class="walk-toggle" data-walk-opt="back"></button>
         </div>
       </div>
@@ -710,7 +757,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       const opt = b.dataset.walkOpt, w = this.walker;
       if (opt === 'back') { this.resetCamera(); this.placeWalker(); this.checkHere(true); this.applyView(); this.walkTexts(); return; }
       const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on));
-      if (opt === 'helmet') w.helmet = on; else if (opt === 'visor') w.visor = on; else w.run = on;
+      if (opt === 'helmet') w.helmet = on; else if (opt === 'visor') w.visor = on; else if (opt === 'lander') { w.lander = on; this.checkHere(true); } else w.run = on;
       this.applyView(); this.invalidate();
     }));
     container.append(el);
@@ -718,7 +765,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   walkTexts() {
     if (!this.walkHud) return;
     const t = this.t, w = this.walker, el = this.walkHud;
-    const names = { helmet: 'walk.helmet', visor: 'walk.visor', run: 'walk.run', back: 'walk.back' };
+    const names = { helmet: 'walk.helmet', visor: 'walk.visor', run: 'walk.run', back: 'walk.back', lander: 'walk.lander' };
     el.querySelectorAll('[data-walk-opt]').forEach(b => { b.textContent = t(names[b.dataset.walkOpt]); });
     const aria = { arrowup: 'walk.forward', arrowdown: 'walk.backward', arrowleft: 'walk.turnLeft', arrowright: 'walk.turnRight' };
     el.querySelectorAll('[data-walk]').forEach(b => b.setAttribute('aria-label', t(aria[b.dataset.walk])));
@@ -728,7 +775,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     if (el.dataset.state === 'preparing') { info.textContent = t('walk.preparing'); return; }
     const d = Math.hypot(w.x, w.z) * 1000, compass = t('compass8').split(','), dir = compass[Math.round(((Math.atan2(w.x, -w.z) * 180 / Math.PI + 360) % 360) / 45) % 8];
     const where = d < 1 ? t('walk.at') : t('walk.where', { d: number(Math.round(d)), dir });
-    const here = w.here ? t('walk.here', { sun: t(w.here.eclipse >= 1 && w.here.sun ? 'walk.sun.eclipse' : w.here.sun ? 'walk.sun.lit' : 'walk.sun.shade'), earth: t(w.here.earth ? 'walk.earth.on' : 'walk.earth.off') }) : '';
+    const here = w.here ? t('walk.here', { sun: t(w.here.eclipse >= 1 && w.here.sun ? 'walk.sun.eclipse' : w.here.lander ? 'walk.sun.lander' : w.here.sun ? 'walk.sun.lit' : 'walk.sun.shade'), earth: t(w.here.earth ? 'walk.earth.on' : 'walk.earth.off') }) : '';
     info.textContent = [where, here, w.edge ? t('walk.edge') : ''].filter(Boolean).join(' · ');
   }
   // The helmet and the controls cover the part of the scene left free by the panels; the Sun's glare sits where
@@ -756,7 +803,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   dispose() {
     this.disposed = true; cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); this.controls.dispose(); this.renderer.dispose();
     window.removeEventListener('keydown', this.onWalkKey); window.removeEventListener('keyup', this.onWalkKey); window.removeEventListener('blur', this.onWalkBlur);
-    this.landing?.dispose(); this.helmet.remove(); this.walkHud.remove();
+    this.landing?.dispose(); this.landerMaterials?.dispose(); this.landerEnv?.dispose(); this.helmet.remove(); this.walkHud.remove();
     [...this.siteLabels, ...this.blockLabels, ...this.sitePins.map(p => p.el)].forEach(el => el.remove());
   }
 }
