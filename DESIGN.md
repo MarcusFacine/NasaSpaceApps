@@ -146,7 +146,10 @@ Jost (linha do Futura, a família da placa da Apollo) em tudo o que é texto; Je
 
 - Landing: coluna de até 1240 px, seções com 72–128 px de respiro, mosaico de 12 colunas, faixas arredondadas de borda a borda (recurso, link, chamada final). No celular, tudo vira uma coluna com margem de 16 px.
 - App: a cena ocupa a tela menos a barra de 64 px. Por cima: título e vistas (canto superior esquerdo), coluna da direita (330 px) com a resposta Sol/Terra e, logo abaixo, o gráfico "O que o relevo esconde" (para acompanhar o tempo passando), ferramentas numa fileira logo acima do console, console no rodapé terminando antes da coluna (tempo + ações na primeira linha, data + locais na segunda). A barra do tempo carrega uma trilha por local comparado (assinatura de dados), com o cursor cruzando todas. Os locais comparados aparecem na cena como pino + rótulo com a distância; fora do quadro, o rótulo encosta na borda livre com uma seta. Abaixo de 1180 px, resposta, gráfico e console descem para baixo da cena, nessa ordem.
-- Abaixo da cena ficam só a janela da missão, a altura do observador e o limite dos dados.
+- Tudo na mesma tela: abaixo da cena fica só o rodapé (com o limite dos dados). A altura do observador e a legenda de cores (amarelo = Sol, rosa = Terra) ficam no bloco do título, junto das vistas.
+- Cada caixa sobre a cena tem uma seta para recolher (Sol, Terra, gráfico; o console recolhe a linha de data e locais); a escolha fica salva no navegador.
+- Locais: o nome explora e tira o anterior; o + compara (até três, contando o explorado), o ✓ tira. Passar o mouse num número (chips e trilhas) abre um cartão com mapa polar, o que é o local, distância até o explorado e o estado agora.
+- Resposta: um veredicto só por astro (À vista / Atrás do relevo, com "· rente" quando parte do disco fica escondida), uma frase em linguagem simples e a conta "No céu − Relevo a {direção} = Margem". A melhor janela é o resultado principal do console (horas seguidas, locais e datas) e se recalcula sozinha.
 
 ## Elevation & Depth
 

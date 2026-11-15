@@ -26,6 +26,9 @@
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7.5 5.5h3v13h-3zM13.5 5.5h3v13h-3z" fill="currentColor"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   </svg>
 
@@ -55,7 +58,15 @@
             <button type="button" data-view="surface" aria-pressed="false" data-i18n="view.surface">Superfície</button>
             <button type="button" data-view="globe" aria-pressed="false" data-i18n="view.globe">Globo</button>
           </div>
-          <p class="stage-meta"><span id="lightingBadge"></span><span id="cameraHint"></span></p>
+          <div class="stage-controls">
+            <div class="observer" data-i18n-attr="title:height.note">
+              <label for="height" data-i18n="height.label">Observador</label>
+              <input id="height" type="range" min="2" max="20" step="2" value="2" aria-describedby="heightEffect">
+              <output id="heightOutput" for="height" class="num">2 m</output><span class="observer-unit" data-i18n="height.suffix">do solo</span>
+            </div>
+            <p class="color-key"><span><i class="key-sun"></i><span data-i18n="sun">Sol</span><em data-i18n="key.yellow">· amarelo</em></span><span><i class="key-earth"></i><span data-i18n="earth">Terra</span><em data-i18n="key.pink">· rosa</em></span></p>
+          </div>
+          <p class="stage-meta"><span id="lightingBadge"></span><span id="heightEffect"></span><span id="cameraHint"></span></p>
         </div>
 
         <div class="stage-tools" role="toolbar">
@@ -68,61 +79,77 @@
         </div>
         </div>
 
-        <aside class="answer" aria-live="polite">
+        <aside class="answer">
           <section class="answer-row" id="sunRow">
-            <header class="answer-head"><svg class="glyph"><use href="#i-sun"/></svg><span data-i18n="sun">Sol</span><b id="sunStatus" class="state">—</b></header>
-            <p id="sunMarginText" class="answer-margin">—</p>
-            <dl class="answer-facts">
-              <div><dt data-i18n="answer.elevation">Altura no céu</dt><dd id="sunElevation" class="num">—</dd></div>
-              <div><dt data-i18n="answer.azimuth">Direção</dt><dd id="sunAzimuth" class="num">—</dd></div>
-              <div><dt data-i18n="answer.horizon">Relevo nessa direção</dt><dd id="sunHorizon" class="num">—</dd></div>
-            </dl>
-            <div class="irradiance">
-              <div class="irradiance-head"><span data-i18n="answer.irradiance">Luz num painel</span><strong id="irradiance" class="num">—</strong></div>
-              <div class="meter" aria-hidden="true"><i id="solarMeter"></i></div>
-              <fieldset class="panel-orientation"><legend data-i18n="panel.legend">Painel</legend>
-                <label><input type="radio" name="panel" value="tracking" checked> <span data-i18n="panel.tracking">Segue o Sol</span></label>
-                <label><input type="radio" name="panel" value="horizontal"> <span data-i18n="panel.horizontal">Deitado</span></label>
-              </fieldset>
+            <header class="answer-head"><svg class="glyph"><use href="#i-sun"/></svg><span data-i18n="sun">Sol</span><b id="sunStatus" class="state" aria-live="polite">—</b><button type="button" class="fold" data-fold="sun" aria-expanded="true" aria-controls="sunBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="sunBody">
+              <p id="sunMarginText" class="answer-margin">—</p>
+              <p id="sunVerdict" class="answer-verdict" aria-live="polite"></p>
+              <dl class="answer-calc">
+                <div><dt data-i18n="answer.elevation">No céu</dt><dd id="sunElevation" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">−</span>
+                <div><dt id="sunHorizonLabel">—</dt><dd id="sunHorizon" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">=</span>
+                <div><dt data-i18n="answer.margin">Margem</dt><dd id="sunMarginValue" class="num">—</dd></div>
+              </dl>
+              <div class="irradiance">
+                <div class="irradiance-head"><span data-i18n="answer.irradiance">Luz num painel</span><strong id="irradiance" class="num">—</strong></div>
+                <div class="meter" aria-hidden="true"><i id="solarMeter"></i></div>
+                <p id="irradianceNote" class="answer-note"></p>
+                <fieldset class="panel-orientation"><legend data-i18n="panel.legend">Painel</legend>
+                  <label><input type="radio" name="panel" value="tracking" checked> <span data-i18n="panel.tracking">Segue o Sol</span></label>
+                  <label><input type="radio" name="panel" value="horizontal"> <span data-i18n="panel.horizontal">Na horizontal</span></label>
+                </fieldset>
+              </div>
             </div>
           </section>
           <section class="answer-row" id="earthRow">
-            <header class="answer-head"><svg class="glyph"><use href="#i-earth"/></svg><span data-i18n="earth">Terra</span><b id="earthStatus" class="state">—</b></header>
-            <p id="earthMarginText" class="answer-margin">—</p>
-            <dl class="answer-facts">
-              <div><dt data-i18n="answer.elevation">Altura no céu</dt><dd id="earthElevation" class="num">—</dd></div>
-              <div><dt data-i18n="answer.azimuth">Direção</dt><dd id="earthAzimuth" class="num">—</dd></div>
-              <div><dt data-i18n="answer.distance">Distância</dt><dd id="earthDistance" class="num">—</dd></div>
-            </dl>
-            <p class="answer-note" data-i18n="answer.earthNote"></p>
+            <header class="answer-head"><svg class="glyph"><use href="#i-earth"/></svg><span data-i18n="earth">Terra</span><b id="earthStatus" class="state" aria-live="polite">—</b><button type="button" class="fold" data-fold="earth" aria-expanded="true" aria-controls="earthBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="earthBody">
+              <p id="earthMarginText" class="answer-margin">—</p>
+              <p id="earthVerdict" class="answer-verdict" aria-live="polite"></p>
+              <dl class="answer-calc">
+                <div><dt data-i18n="answer.elevation">No céu</dt><dd id="earthElevation" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">−</span>
+                <div><dt id="earthHorizonLabel">—</dt><dd id="earthHorizon" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">=</span>
+                <div><dt data-i18n="answer.margin">Margem</dt><dd id="earthMarginValue" class="num">—</dd></div>
+              </dl>
+              <p id="earthNote" class="answer-note"></p>
+            </div>
           </section>
-          <section class="answer-row answer-horizon">
-            <header class="horizon-head"><h2 data-i18n="horizon.title">O que o relevo esconde</h2><span data-i18n="horizon.next">próximas 24 h</span></header>
-            <svg id="horizonChart" viewBox="0 0 300 122" role="img" aria-labelledby="horizonTitle horizonDesc"><title id="horizonTitle">Horizon</title><desc id="horizonDesc"></desc></svg>
-            <footer class="chart-foot"><span class="legend"><i class="lg-relief"></i><span data-i18n="legend.relief">Relevo</span></span><span class="legend"><i class="lg-sun"></i><span data-i18n="legend.sun">Sol</span></span><span class="legend"><i class="lg-earth"></i><span data-i18n="legend.earth">Terra</span></span><span class="legend"><i class="lg-now"></i><span data-i18n="legend.now">agora</span></span></footer>
+          <section class="answer-row answer-horizon" id="chartRow">
+            <header class="horizon-head"><h2 data-i18n="horizon.title">O que o relevo esconde</h2><button type="button" class="fold" data-fold="chart" aria-expanded="true" aria-controls="chartBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="chartBody">
+              <svg id="horizonChart" viewBox="0 0 300 120" role="img" aria-labelledby="horizonTitle horizonDesc"><title id="horizonTitle">Horizon</title><desc id="horizonDesc"></desc></svg>
+              <p class="chart-read" data-i18n="horizon.read">Abaixo do relevo: escondido. Traço: a margem.</p>
+            </div>
           </section>
         </aside>
 
         <div class="console">
+          <button type="button" class="console-fold" data-fold="console" aria-expanded="true" aria-controls="consoleMore"><svg><use href="#i-chevron"/></svg></button>
           <div class="console-time">
             <button type="button" id="playButton" class="play" aria-pressed="false" data-i18n-attr="aria-label:time.play"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
             <div class="scrub">
               <div class="scrub-head"><label for="hourSlider" data-i18n="time.scrub">Hora do dia</label>
-                <span class="scrub-legend" aria-hidden="true"><span><i class="k-sun"></i><span data-i18n="sun">Sol</span></span><span><i class="k-earth"></i><span data-i18n="earth">Terra</span></span><span><i class="k-hatch"></i><span data-i18n="strip.behind">atrás do relevo</span></span></span>
+                <span class="scrub-legend" aria-hidden="true"><span><i class="k-cell"><b class="k-sun"></b><b class="k-hatch"></b></i><span data-i18n="strip.sunTop">Sol em cima</span></span><span><i class="k-cell"><b class="k-hatch"></b><b class="k-earth"></b></i><span data-i18n="strip.earthBottom">Terra embaixo</span></span><span><i class="k-hatch"></i><span data-i18n="strip.behind">atrás do relevo</span></span></span>
                 <output id="hourOutput" class="num">12:00 UTC</output></div>
               <div class="scrub-grid">
+                <span></span><span></span><span class="track-best-head" data-i18n="strip.both">Sol+Terra</span>
                 <div id="trackSites" class="track-sites"></div>
                 <div class="scrub-track"><div id="dayStrip" class="day-strip" aria-hidden="true"></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div>
                 <div id="trackBest" class="track-best num"></div>
-                <span></span><div class="scrub-scale num" aria-hidden="true"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div><span class="track-best-label" data-i18n="strip.both">juntos</span>
+                <span></span><div class="scrub-scale num" aria-hidden="true"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div><span class="track-best-label" data-i18n="strip.inDay">no dia</span>
               </div>
             </div>
             <div class="console-actions">
               <button type="button" id="bestWindow" class="btn btn-primary" data-i18n="action.best">Melhor janela</button>
-              <button type="button" id="missionButton" class="btn btn-ghost" disabled data-i18n="action.mission">Simular missão</button>
+              <button type="button" id="missionButton" class="btn btn-ghost" disabled data-i18n="action.mission" data-i18n-attr="title:window.note">Simular missão</button>
+              <button type="button" id="bestDates" class="best-dates" hidden><b id="bestHours" class="num">—</b><span class="best-text"><span id="bestWhat"></span><small id="bestDatesRange" class="num"></small></span></button>
             </div>
           </div>
-          <div class="console-row">
+          <div class="console-row" id="consoleMore">
             <div class="console-date">
               <label for="dateTime" data-i18n="time.label">Data e hora (UTC)</label>
               <div class="date-line">
@@ -131,29 +158,22 @@
               </div>
             </div>
             <div class="console-sites">
-              <span class="console-label" data-i18n="sites.label">Locais</span>
+              <span class="console-label"><span data-i18n="sites.label">Locais de referência</span> <small data-i18n="sites.hintShort">clique no nome para explorar · + para comparar</small></span>
               <div id="siteList" class="site-chips"></div>
             </div>
           </div>
         </div>
       </div>
+      <div id="siteTip" class="site-tip" role="tooltip" hidden></div>
       <div id="appMessage" class="message" role="status" aria-live="polite"><span id="appMessageText"></span><button type="button" id="appMessageClose" data-i18n-attr="aria-label:msg.dismiss"><svg><use href="#i-close"/></svg></button></div>
     </section>
 
-    <section class="analysis">
-      <div class="window-line"><span data-i18n="window.title">Janela da missão</span><b id="chosenWindow" class="num">—</b><small data-i18n="window.note"></small></div>
-      <article class="card settings-card">
-        <label for="height" class="height-label"><span data-i18n="height.label">Altura do observador</span><output id="heightOutput" class="num">2 m</output></label>
-        <input id="height" type="range" min="2" max="20" step="2" value="2">
-        <p class="muted height-note" data-i18n="height.note"></p>
-        <p class="muted limit-note" data-i18n="data.limit"></p>
-      </article>
-    </section>
   </main>
 
   <footer class="foot">
     <div class="foot-brand"><a class="logo" href="../" aria-label="Horisite"><img src="../brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a><span class="tagline" data-i18n="brand.tagline">lunar landing site navigator</span></div>
     <p data-i18n="footer.made"></p>
+    <p data-i18n="data.limit"></p>
     <button type="button" id="footerMethod" class="link-button" data-i18n="nav.method">Dados e método</button>
   </footer>
 
@@ -200,7 +220,7 @@
       <aside class="mission-plan">
         <dl class="mission-where">
           <div><dt data-i18n="mission.destination">Destino</dt><dd><b id="missionSite">—</b><span id="missionCoordinates" class="num">—</span></dd></div>
-          <div><dt id="missionWindowSource">—</dt><dd class="num"><span id="missionWindowStart">—</span><span id="missionWindowEnd">—</span></dd></div>
+          <div><dt id="missionWindowSource">—</dt><dd class="num"><span id="missionWindowStart">—</span><span id="missionWindowEnd">—</span><small class="muted window-note" data-i18n="window.note"></small></dd></div>
         </dl>
         <div id="missionAssessment" class="mission-assessment" role="status"></div>
         <form id="missionForm">

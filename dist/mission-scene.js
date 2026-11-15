@@ -237,11 +237,24 @@ export class MissionScene {
   setMode(mode){this.mode=mode;this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);}
   // Beside the spacecraft in the automatic camera? Coasts open and close that way; their middle is the whole trajectory.
   chasing(sample){return this.mode==='auto'&&(CHASE_PHASES.has(sample.phase)||(['outbound','inbound'].includes(sample.phase)&&(sample.t<.14||sample.t>.86)));}
+  // Between the chase and the whole trajectory, the automatic camera looks out of the spacecraft window through a long
+  // lens: first the body left behind, shrinking, then the destination, growing. Both at their true angular size.
+  coastShot(sample){if(this.mode!=='auto'||!['outbound','inbound'].includes(sample.phase))return null;const t=sample.t;return t>=.14&&t<.42?'back':t>=.62&&t<.86?'ahead':null;}
+  coastPose(sample,shot){
+    const moon=(sample.phase==='outbound')===(shot==='ahead'),centre=moon?space(sample.moon):new THREE.Vector3(),radius=(moon?RADIUS_KM:EARTH_RADIUS)/1000;
+    const at=space(sample.position),distance=at.distanceTo(centre),u=clamp(shot==='back'?(sample.t-.14)/.28:(sample.t-.62)/.24);
+    // The lens is chosen for the share of the frame height the disc fills, so the change in size reads as motion.
+    const fill=shot==='back'?.72-.4*u:.3+.42*u,fov=clamp(THREE.MathUtils.radToDeg(2*Math.asin(Math.min(1,radius/distance)))/fill,.8,60);
+    return {position:at,target:centre,up:Y.clone(),fov,distance,body:moon?'Moon':'Earth'};
+  }
   nearEarth(sample){return EARTH_PHASES.has(sample.phase)||sample.phase==='splashdown'||(sample.phase==='outbound'&&sample.t<.5)||(sample.phase==='inbound'&&sample.t>=.5);}
   update(sample,conditions,reset=false){
     const previous=this.sample;this.sample=sample;this.conditions=conditions;
     const overview=this.mode==='overview',ocean=sample.ocean&&!overview,pad=Boolean(sample.pad)&&!overview,local=sample.local&&!overview&&!ocean,world=!local&&!ocean&&!pad;
     const flight=world&&['descent','ascent'].includes(sample.phase),chase=world&&this.chasing(sample),earthSide=this.nearEarth(sample);
+    const coast=world?this.coastShot(sample):null;this.coastNow=coast?this.coastPose(sample,coast):null;
+    // Trajectory lines belong to the diagrams, not to the views beside or from the spacecraft.
+    const lines=!(flight||chase||coast);
     this.world.visible=world;this.local.visible=local;this.oceanGroup.visible=ocean;this.pad.group.visible=pad;this.sky.visible=ocean||pad;if(this.stars)this.stars.visible=world;
     this.scene.fog=ocean||pad?this.oceanFog:null;
     const sceneName=pad?'pad':ocean?'ocean':local?'local':'world';
@@ -250,7 +263,8 @@ export class MissionScene {
     if(envName!==this.envName||(!world&&this.envLive)){this.envName=envName;this.envLive=false;this.materials.setEnvironment(world&&this.reflection?this.reflection.texture:this.envs[envName].texture);this.envLive=world&&Boolean(this.reflection);if(world)this.reflectionAge=1e9;}
     this.moon.position.copy(space(sample.moon));
     this.parkingLines[1].position.copy(this.moon.position);this.parkingLines[2].position.copy(this.moon.position);
-    this.parkingLines[1].visible=+sample.date<=this.plan.departure;this.parkingLines[2].visible=+sample.date>=this.plan.departure;
+    for(const line of this.pathLines)line.visible=lines;
+    this.parkingLines[1].visible=lines&&+sample.date<=this.plan.departure;this.parkingLines[2].visible=lines&&+sample.date>=this.plan.departure;
     const f=sample.frame,matrix=new THREE.Matrix4().makeBasis(v(f.x),v(f.z),v(f.y).negate());this.moon.quaternion.setFromRotationMatrix(matrix);
     // The LOLA mesh rides on the globe at the destination: local east, up and south become world axes.
     {
@@ -262,7 +276,7 @@ export class MissionScene {
     // Vehicle: the stage, module or capsule flying at this moment of the Apollo profile.
     this.vehicle.set(sample.config);this.engineLevel=sample.throttle||0;this.vehicle.engine(this.engineLevel);this.vehicle.plasma(sample.plasma||0);
     const attitude=v(sample.attitude||sample.direction).normalize();
-    this.vehicle.group.position.copy(space(sample.position));
+    this.vehicle.group.position.copy(space(sample.position));this.vehicle.group.visible=!coast;
     {
       // Roll is held against the nearer body (local vertical), as a spacecraft holds attitude in orbit:
       // without it the model would turn about its own axis as the velocity vector sweeps around.
@@ -319,15 +333,16 @@ export class MissionScene {
     }
     this.renderer.toneMappingExposure=local?.92:1;
     // Camera.
-    const orbit=this.orbitForPhase(sample),key=pad?'pad':ocean?'ocean':local?'local':overview?'overview':this.mode==='follow'?'follow':chase?'chase':sample.phase;
+    const orbit=this.orbitForPhase(sample),key=pad?'pad':ocean?'ocean':local?'local':overview?'overview':this.mode==='follow'?'follow':coast?`coast-${coast}`:chase?'chase':sample.phase;
     const padTarget=pad?new THREE.Vector3(0,PAD_DECK+sample.altitudeKm+.055,0):null;this.padTarget=padTarget;
     const target=pad?padTarget:ocean?this.oceanVehicle.group.position.clone().add(new THREE.Vector3(0,.021,0)):local?lv.group.position.clone().add(new THREE.Vector3(0,.004,0)):null;
     if(reset||key!==this.cameraKey){
       if(reset)this.chaseD=0;
-      const blend=!reset&&Boolean(this.cameraKey)&&!ocean&&!pad,from={position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()};
+      // The window shots start and end on a cut, like a film.
+      const blend=!reset&&Boolean(this.cameraKey)&&!ocean&&!pad&&!coast&&!this.cameraKey.startsWith('coast'),from={position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()};
       if(blend&&!this.lastLocal&&this.lastPosition&&previous){const oldOrbit=this.orbitForPhase(previous),delta=oldOrbit&&this.lastFollow==='body'?(oldOrbit.body==='Moon'?space(sample.moon.map((x,i)=>x-previous.moon[i])):new THREE.Vector3()):space(sample.position.map((x,i)=>x-previous.position[i]));from.position.add(delta);from.target.add(delta);}
       if(blend&&local!==this.lastLocal){from.position=this.convertView(from.position,sample,local);from.target=this.convertView(from.target,sample,local);from.up=this.convertView(from.up,sample,local,true).normalize();}
-      this.cameraKey=key;this.setCamera(sample,local,ocean,target,pad,chase);
+      this.cameraKey=key;this.setCamera(sample,local,ocean,target,pad,chase,this.coastNow);
       this.manualCamera=false;this.cameraTween=null;
       if(blend){this.cameraTween={from,to:{position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()},start:performance.now(),local,duration:1800};this.animateCamera(performance.now());}
     }
@@ -336,37 +351,37 @@ export class MissionScene {
       if(follow){const delta=follow.clone().sub(this.lastPosition);if(!pad)this.camera.position.add(delta);this.controls.target.add(delta);if(this.cameraTween)for(const pose of [this.cameraTween.from,this.cameraTween.to]){pose.position.add(delta);pose.target.add(delta);}
         if(ocean&&this.camera.position.y<.003)this.camera.position.y=.003;this.controls.update();this.lastPosition=follow.clone();}
     }
-    if(world&&this.mode==='auto'&&(flight||chase)&&!this.manualCamera){
-      const pose=flight?this.flightCameraPose(sample):this.chasePose(sample);
+    if(world&&this.mode==='auto'&&(flight||chase||coast)&&!this.manualCamera){
+      const pose=flight?this.flightCameraPose(sample):coast?this.coastNow:this.chasePose(sample);
       if(this.cameraTween)this.cameraTween.to=pose;
       else{this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.controls.update();}
     }
     // On the pad the camera stays on the ground and follows the rocket with a longer and longer lens.
-    const fov=pad&&!this.manualCamera?clamp(THREE.MathUtils.radToDeg(2*Math.atan(.27/this.camera.position.distanceTo(padTarget))),6,45):45;
+    const fov=pad&&!this.manualCamera?clamp(THREE.MathUtils.radToDeg(2*Math.atan(.27/this.camera.position.distanceTo(padTarget))),6,45):coast?this.coastNow.fov:45;
     if(Math.abs(this.camera.fov-fov)>.01)this.camera.fov=fov;
-    this.lastLocal=local;this.lastScene=sceneName;this.closeView=flight||chase;
+    this.lastLocal=local;this.lastScene=sceneName;this.closeView=flight||chase||Boolean(coast);
     this.trail.geometry.dispose();let points=sample.phase==='outbound'?this.plan.outboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):sample.phase==='inbound'?this.plan.inboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):[];
     if(sample.orbit){
       const orbit=sample.orbit,span=sample.orbitAt-sample.orbitFrom,count=Math.max(2,Math.min(600,Math.ceil(192*span/(orbit.periodSeconds*1000))));
       points=Array.from({length:count},(_,i)=>{const relative=parkingState(orbit,sample.orbitFrom+span*i/(count-1)).relative;return orbit.body==='Earth'?relative:relative.map((x,k)=>x+sample.moon[k]);});
     }
-    this.trail.geometry=new THREE.BufferGeometry().setFromPoints(points.map(space));this.trail.visible=points.length>1;
+    this.trail.geometry=new THREE.BufferGeometry().setFromPoints(points.map(space));this.trail.visible=lines&&points.length>1;
     // Beside the spacecraft everything is true size; in the wide views the vehicle is enlarged to stay visible.
     const close=this.mode==='follow',ref=this.vehicle.height,trueSize=flight||chase||Boolean(this.cameraTween);
     const size=this.camera.position.distanceTo(this.vehicle.group.position)*(close?.055:.022)/ref,scale=Math.max(trueSize?.001:4*.014/ref,trueSize?0:size);this.vehicle.group.scale.setScalar(scale);
     // Spent stages fall behind, slowly tumbling.
     for(const [kind,phase,from,to,gap,drift] of SPENT){
-      const g=this.spent[kind],on=world&&sample.phase===phase&&sample.t>=from&&sample.t<=to;g.visible=on;if(!on)continue;
+      const g=this.spent[kind],on=world&&!coast&&sample.phase===phase&&sample.t>=from&&sample.t<=to;g.visible=on;if(!on)continue;
       const k=(sample.t-from)/(to-from),away=(gap+drift*k)*1e-6*(scale/.001);
       g.position.copy(this.vehicle.group.position).addScaledVector(attitude,-away);g.scale.setScalar(scale);
       g.quaternion.copy(this.vehicle.group.quaternion).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(k*.9,k*.35,0)));
     }
     this.dirty=true;
     const height=Math.max(0,sample.altitudeKm)*.001;
-    this.nearA=flight||chase?clamp(height*.25,1e-5,.02):Math.max(1e-8,Math.min(.0005,this.camera.position.distanceTo(this.controls.target)*.02));
+    this.nearA=flight||chase?clamp(height*.25,1e-5,.02):coast?Math.max(.01,this.coastNow.distance*.02):Math.max(1e-8,Math.min(.0005,this.camera.position.distanceTo(this.controls.target)*.02));
     this.camera.near=local||ocean||pad?.0001:this.nearA;this.camera.far=ocean||pad?200:10000;this.camera.updateProjectionMatrix();
     const night=sky&&sky.day<.15;
-    document.getElementById('missionScale').textContent=(pad?this.t('msc.pad'):ocean?this.t('msc.ocean'):local?this.t(sample.config==='ascent'?'msc.localAscent':'msc.local'):flight?this.t('msc.approach'):chase?this.t(earthSide?'msc.chaseEarth':'msc.chaseMoon'):sample.orbit?this.t('msc.orbit'):this.t('msc.space'))+(dark?` · ${this.t('light.reading')}`:'')+(night?` · ${this.t('msc.night')}`:'');
+    document.getElementById('missionScale').textContent=(pad?this.t('msc.pad'):ocean?this.t('msc.ocean'):local?this.t(sample.config==='ascent'?'msc.localAscent':'msc.local'):flight?this.t('msc.approach'):coast?this.t(`msc.${coast}${this.coastNow.body}`):chase?this.t(earthSide?'msc.chaseEarth':'msc.chaseMoon'):sample.orbit?this.t('msc.orbit'):this.t('msc.space'))+(dark?` · ${this.t('light.reading')}`:'')+(night?` · ${this.t('msc.night')}`:'');
   }
   orbitForPhase(sample){
     if(['earthOrbit','tli'].includes(sample.phase))return this.plan.earthParking;
@@ -386,8 +401,11 @@ export class MissionScene {
     const inertial=toInertial(body,sample.frame);return direction?v(inertial):space(inertial.map((x,i)=>x+sample.moon[i]));
   }
   flightCameraPose(sample){
-    const view=this.conditions?sideLitView(this.conditions.sun.direction):LOCAL_VIEW;
-    const target=this.vehicle.group.position.clone(),offset=this.convertView(view,sample,false,true).normalize().multiplyScalar((.055+sample.altitudeKm*.005)/1000);
+    const view=(this.conditions?sideLitView(this.conditions.sun.direction):LOCAL_VIEW).clone();
+    // High up, the camera rises above the lander and looks down, so the ground fills the background; the distance
+    // stays short enough for a 7 m lander to read.
+    const across=Math.hypot(view.x,view.z),elevation=THREE.MathUtils.degToRad(9.4+Math.min(30,sample.altitudeKm*3));view.y=across*Math.tan(elevation);
+    const target=this.vehicle.group.position.clone(),offset=this.convertView(view,sample,false,true).normalize().multiplyScalar((.04+Math.min(.04,sample.altitudeKm*.004))/1000);
     return {position:target.clone().add(offset),target,up:this.convertView(Y,sample,false,true).normalize()};
   }
   // Beside and a little above the spacecraft, the horizon of the nearer body level behind it; drifts slowly around.
@@ -415,12 +433,13 @@ export class MissionScene {
     this.controls.maxDistance=Math.max(tween.local?40:1500,distance*1.1);this.camera.near=tween.local?.0001:Math.max(1e-8,Math.min(.0005,distance*.02));this.camera.updateProjectionMatrix();this.controls.update();this.dirty=true;
     if(t===1)this.cameraTween=null;
   }
-  setCamera(sample,local,ocean=false,target=null,pad=false,chase=false){
+  setCamera(sample,local,ocean=false,target=null,pad=false,chase=false,coast=null){
     const ground=local||ocean||pad,flight=['descent','ascent'].includes(sample.phase);
     this.camera.up.copy(Y);this.camera.near=ground?.0001:.0005;this.camera.far=ocean||pad?200:10000;this.camera.updateProjectionMatrix();this.controls.minDistance=ground?.012:flight||chase?.000008:.02;this.controls.maxDistance=local?40:ocean||pad?20:1500;this.controls.enablePan=true;this.controls.maxPolarAngle=ground?Math.PI*.49:Math.PI-.01;
     if(pad){const at=target||new THREE.Vector3(0,PAD_DECK+.055,0);this.controls.target.copy(at);this.camera.position.copy(PAD_CAMERA);this.lastPosition=at.clone();}
     else if(ocean){const at=target||new THREE.Vector3();this.controls.target.copy(at);this.camera.position.copy(at).add(new THREE.Vector3(.064,-.007,.09));this.camera.position.y=Math.max(.003,this.camera.position.y);this.lastPosition=at.clone();}
     else if(local){const at=target||this.localVehicle.group.position.clone().add(new THREE.Vector3(0,.004,0));this.controls.target.copy(at);this.camera.position.copy(at).add(this.conditions?sideLitView(this.conditions.sun.direction):LOCAL_VIEW);this.lastPosition=at.clone();}
+    else if(this.mode==='auto'&&coast){this.camera.position.copy(coast.position);this.controls.target.copy(coast.target);this.camera.up.copy(coast.up);this.lastPosition=null;}
     else if(this.mode==='auto'&&chase){
       this.chaseD=0;const pose=this.chasePose(sample);this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.lastPosition=pose.target.clone();
     }

@@ -101,7 +101,7 @@ export class MissionUI {
     $('#missionAltitude').textContent = `${s.altitudeKm < 1 ? `${number(s.altitudeKm * 1000)} m` : `${number(Math.round(s.altitudeKm))} km`} ${t(`alt.${s.altitudeReference}`)}`;
     $('#missionConditions').textContent = t('cond', { sun: t(this.conditions.sun.available ? 'cond.visible' : 'cond.blocked'), earth: t(this.conditions.earth.available ? 'cond.visible' : 'cond.blocked') });
     $('#missionOrbitStatus').textContent = s.orbit
-      ? t('ms.orbit', { turns: number(s.orbitTurns, 2), total: number(s.orbit.turns, 2), speed: number(s.orbit.speedKmS, 2) }) + (s.orbit.turns > 2 ? ` · ${t('ms.oneLap')}` : '')
+      ? t('ms.orbit', { turns: number(s.orbitTurns, 2), total: number(s.orbit.turns, 2), speed: number(s.orbit.speedKmS, 2) }) + (s.orbit.turns > 2 ? ` · ${t(s.phase === 'lunarOrbit' ? 'ms.finalArc' : 'ms.oneLap')}` : '')
       : s.engine ? t(['tli', 'loi', 'tei'].includes(s.phase) ? 'ms.burn' : 'ms.thrust') : t(s.phase === 'surface' ? 'ms.surface' : 'ms.flight');
     $('#missionProgress').value = Math.round(this.progress * 1000);
     document.querySelectorAll('[data-mission-phase]').forEach(b => {

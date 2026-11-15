@@ -51,7 +51,7 @@
         <ol class="steps">
           <li><b>Abra o Horisite.</b> Use o botão <b>Abrir o Horisite</b> no alto desta página. Na primeira visita, o app abre sozinho na melhor janela dos próximos 30 dias; para seguir este guia, troque a data no passo 2.</li>
           <li><b>Digite 02/10/2026, 12:00 no campo de data.</b> O campo usa <b>UTC</b>, mesmo que seu computador esteja em outro fuso. Não use <b>Agora</b> para repetir estes exemplos.</li>
-          <li><b>Marque Shackleton (1) e Malapert (2).</b> O círculo numerado escolhe os locais da comparação; o nome escolhe o local em exploração. Toque no nome <b>Malapert</b>.</li>
+          <li><b>Clique no nome Malapert (2) e no + de Shackleton (1).</b> O nome escolhe o local em exploração e tira o anterior; o + junta outro local à comparação, e o ✓ tira. Passe o mouse sobre um número para ver onde fica o local e o que ele é.</li>
           <li><b>Deixe a altura em 2 m e o painel em “Segue o Sol”.</b> A altura é medida acima do solo do local, não é a altitude da região. A opção do painel fica no quadro do Sol.</li>
         </ol>
         <figure><a href="tutorial/pt/01-comparar.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/01-comparar.jpg" width="1440" height="900" alt="Horisite em 2 de outubro de 2026 às 12:00 UTC, com Shackleton e Malapert marcados e Malapert em exploração."></a><figcaption>Tela real com os parâmetros deste passo. Clique em qualquer captura para abri-la maior.</figcaption></figure>
@@ -81,14 +81,14 @@
           <tr><th scope="row">Luz num painel</th><td>≈ 1.357 W/m²</td><td>0 W/m²</td></tr>
           <tr><th scope="row">Sol e Terra neste instante</th><td class="positive">Atende no modelo</td><td class="negative">Não atende: falta Sol direto</td></tr>
         </tbody></table></div>
-        <aside class="notice"><b>Experimente o painel deitado.</b> Em Malapert, troque “Segue o Sol” por “Deitado”: a luz passa de cerca de 1.357 para <b>48 W/m²</b>, porque o Sol está baixo (+2,01°). A visibilidade não muda. Volte para “Segue o Sol” para seguir o guia.</aside>
+        <aside class="notice"><b>Experimente o painel na horizontal.</b> Em Malapert, troque “Segue o Sol” por “Na horizontal”: a luz passa de cerca de 1.357 para <b>48 W/m²</b>, porque o Sol está baixo (+2,01°). A visibilidade não muda. Volte para “Segue o Sol” para seguir o guia.</aside>
         <p><b>O que dá para concluir:</b> Malapert tem luz e visada ao mesmo tempo nesse instante do modelo. <b>O que não dá:</b> que os painéis vão alimentar a missão ou que o rádio vai funcionar. W/m² mede luz por área, não potência elétrica.</p>
       </section>
 
       <section id="janela">
         <div class="section-title"><span>04</span><h2>Busque uma janela comum aos locais</h2></div>
         <p>Na <b>barra do tempo</b>, cada local comparado tem uma trilha com as 24 horas do dia escolhido (UTC): em cima, amarelo é o Sol à vista; embaixo, rosa é a Terra à vista; hachura é atrás do relevo. O cursor do tempo cruza todas as trilhas, o número à esquerda leva a explorar aquele local e o valor à direita é o maior trecho do dia com Sol e Terra juntos. Na cena, os outros locais comparados aparecem com um rótulo de nome e distância; quando ficam fora do quadro, o rótulo encosta na borda e uma seta aponta a direção.</p>
-        <p>O número “maior trecho com os dois” vale para cada local <b>separadamente</b> nessas 24 horas. Para a janela comum da comparação, use <b>Melhor janela</b>.</p>
+        <p>A coluna “Sol+Terra” mostra, para cada local <b>separadamente</b>, o maior trecho do dia com os dois. A janela comum da comparação aparece no cartão ao lado de <b>Melhor janela</b> (horas seguidas e datas) e é recalculada sozinha quando você muda os locais ou a altura do observador.</p>
         <ol class="steps">
           <li>Volte a <b>02/10/2026, 12:00 UTC</b>, com só Shackleton e Malapert marcados e altura de 2 m.</li>
           <li>Clique em <b>Melhor janela</b>. O app examina os próximos 30 dias, hora a hora, procurando o maior intervalo contínuo com o centro do Sol e o da Terra acima do relevo em <b>todos</b> os locais marcados.</li>
@@ -97,7 +97,7 @@
         <figure><a href="tutorial/pt/04-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/04-janela.jpg" width="1440" height="900" loading="lazy" alt="Resultado da busca para Shackleton e Malapert: janela de 136 horas entre 23 e 28 de outubro de 2026."></a><figcaption>A janela calculada passa a ser a referência do pouso. Mudar a data, os locais ou a altura invalida essa referência: busque de novo.</figcaption></figure>
         <aside class="notice caution"><b>Atenção ao início da janela.</b> Em Shackleton, às 00:00 de 23/10, o Sol está só <b>0,04°</b> acima do relevo e o estado é <b>No limite</b>. O disco solar ainda está em parte atrás do relevo (cerca de 804 W/m² no painel que segue o Sol). O critério é o centro à vista, sem margem de segurança, e as bordas da janela não são calculadas com precisão de minutos.</aside>
         <h3>Exemplo sem janela comum</h3>
-        <p>Volte a 02/10/2026 às 12:00 UTC e marque <b>Shackleton, Malapert e Haworth</b>. Clique em Melhor janela: não há intervalo comum nesses 30 dias.</p>
+        <p>Volte a 02/10/2026 às 12:00 UTC, explore <b>Shackleton</b> e use o + em <b>Malapert e Haworth</b>. O cartão da janela avisa que não há hora com Sol e Terra juntos nos três nesses 30 dias.</p>
         <figure><a href="tutorial/pt/03-sem-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/03-sem-janela.jpg" width="1440" height="900" loading="lazy" alt="O app avisa que não há intervalo comum de Sol e Terra nos próximos 30 dias para Shackleton, Malapert e Haworth."></a><figcaption>“Nenhum intervalo” vale para esses pontos, parâmetros, período e amostragem. Não quer dizer que a região inteira seja inviável.</figcaption></figure>
         <p><b>Como continuar:</b> compare menos locais ou outra data e calcule de novo. Sem janela calculada, a simulação usa uma janela <b>manual</b> a partir da data escolhida, que não é otimizada nem favorável.</p>
       </section>
@@ -106,7 +106,7 @@
         <div class="section-title"><span>05</span><h2>Da Terra à Lua, e de volta</h2></div>
         <ol class="steps">
           <li>Repita a janela de 136 h do passo 04 e toque no nome <b>Shackleton</b>.</li>
-          <li>Abra <b>Simular missão</b>. Confira o destino e a indicação <b>Janela calculada</b>. O local em exploração precisa estar na comparação para receber essa janela.</li>
+          <li>Abra <b>Simular missão</b>. Confira o destino e a indicação <b>Janela calculada</b>.</li>
           <li>As durações já vêm com os números da <b>Apollo 11</b>: <b>103 h de ida, 22 h no solo e 71 h de volta</b>. Se mudar algum valor, clique em <b>Aplicar durações</b>.</li>
           <li>Clique em <b>Reproduzir</b> ou toque numa etapa da trilha sobre a barra. 1×, 2× e 4× mudam só a velocidade da animação.</li>
         </ol>
@@ -120,7 +120,7 @@
           <figure><a href="tutorial/pt/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/06-trajetoria.jpg" width="1440" height="900" loading="lazy" alt="Missão na ida à Lua com a câmera Trajetória inteira."></a><figcaption><b>Trajetória inteira:</b> a ida e a volta no espaço, com distâncias reais. A nave aparece ampliada.</figcaption></figure>
           <figure><a href="tutorial/pt/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/pt/05-missao.jpg" width="1440" height="900" loading="lazy" alt="Módulo lunar no solo de Shackleton, com a sombra longa do Sol rasante."></a><figcaption><b>No solo:</b> o módulo lunar em escala real (7 m) sobre o relevo LOLA; crateras pequenas e pedras são ilustrativas.</figcaption></figure>
         </div>
-        <p>A missão segue o perfil das Apollo que pousaram na Lua. O Saturn V sai do Kennedy e solta os estágios no caminho; a nave dá 1,5 volta numa órbita de 185 km (cerca de 88 min por volta) e segue para a Lua. A nave-mãe e o módulo lunar dão 13 voltas a 110 km (cerca de 119 min); o módulo desce e pousa. Na decolagem, só o estágio de subida volta à órbita, e a base fica no solo. Depois de 5 voltas, a nave-mãe volta para a Terra; só a cápsula reentra, abre os paraquedas e amerissa no Pacífico, de dia, como os resgates eram planejados. Na câmera <b>Automática</b>, a missão começa na plataforma 39A, com o Saturn V em tamanho real, e segue ao lado da nave em escala real, com a Terra ou a Lua ao fundo; no meio das viagens ela mostra a trajetória inteira. O módulo lunar e a nave-mãe são os modelos 3D oficiais da NASA. As órbitas da Lua aparecem como uma volta, enquanto o relógio e o contador correm as 13 e as 5 voltas da Apollo 11. A reprodução completa dura 159 s em 1×; descida e subida têm 20 s cada, perto do solo.</p>
+        <p>A missão segue o perfil das Apollo que pousaram na Lua. O Saturn V sai do Kennedy e solta os estágios no caminho; a nave dá 1,5 volta numa órbita de 185 km (cerca de 88 min por volta) e segue para a Lua. A nave-mãe e o módulo lunar dão 13 voltas a 110 km (cerca de 119 min); o módulo desce e pousa. Na decolagem, só o estágio de subida volta à órbita, e a base fica no solo. Depois de 5 voltas, a nave-mãe volta para a Terra; só a cápsula reentra, abre os paraquedas e amerissa no Pacífico, de dia, como os resgates eram planejados. Na câmera <b>Automática</b>, a missão começa na plataforma 39A, com o Saturn V em tamanho real, e segue ao lado da nave em escala real, com a Terra ou a Lua ao fundo; no meio das viagens ela mostra a trajetória inteira. O módulo lunar e a nave-mãe são os modelos 3D oficiais da NASA. Na chegada à Lua a cena vai direto ao ponto de descida e, na saída, mostra uma volta; o relógio e o contador correm as 13 e as 5 voltas da Apollo 11. A reprodução completa dura 154 s em 1×; descida e subida têm 20 s cada, perto do solo.</p>
         <aside class="notice"><b>Leia o relógio UTC.</b> O tempo é comprimido por etapa. “No destino” descreve o ponto lunar no instante mostrado, não o voo. Se o destino estiver na sombra, a cena liga a luz de leitura e avisa.</aside>
       </section>
 
@@ -128,7 +128,7 @@
         <div class="section-title"><span>06</span><h2>O que não dá para fazer ou concluir</h2></div>
         <h3>Entradas que o app recusa</h3>
         <div class="table-wrap"><table><thead><tr><th scope="col">Tentativa</th><th scope="col">Por que não funciona</th><th scope="col">Como corrigir</th></tr></thead><tbody>
-          <tr><td>Comparar quatro locais ou nenhum</td><td>A comparação aceita de 1 a 3 pontos.</td><td>Escolha até três e mantenha pelo menos um.</td></tr>
+          <tr><td>Comparar quatro locais</td><td>A comparação aceita até 3 pontos, contando o explorado.</td><td>Tire um com o ✓ antes de incluir outro.</td></tr>
           <tr><td>Data em 1999 ou 2051</td><td>A faixa do app é 2000–2050.</td><td>Use uma data válida; o cronograma da missão também precisa caber nela.</td></tr>
           <tr><td>Ficar 137 h numa janela de 136 h</td><td>A permanência passa da janela.</td><td>Use no máximo 136 h; as condições ainda precisam ser avaliadas.</td></tr>
           <tr><td>Ficar 48 h numa janela manual de 24 h</td><td>A permanência passa do intervalo manual.</td><td>Ajuste a janela ou a permanência; janela maior não garante luz e visada.</td></tr>
@@ -152,7 +152,7 @@
 
       <section id="checklist">
         <div class="section-title"><span>08</span><h2>Antes de compartilhar uma comparação</h2></div>
-        <ul class="checklist"><li>Anote data e hora <b>UTC</b>, locais e coordenadas.</li><li>Anote a altura do observador e a opção do painel.</li><li>Leia as duas folgas e marque os estados “No limite”.</li><li>Diga se a janela é manual ou calculada, e que o passo é de 1 hora.</li><li>Anote ida, permanência e volta se usar a simulação.</li><li>Descreva o resultado como exploração do modelo, não como aprovação de missão.</li></ul>
+        <ul class="checklist"><li>Anote data e hora <b>UTC</b>, locais e coordenadas.</li><li>Anote a altura do observador e a opção do painel.</li><li>Leia as duas margens e marque os estados “rente”.</li><li>Diga se a janela é manual ou calculada, e que o passo é de 1 hora.</li><li>Anote ida, permanência e volta se usar a simulação.</li><li>Descreva o resultado como exploração do modelo, não como aprovação de missão.</li></ul>
         <p>Para os dados e as aproximações, abra <b>Dados e método</b> no app ou <b>O que é real e o que é ilustrativo</b> na missão. As imagens deste guia são capturas reais do app com os parâmetros indicados.</p>
         <p class="guide-end"><a class="btn btn-primary" href="app/">Abrir o Horisite</a></p>
         <p class="guide-foot">Horisite · tutorial educativo · exemplos conferidos no próprio modelo.<br>Relevo NASA GSFC PGDA · LRO/LOLA (Barker et al. 2023) · efemérides Astronomy Engine · 3D Three.js.</p>
@@ -186,7 +186,7 @@
         <ol class="steps">
           <li><b>Open Horisite.</b> Use <b>Open Horisite</b> at the top of this page. On a first visit the app opens by itself at the best window in the next 30 days; to follow this guide, change the date in step 2.</li>
           <li><b>Type 02/10/2026, 12:00 in the date field</b> (2 October 2026). The field is in <b>UTC</b>, whatever your computer’s time zone. Do not use <b>Now</b> to repeat these examples.</li>
-          <li><b>Tick Shackleton (1) and Malapert (2).</b> The numbered circle picks the compared sites; the name picks the site you explore. Tap <b>Malapert</b>.</li>
+          <li><b>Click the name Malapert (2) and the + on Shackleton (1).</b> The name picks the site you explore and drops the previous one; the + adds another site to the comparison, and the ✓ removes it. Hover a number to see where the site is and what it is.</li>
           <li><b>Keep the height at 2 m and the panel on “Tracks the Sun”.</b> Height is above the local ground, not the altitude of the region. The panel option is in the Sun box.</li>
         </ol>
         <figure><a href="tutorial/en/01-comparar.jpg" target="_blank" rel="noopener"><img src="tutorial/en/01-comparar.jpg" width="1440" height="900" alt="Horisite on 2 October 2026 at 12:00 UTC, with Shackleton and Malapert ticked and Malapert in focus."></a><figcaption>The real screen with this step’s settings. Click any capture to open it larger.</figcaption></figure>
@@ -216,14 +216,14 @@
           <tr><th scope="row">Light on a panel</th><td>≈ 1,357 W/m²</td><td>0 W/m²</td></tr>
           <tr><th scope="row">Sun and Earth at this moment</th><td class="positive">Meets it in the model</td><td class="negative">Fails: no direct sunlight</td></tr>
         </tbody></table></div>
-        <aside class="notice"><b>Try a flat panel.</b> At Malapert, switch “Tracks the Sun” to “Flat”: the light drops from about 1,357 to <b>48 W/m²</b> because the Sun is low (+2.01°). Visibility does not change. Switch back to follow the guide.</aside>
+        <aside class="notice"><b>Try a horizontal panel.</b> At Malapert, switch “Tracks the Sun” to “Horizontal”: the light drops from about 1,357 to <b>48 W/m²</b> because the Sun is low (+2.01°). Visibility does not change. Switch back to follow the guide.</aside>
         <p><b>What you can conclude:</b> Malapert has light and line of sight at the same moment in the model. <b>What you cannot:</b> that panels will power the mission or that the radio will work. W/m² measures light per area, not electrical power.</p>
       </section>
 
       <section id="window">
         <div class="section-title"><span>04</span><h2>Search for a window common to the sites</h2></div>
         <p>In the <b>time bar</b>, every compared site has a track with the 24 hours of the chosen day (UTC): on top, yellow is the Sun in view; below, pink is Earth in view; hatching means behind the relief. The time cursor crosses all tracks, the number on the left explores that site and the value on the right is the longest stretch of the day with Sun and Earth together. In the scene, the other compared sites carry a label with name and distance; when they fall outside the picture the label sticks to the edge and an arrow points the way.</p>
-        <p>“Longest stretch with both” applies to each site <b>separately</b> in those 24 hours. For the common window, use <b>Best window</b>.</p>
+        <p>The “Sun+Earth” column shows, for each site <b>separately</b>, the longest stretch of the day with both. The common window of the comparison sits in the card next to <b>Best window</b> (hours in a row and dates) and is recalculated by itself when you change the sites or the observer height.</p>
         <ol class="steps">
           <li>Go back to <b>2 October 2026, 12:00 UTC</b>, with only Shackleton and Malapert ticked and a 2 m height.</li>
           <li>Click <b>Best window</b>. The app checks the next 30 days hour by hour, looking for the longest continuous interval with the centres of the Sun and Earth above the relief at <b>all</b> ticked sites.</li>
@@ -232,7 +232,7 @@
         <figure><a href="tutorial/en/04-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/en/04-janela.jpg" width="1440" height="900" loading="lazy" alt="Search result for Shackleton and Malapert: a 136-hour window between 23 and 28 October 2026."></a><figcaption>The calculated window becomes the landing reference. Changing the date, sites or height invalidates it: search again.</figcaption></figure>
         <aside class="notice caution"><b>Mind the start of the window.</b> At Shackleton, at 00:00 on 23 October, the Sun is only <b>0.04°</b> above the relief and the state is <b>On the edge</b>. Part of the solar disc is still behind the relief (about 804 W/m² on a tracking panel). The rule is the centre in view, with no safety margin, and the window edges are not resolved to the minute.</aside>
         <h3>An example with no common window</h3>
-        <p>Go back to 2 October 2026 at 12:00 UTC and tick <b>Shackleton, Malapert and Haworth</b>. Click Best window: there is no common interval in those 30 days.</p>
+        <p>Go back to 2 October 2026 at 12:00 UTC, explore <b>Shackleton</b> and use the + on <b>Malapert and Haworth</b>. The window card says there is no hour with Sun and Earth together at all three in those 30 days.</p>
         <figure><a href="tutorial/en/03-sem-janela.jpg" target="_blank" rel="noopener"><img src="tutorial/en/03-sem-janela.jpg" width="1440" height="900" loading="lazy" alt="The app reports no common Sun and Earth interval in the next 30 days for Shackleton, Malapert and Haworth."></a><figcaption>“No interval” holds for these points, settings, period and sampling. It does not mean the whole region is unusable.</figcaption></figure>
         <p><b>Next step:</b> compare fewer sites or another date and calculate again. Without a calculated window, the simulation uses a <b>manual</b> window from the chosen date, which is neither optimised nor favourable.</p>
       </section>
@@ -241,7 +241,7 @@
         <div class="section-title"><span>05</span><h2>From Earth to the Moon, and back</h2></div>
         <ol class="steps">
           <li>Repeat the 136 h window of step 04 and tap <b>Shackleton</b>.</li>
-          <li>Open <b>Simulate mission</b>. Check the destination and <b>Calculated window</b>. The explored site must be in the comparison to get that window.</li>
+          <li>Open <b>Simulate mission</b>. Check the destination and <b>Calculated window</b>.</li>
           <li>Durations come preset with <b>Apollo 11</b> numbers: <b>103 h out, 22 h on the surface and 71 h back</b>. If you change any of them, click <b>Apply durations</b>.</li>
           <li>Click <b>Play</b> or tap a phase on the track above the bar. 1×, 2× and 4× change only the animation speed.</li>
         </ol>
@@ -255,7 +255,7 @@
           <figure><a href="tutorial/en/06-trajetoria.jpg" target="_blank" rel="noopener"><img src="tutorial/en/06-trajetoria.jpg" width="1440" height="900" loading="lazy" alt="The mission coasting to the Moon with the Whole trajectory camera."></a><figcaption><b>Whole trajectory:</b> out and back in space, at true distances. The spacecraft is enlarged.</figcaption></figure>
           <figure><a href="tutorial/en/05-missao.jpg" target="_blank" rel="noopener"><img src="tutorial/en/05-missao.jpg" width="1440" height="900" loading="lazy" alt="The lunar module on the ground at Shackleton, with the long shadow of a grazing Sun."></a><figcaption><b>On the surface:</b> the lunar module at true size (7 m) on the LOLA relief; small craters and rocks are illustrative.</figcaption></figure>
         </div>
-        <p>The mission follows the profile of the Apollo flights that landed on the Moon. The Saturn V leaves Kennedy and drops its stages on the way; the spacecraft makes 1.5 orbits at 185 km (about 88 min each) and heads for the Moon. The command ship and the lunar module make 13 orbits at 110 km (about 119 min); the module descends and lands. At liftoff only the ascent stage returns to orbit and the descent stage stays on the ground. After 5 orbits the command ship heads home; only the capsule re-enters, opens its parachutes and splashes down in the Pacific in daylight, as recoveries were planned. With the <b>Automatic</b> camera the mission starts on pad 39A, with the Saturn V at true size, and then flies beside the spacecraft at true scale, with the Earth or the Moon behind; in the middle of the coasts it shows the whole trajectory. The lunar module and the command ship are the official NASA 3D models. Lunar orbits are drawn as one lap, while the clock and the counter run through Apollo 11's 13 and 5. The full playback lasts 159 s at 1×; descent and ascent take 20 s each, close to the ground.</p>
+        <p>The mission follows the profile of the Apollo flights that landed on the Moon. The Saturn V leaves Kennedy and drops its stages on the way; the spacecraft makes 1.5 orbits at 185 km (about 88 min each) and heads for the Moon. The command ship and the lunar module make 13 orbits at 110 km (about 119 min); the module descends and lands. At liftoff only the ascent stage returns to orbit and the descent stage stays on the ground. After 5 orbits the command ship heads home; only the capsule re-enters, opens its parachutes and splashes down in the Pacific in daylight, as recoveries were planned. With the <b>Automatic</b> camera the mission starts on pad 39A, with the Saturn V at true size, and then flies beside the spacecraft at true scale, with the Earth or the Moon behind; in the middle of the coasts it shows the whole trajectory. The lunar module and the command ship are the official NASA 3D models. On arrival at the Moon the scene goes straight to the descent point and on the way out it shows one lap; the clock and the counter run through Apollo 11's 13 and 5. The full playback lasts 154 s at 1×; descent and ascent take 20 s each, close to the ground.</p>
         <aside class="notice"><b>Read the UTC clock.</b> Time is compressed per phase. “At the destination” describes the lunar site at the moment shown, not the flight. If the destination is in shadow, the scene turns on the reading light and says so.</aside>
       </section>
 
@@ -263,7 +263,7 @@
         <div class="section-title"><span>06</span><h2>What it cannot do or let you conclude</h2></div>
         <h3>Inputs the app refuses</h3>
         <div class="table-wrap"><table><thead><tr><th scope="col">Attempt</th><th scope="col">Why it fails</th><th scope="col">How to fix it</th></tr></thead><tbody>
-          <tr><td>Comparing four sites or none</td><td>The comparison takes 1 to 3 points.</td><td>Pick up to three and keep at least one.</td></tr>
+          <tr><td>Comparing four sites</td><td>The comparison takes up to 3 points, counting the explored one.</td><td>Remove one with the ✓ before adding another.</td></tr>
           <tr><td>A date in 1999 or 2051</td><td>The app covers 2000–2050.</td><td>Use a valid date; the mission timeline must fit in it too.</td></tr>
           <tr><td>Staying 137 h in a 136 h window</td><td>The stay goes past the window.</td><td>Use at most 136 h; conditions still need checking.</td></tr>
           <tr><td>Staying 48 h in a 24 h manual window</td><td>The stay goes past the manual interval.</td><td>Adjust the window or the stay; a longer window does not guarantee light and sight.</td></tr>
@@ -287,7 +287,7 @@
 
       <section id="check">
         <div class="section-title"><span>08</span><h2>Before you share a comparison</h2></div>
-        <ul class="checklist"><li>Note the <b>UTC</b> date and time, sites and coordinates.</li><li>Note the observer height and the panel option.</li><li>Read both margins and flag “On the edge” states.</li><li>Say whether the window is manual or calculated, with 1-hour steps.</li><li>Note the trip out, stay and trip back if you use the simulation.</li><li>Describe the result as exploring a model, not as approving a mission.</li></ul>
+        <ul class="checklist"><li>Note the <b>UTC</b> date and time, sites and coordinates.</li><li>Note the observer height and the panel option.</li><li>Read both margins and flag “grazing” states.</li><li>Say whether the window is manual or calculated, with 1-hour steps.</li><li>Note the trip out, stay and trip back if you use the simulation.</li><li>Describe the result as exploring a model, not as approving a mission.</li></ul>
         <p>For the data and approximations, open <b>Data &amp; method</b> in the app or <b>What is real and what is illustrative</b> in the mission. The images in this guide are real captures of the app with the settings shown.</p>
         <p class="guide-end"><a class="btn btn-primary" href="app/">Open Horisite</a></p>
         <p class="guide-foot">Horisite · educational tutorial · examples checked against the model itself.<br>Relief NASA GSFC PGDA · LRO/LOLA (Barker et al. 2023) · ephemerides Astronomy Engine · 3D Three.js.</p>

@@ -8,6 +8,9 @@ export const MOON_MU = 4902.800118;
 // Mission profile of the crewed lunar landings that actually flew (Apollo 11–17), with the numbers of
 // Apollo 11: NASA, Apollo 11 Mission Report (MSC-00171, 1969). Parking orbits: 185 km around the
 // Earth, ~110 km around the Moon; 13 lunar orbits before the landing and 5 after the liftoff.
+// On arrival the scene goes straight to the landing point: the burn into lunar orbit ends a quarter of a lap
+// before the descent starts, and only that last arc is drawn, while the clock runs through every orbit.
+export const ARRIVAL_ARC = .25;
 export const PARKING = Object.freeze({ earthAltitudeKm:185, lunarAltitudeKm:110, earthTurns:1.5, lunarTurns:13, lunarReturnTurns:5 });
 export const APOLLO = Object.freeze({
   launchSite:{ lat:28.6083, lon:-80.6041 }, launchAzimuth:72.06,
@@ -21,7 +24,7 @@ export const APOLLO = Object.freeze({
 // Presentation time is independent of the mission's UTC timeline.
 const PHASE_TABLE = [
   ['liftoff','Decolagem',9],['launch','Subida à órbita',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
-  ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',10],
+  ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',5],
   ['descent','Pouso lunar',20],['surface','No solo',8],['ascent','Decolagem lunar',20],
   ['lunarReturnOrbit','Órbita lunar / volta',12],['tei','Injeção à Terra',4],['inbound','Volta à Terra',16],
   ['arrival','Reentrada',8],['splashdown','Paraquedas e amerissagem',8]
@@ -221,6 +224,8 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
     p:ascentExit.relative,q:ascentExit.direction,start:ascentEnd,turns:plan.lunarReturnTurns});
   const tliStart=plan.earthParking.end,tliEnd=tliStart+.1*HOUR;
   const loiEnd=plan.lunarParking.start,loiStart=loiEnd-.1*HOUR;
+  // Whole turns: the orbit is at the same point at its start and end, so the burn can be drawn on the final arc.
+  plan.arrivalShift=ARRIVAL_ARC*plan.lunarParking.periodSeconds*1000;
   const teiStart=plan.lunarReturnParking.end,teiEnd=teiStart+.05*HOUR,reentryStart=returnAt-APOLLO.entryMinutes*60000,chuteStart=returnAt-APOLLO.chuteMinutes*60000;
   if(tliEnd>=loiStart||teiEnd>=reentryStart)throw new Error('A duração não comporta as órbitas e manobras.');
   plan.launchFrame.climb=(plan.earthParking.radiusKm-plan.launchFrame.radiusKm)/PARKING.earthAltitudeKm;
@@ -251,7 +256,7 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
   // Burn arcs and transfers are illustrative links between the
   // analytic parking orbits. No Lambert targeting, delta-v, or n-body dynamics.
   const earthExit=parkingState(plan.earthParking,tliEnd,plan.earthParking.radiusKm+80);
-  const moonEntry=parkingState(plan.lunarParking,loiStart,plan.lunarParking.radiusKm+200);
+  const moonEntry=parkingState(plan.lunarParking,loiStart-plan.arrivalShift,plan.lunarParking.radiusKm+200);
   const moonExit=parkingState(plan.lunarReturnParking,teiEnd,plan.lunarReturnParking.radiusKm+200);
   const moonVelocity=ms=>scale(subtract(moonPosition(new Date(ms+1000),astronomy),moonPosition(new Date(ms-1000),astronomy)),.5);
   const makeCurve=(a,d,da,dd)=>{const handle=norm(subtract(d,a))*.22;return [a,add(a,scale(unit(da),handle)),subtract(d,scale(unit(dd),handle)),d];};
@@ -271,8 +276,8 @@ export function sampleMission(plan,progress,astronomy){
   const p=clamp(progress,0,1),phase=PHASES.find(s=>p<s.end)||PHASES.at(-1),t=presentationTime(clamp((p-phase.start)/(phase.end-phase.start),0,1)),u=smooth(t);
   const [begin,end]=plan.times[phase.id],ms=mix(begin,end,t),date=new Date(ms),moon=moonPosition(date,astronomy),frame=lunarFrame(date,astronomy);
   let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false,pad=false,ignition=1;
-  // Lunar orbits are drawn as one lap while the clock runs through all of them (13 before the landing,
-  // 5 after the liftoff on Apollo 11): the picture stays readable and the UTC timeline stays real.
+  // The clock runs through every lunar orbit (13 before the landing, 5 after the liftoff on Apollo 11); the
+  // picture shows only the final arc into the descent on arrival, and one lap on the way out.
   let orbitFrom=null,orbitAt=null;
   const around=(parking,radius,at=ms)=>{const state=parkingState(parking,at,radius);direction=state.direction;position=parking.body==='Earth'?state.relative:add(moon,state.relative);altitudeReference=parking.body==='Earth'?'Terra':'Lua';altitudeKm=norm(state.relative)-(parking.body==='Earth'?EARTH_RADIUS:RADIUS_KM);};
   switch(phase.id){
@@ -292,8 +297,8 @@ export function sampleMission(plan,progress,astronomy){
     }
     case 'earthOrbit':orbit=plan.earthParking;orbitFrom=orbit.start;orbitAt=ms;around(orbit);config='sivb';break;
     case 'tli':around(plan.earthParking,plan.earthParking.radiusKm+80*u);engine=true;throttle=1;config='sivb';break;
-    case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u));engine=true;throttle=1;config='stack';break;
-    case 'lunarOrbit':{orbit=plan.lunarParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.end-lap;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);config='stack';break;}
+    case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u),ms-plan.arrivalShift);engine=true;throttle=1;config='stack';break;
+    case 'lunarOrbit':{orbit=plan.lunarParking;const arc=plan.arrivalShift;orbitFrom=orbit.end-arc;orbitAt=orbitFrom+arc*t;around(orbit,undefined,orbitAt);config='stack';break;}
     case 'lunarReturnOrbit':{orbit=plan.lunarReturnParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.start;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);config=t<.36?'csmAscent':'csm';break;}
     case 'tei':around(plan.lunarReturnParking,plan.lunarReturnParking.radiusKm+200*u);engine=true;throttle=1;config='csm';break;
     case 'descent':case 'ascent':{

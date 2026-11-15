@@ -110,7 +110,8 @@ Pedidos da equipe: as 24 horas também precisavam subir; os locais selecionados 
 Problemas apontados pela equipe: a nave "girava sem parar" e a saída da Lua devia ser uma volta só.
 
 - **Causa.** As órbitas lunares da Apollo 11 (13 voltas antes do pouso, 5 depois) cabiam em 10–12 s de animação: mais de uma volta por segundo, com a nave também rodando sobre o próprio eixo, porque a orientação era tirada só do vetor de velocidade.
-- **Correção.** Cada órbita lunar é desenhada como uma única volta, contínua nas duas pontas, enquanto o relógio UTC e o contador percorrem as voltas reais (o painel avisa "a cena mostra uma volta"). A rolagem da nave fica presa à vertical local do astro mais próximo.
+- **Correção.** Cada órbita lunar é desenhada como uma única volta, contínua nas duas pontas, enquanto o relógio UTC e o contador percorrem as voltas reais (o painel avisa "a cena mostra uma volta").
+- **Ajuste seguinte (pedido da equipe).** Na chegada, a cena vai direto ao ponto: a inserção lunar termina um quarto de volta antes da descida e só esse arco final é desenhado (5 s). O relógio e o contador continuam correndo as 13 voltas da Apollo 11; o painel avisa "a cena vai direto ao ponto de descida". A saída da Lua continua com uma volta. A rolagem da nave fica presa à vertical local do astro mais próximo.
 
 Recursos novos, todos de fontes oficiais ou do próprio Three.js:
 
