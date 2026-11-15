@@ -55,7 +55,7 @@ for(const [id,orbit] of [['earthOrbit',plan.earthParking],['lunarOrbit',plan.lun
     const center=orbit.body==='Earth'?[0,0,0]:sample.moon;
     assert.ok(Math.abs(magnitude(difference(sample.position,center))-orbit.radiusKm)<1e-7);
     assert.equal(sample.engine,false,'Parking is unpowered');
-    const forward=parkingState(orbit,+sample.date).direction;
+    const forward=parkingState(orbit,sample.orbitAt).direction;assert.ok(sample.orbitAt>=sample.orbitFrom&&sample.orbitAt-sample.orbitFrom<=Math.max(orbit.turns,1)*orbit.periodSeconds*1000+1,'Drawn orbit stays within its laps');
     assert.ok(sample.direction.reduce((sum,x,k)=>sum+x*forward[k],0)>1-1e-8,'No backward attitude in parking');
     assert.ok(sample.orbitTurns>=0&&sample.orbitTurns<=orbit.turns);
   }

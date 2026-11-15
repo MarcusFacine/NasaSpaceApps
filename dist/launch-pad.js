@@ -65,7 +65,7 @@ export class LaunchPad {
     const material = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, uniforms: { uScale: { value: 800 }, uLight: { value: new THREE.Color(0.9, 0.88, 0.85) } },
       vertexShader: 'attribute float aSize; attribute float aAlpha; attribute float aHeat; varying float vAlpha; varying float vHeat; uniform float uScale; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); gl_PointSize = min(900., aSize * uScale / -mv.z); gl_Position = projectionMatrix * mv; vAlpha = aAlpha; vHeat = aHeat; }',
-      fragmentShader: 'uniform vec3 uLight; varying float vAlpha; varying float vHeat; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .1, d) * vAlpha; if (a < .004) discard; vec3 c = mix(uLight, vec3(1., .62, .3) * 1.5, vHeat); gl_FragColor = vec4(c, a); }'
+      fragmentShader: 'uniform vec3 uLight; varying float vAlpha; varying float vHeat; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .1, d) * vAlpha; if (a < .004) discard; vec3 c = mix(uLight, vec3(1., .62, .3) * 1.5, vHeat * .8); gl_FragColor = vec4(pow(c, vec3(2.2)), a); }'
     });
     const points = new THREE.Points(geometry, material); points.frustumCulled = false; points.userData.seed = seed; return points;
   }

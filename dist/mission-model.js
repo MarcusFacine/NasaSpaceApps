@@ -271,7 +271,10 @@ export function sampleMission(plan,progress,astronomy){
   const p=clamp(progress,0,1),phase=PHASES.find(s=>p<s.end)||PHASES.at(-1),t=presentationTime(clamp((p-phase.start)/(phase.end-phase.start),0,1)),u=smooth(t);
   const [begin,end]=plan.times[phase.id],ms=mix(begin,end,t),date=new Date(ms),moon=moonPosition(date,astronomy),frame=lunarFrame(date,astronomy);
   let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false,pad=false,ignition=1;
-  const around=(parking,radius)=>{const state=parkingState(parking,ms,radius);direction=state.direction;position=parking.body==='Earth'?state.relative:add(moon,state.relative);altitudeReference=parking.body==='Earth'?'Terra':'Lua';altitudeKm=norm(state.relative)-(parking.body==='Earth'?EARTH_RADIUS:RADIUS_KM);};
+  // Lunar orbits are drawn as one lap while the clock runs through all of them (13 before the landing,
+  // 5 after the liftoff on Apollo 11): the picture stays readable and the UTC timeline stays real.
+  let orbitFrom=null,orbitAt=null;
+  const around=(parking,radius,at=ms)=>{const state=parkingState(parking,at,radius);direction=state.direction;position=parking.body==='Earth'?state.relative:add(moon,state.relative);altitudeReference=parking.body==='Earth'?'Terra':'Lua';altitudeKm=norm(state.relative)-(parking.body==='Earth'?EARTH_RADIUS:RADIUS_KM);};
   switch(phase.id){
     case 'liftoff':{
       // On the pad: ignition and hold-down for the first 15% of the stage, then straight up.
@@ -287,11 +290,11 @@ export function sampleMission(plan,progress,astronomy){
       // S-IC burns 2 min 41 s, S-II until 9 min 9 s, S-IVB to orbit insertion at 11 min 39 s.
       config=t<.23?'saturnV':t<.785?'stage2':'sivb';break;
     }
-    case 'earthOrbit':orbit=plan.earthParking;around(orbit);config='sivb';break;
+    case 'earthOrbit':orbit=plan.earthParking;orbitFrom=orbit.start;orbitAt=ms;around(orbit);config='sivb';break;
     case 'tli':around(plan.earthParking,plan.earthParking.radiusKm+80*u);engine=true;throttle=1;config='sivb';break;
     case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u));engine=true;throttle=1;config='stack';break;
-    case 'lunarOrbit':orbit=plan.lunarParking;around(orbit);config='stack';break;
-    case 'lunarReturnOrbit':orbit=plan.lunarReturnParking;around(orbit);config=t<.36?'csmAscent':'csm';break;
+    case 'lunarOrbit':{orbit=plan.lunarParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.end-lap;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);config='stack';break;}
+    case 'lunarReturnOrbit':{orbit=plan.lunarReturnParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.start;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);config=t<.36?'csmAscent':'csm';break;}
     case 'tei':around(plan.lunarReturnParking,plan.lunarReturnParking.radiusKm+200*u);engine=true;throttle=1;config='csm';break;
     case 'descent':case 'ascent':{
       arc=lunarArc(plan,ms,t,phase.id==='ascent',astronomy);position=add(moon,arc.relative);altitudeKm=Math.max(0,arc.altitudeKm);
@@ -339,7 +342,7 @@ export function sampleMission(plan,progress,astronomy){
     localDirection=[dot(bodyDirection,basis.east),dot(bodyDirection,basis.up),-dot(bodyDirection,basis.north)];
   }
   if(ocean||pad){localPosition=[0,altitudeKm,0];localDirection=[0,1,0];}
-  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,pad,ignition,orbit,
+  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,pad,ignition,orbit,orbitFrom,orbitAt,
     orbitTurns:orbit?clamp((ms-orbit.start)/(orbit.periodSeconds*1000),0,orbit.turns):null,
     altitudeKm:Math.max(0,altitudeKm),altitudeReference,elapsedHours:(ms-plan.launch)/HOUR,distanceKm:norm(moon)};
 }

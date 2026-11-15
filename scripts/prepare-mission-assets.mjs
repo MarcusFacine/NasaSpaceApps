@@ -2,6 +2,8 @@
 // Earth: three.js example textures, 4096 px (day, night lights, and bump/roughness/clouds packed in R/G/B).
 // Moon: NASA SVS CGI Moon Kit (svs.gsfc.nasa.gov/4720): LROC WAC colour, and a tangent-space normal map
 // computed here from the LOLA elevation model ldem_16 (16 px/degree) at true vertical scale.
+// Sky: NASA SVS Deep Star Maps 2020, Milky Way only (the stars themselves come from the HYG catalogue).
+// Spacecraft models (dist/assets/mission/models) are NASA 3D Resources GLB files, copied as published.
 // Needs network and ffmpeg on the PATH. Large source files stay in a cache folder outside dist.
 import { fromFile } from 'geotiff';
 import { mkdir, writeFile, stat } from 'node:fs/promises';
@@ -29,8 +31,11 @@ await Promise.all([
   download(three + 'earth_night_4096.jpg', `${out}/earth-night.jpg`),
   download(three + 'earth_bump_roughness_clouds_4096.jpg', `${out}/earth-brc.jpg`),
   download(svs + 'lroc_color_poles_4k.tif', `${cache}/lroc_color_poles_4k.tif`),
-  download(svs + 'ldem_16_uint.tif', `${cache}/ldem_16_uint.tif`)
+  download(svs + 'ldem_16_uint.tif', `${cache}/ldem_16_uint.tif`),
+  // NASA SVS Deep Star Maps 2020 (svs.gsfc.nasa.gov/4851): the Milky Way alone, celestial coordinates.
+  download('https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_4k.exr', `${cache}/milkyway_2020_4k.exr`)
 ]);
+if (!await exists(`${out}/milkyway.jpg`)) { await ffmpeg(['-apply_trc', 'iec61966_2_1', '-i', `${cache}/milkyway_2020_4k.exr`, '-vf', 'scale=4096:2048:flags=lanczos', '-q:v', '3', `${out}/milkyway.jpg`]); console.log('milkyway.jpg'); }
 
 if (!await exists(`${out}/moon-color.jpg`)) { await ffmpeg(['-i', `${cache}/lroc_color_poles_4k.tif`, '-vf', 'scale=4096:2048:flags=lanczos', '-q:v', '3', `${out}/moon-color.jpg`]); console.log('moon-color.jpg'); }
 

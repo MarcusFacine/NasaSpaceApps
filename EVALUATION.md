@@ -104,3 +104,21 @@ Pedidos da equipe: as 24 horas também precisavam subir; os locais selecionados 
 - **Locais na cena.** Os cinco pontos ficam a 37–186 km uns dos outros (grande círculo), dentro do relevo de contexto de 400 km. Cada local comparado tem um pino no relevo (projeção de plano tangente, a mesma do terreno), uma linha fina no chão até o local em exploração e um rótulo com nome e distância; fora do quadro, o rótulo encosta na borda livre da cena e uma seta aponta a direção. Clicar no rótulo explora o local.
 - **Missão.** Etapa nova de decolagem na plataforma 39A (ignição e os primeiros 3,4 km, 50 s), com o Saturn V em tamanho real, torre umbilical de 116 m, chama, fumaça e o Sol real do Kennedy naquela hora. A câmera automática voa ao lado da nave em escala real, com a Terra ou a Lua ao fundo (duas passadas de desenho: os astros primeiro, a nave depois com a própria faixa de profundidade); o meio das viagens mostra a trajetória inteira. Estágios descartados aparecem ficando para trás (S-IC, S-II, S-IVB, estágio de subida, módulo de serviço). Terra em 4096 px com brilho do Sol no oceano e nuvens com estrutura fina; Lua em 4096 px com mapa de normais calculado do LOLA `ldem_16` em escala vertical real; no destino, um recorte do globo dá lugar ao relevo LOLA do app (real até ~120 km do local, nivelado até 150 km e esmaecido até 192 km), de modo que a órbita e a aproximação passam sobre o relevo medido. Luz devolvida pelo solo iluminado (Terra ou Lua) chega à nave.
 - Continua ilustrativo o que já era (transferências, queimas, plumas, poeira, fumaça, arredores da plataforma). `check-mission` cobre a etapa nova.
+
+## Missão: correções e render de cinema (15/11/2026, terceira rodada)
+
+Problemas apontados pela equipe: a nave "girava sem parar" e a saída da Lua devia ser uma volta só.
+
+- **Causa.** As órbitas lunares da Apollo 11 (13 voltas antes do pouso, 5 depois) cabiam em 10–12 s de animação: mais de uma volta por segundo, com a nave também rodando sobre o próprio eixo, porque a orientação era tirada só do vetor de velocidade.
+- **Correção.** Cada órbita lunar é desenhada como uma única volta, contínua nas duas pontas, enquanto o relógio UTC e o contador percorrem as voltas reais (o painel avisa "a cena mostra uma volta"). A rolagem da nave fica presa à vertical local do astro mais próximo.
+
+Recursos novos, todos de fontes oficiais ou do próprio Three.js:
+
+- **Modelos 3D da NASA** (`nasa/NASA-3D-Resources`, GLB): Módulo Lunar, separado nos dois estágios pela altura de cada peça, e a nave Apollo recortada do conjunto Apollo-Soyuz. As cores lisas viram os materiais da simulação (folha dourada amassada, alumínio, preto); as texturas da NASA (bandeira, letreiros, revestimento) são mantidas. O Saturn V continua sendo o modelo próprio: o GLB da NASA tem uma faixa azul que não existe no foguete real.
+- **Render HDR.** A cena é desenhada em ponto flutuante com MSAA 4×; as fontes mais claras que o branco (chamas, Sol, plasma) passam por bloom; a saída usa ACES; por último, um passe de lente (franja cromática nos cantos, vinheta) e grão de filme.
+- **Luz real na nave.** Sombras próprias da nave no espaço; dentro da sombra da Terra ou da Lua ela não recebe Sol (umbra, sem modelo de penumbra) e fica só com uma luz mínima; a luz devolvida pelo solo iluminado continua.
+- **Reflexos reais.** A cada ~40 quadros a cena em volta da nave (Terra, Lua, Sol, estrelas) é capturada num cubo e filtrada (PMREM) para os reflexos do metal.
+- **Céu.** Via Láctea do NASA SVS Deep Star Maps 2020, em coordenadas celestes, atrás das estrelas do catálogo HYG.
+- A câmera treme com a queima do primeiro estágio na plataforma.
+
+Medição no notebook de desenvolvimento (GPU integrada, Direct3D 11): 60 quadros por segundo nas etapas no espaço e 42 na descida.

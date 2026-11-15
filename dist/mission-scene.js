@@ -7,6 +7,18 @@ import { loadStarCatalog, createStarField, setRotationRows } from './stars.js';
 import { Spacecraft, createMaterials, makeEnvironment, buildDescentStage, buildSpent, setLayer } from './spacecraft.js';
 import { LandingSite } from './landing-site.js';
 import { LaunchPad, PAD_DECK } from './launch-pad.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { Pass } from 'three/addons/postprocessing/Pass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// Last pass, in display space: a little lens (chromatic fringe towards the corners, vignette) and film grain.
+const FILM={
+  uniforms:{tDiffuse:{value:null},uTime:{value:0},uGrain:{value:.045},uVignette:{value:.34},uFringe:{value:.011}},
+  vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'uniform sampler2D tDiffuse;uniform float uTime,uGrain,uVignette,uFringe;varying vec2 vUv;float hash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}void main(){vec2 d=vUv-.5;float r2=dot(d,d);vec2 off=d*r2*uFringe;vec3 c=vec3(texture2D(tDiffuse,vUv+off).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-off).b);c*=1.-uVignette*smoothstep(.12,.62,r2);float n=hash(vUv*vec2(1733.,977.)+fract(uTime)*71.3)-.5;c+=n*uGrain*(1.-.6*dot(c,vec3(.299,.587,.114)));gl_FragColor=vec4(c,1.);}'
+};
 
 const asset=path=>new URL(path,import.meta.url).href;
 const v=a=>new THREE.Vector3(a[0],a[2],-a[1]);
@@ -17,7 +29,6 @@ const LUNAR_PHASES=new Set(['loi','lunarOrbit','descent','surface','ascent','lun
 const EARTH_PHASES=new Set(['liftoff','launch','earthOrbit','tli','arrival']);
 // Stages where the automatic camera flies beside the spacecraft, at true scale, with the Earth or the Moon behind.
 const CHASE_PHASES=new Set(['launch','earthOrbit','tli','loi','lunarOrbit','lunarReturnOrbit','tei','arrival']);
-const ASCENT_BASE=.00315; // the ascent stage sits 3.15 m up, on the descent stage
 const LOCAL_VIEW=new THREE.Vector3(.032,.009,.044); // ~55 m from the lander, 13 m up: a photographer on the ground
 // Same distance, placed so the Sun comes from the side and a little behind: shadows run across the picture.
 function sideLitView(sun){const h=new THREE.Vector3(sun[0],0,sun[2]);if(h.lengthSq()<1e-8)return LOCAL_VIEW.clone();h.normalize().applyAxisAngle(Y,1.95);return h.multiplyScalar(.0545).setY(.009);}
@@ -53,12 +64,21 @@ function glowTexture(stops){
 }
 
 export class MissionScene {
-  constructor(canvas,container,terrain,onError,{t=k=>k}={}){
-    this.t=t;this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';this.textures=[];
+  constructor(canvas,container,terrain,onError,{t=k=>k,nasa=null}={}){
+    this.t=t;this.nasa=nasa;this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';this.textures=[];
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1;this.renderer.setClearColor(0x000000);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
     // Two passes when in space: the distant bodies first, then the spacecraft with its own depth range,
     // so a 20 m vehicle and a planet 200 km behind it can share a picture.
     this.renderer.autoClear=false;this.nearA=.0005;
+    // Cinema pipeline: the scene is drawn in linear HDR (half float, 4× MSAA), bright sources bloom,
+    // ACES tone mapping gives the exposure of film, then lens and grain.
+    {
+      const size=this.renderer.getDrawingBufferSize(new THREE.Vector2()),hdr=this.renderer.extensions.has('EXT_color_buffer_float')||this.renderer.extensions.has('EXT_color_buffer_half_float');
+      this.composer=new EffectComposer(this.renderer,new THREE.WebGLRenderTarget(Math.max(1,size.x),Math.max(1,size.y),{type:hdr?THREE.HalfFloatType:THREE.UnsignedByteType,samples:4}));
+      const stage=new Pass();stage.needsSwap=false;stage.render=(renderer,writeBuffer,readBuffer)=>{renderer.setRenderTarget(readBuffer);renderer.clear();this.draw();};
+      this.bloom=new UnrealBloomPass(new THREE.Vector2(size.x/2,size.y/2),.5,.75,1);this.film=new ShaderPass(FILM);
+      for(const pass of [stage,this.bloom,new OutputPass(),this.film])this.composer.addPass(pass);
+    }
     this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});this.controls.addEventListener('start',()=>{this.cameraTween=null;this.manualCamera=true;});
     this.world=new THREE.Group();this.local=new THREE.Group();this.oceanGroup=new THREE.Group();this.scene.add(this.world,this.local,this.oceanGroup);
     this.sunlight=new THREE.DirectionalLight(0xfff6e4,3.2);this.sunlight.shadow.mapSize.set(4096,4096);this.sunlight.shadow.normalBias=.00004;this.sunlight.shadow.bias=-.00002;this.sunlight.layers.enableAll();this.scene.add(this.sunlight,this.sunlight.target);
@@ -67,6 +87,8 @@ export class MissionScene {
     this.earthlight=new THREE.DirectionalLight(0x9fc4ff,0);this.scene.add(this.earthlight,this.earthlight.target);
     // Light the sunlit ground below sends back up to the spacecraft (second pass only).
     this.shine=new THREE.DirectionalLight(0xffffff,0);this.shine.layers.set(1);this.scene.add(this.shine,this.shine.target);
+    // Starlight and stray light: just enough to read the spacecraft inside a shadow.
+    this.shade=new THREE.AmbientLight(0x93a8cc,.2);this.shade.layers.set(1);this.scene.add(this.shade);
     // What polished metal reflects: regolith near the Moon, oceans and clouds near the Earth, sky over the Pacific.
     this.envs={moon:makeEnvironment(this.renderer,{ground:[.34,.33,.31]}),earth:makeEnvironment(this.renderer,{ground:[.12,.2,.34],horizon:[.4,.52,.72]}),space:makeEnvironment(this.renderer,{sky:[.02,.02,.025],ground:[.07,.07,.075]}),ocean:makeEnvironment(this.renderer,{sky:[.28,.46,.75],ground:[.03,.09,.16],horizon:[.78,.86,.95]})};
     this.materials=createMaterials(this.envs.space.texture);this.envName='space';
@@ -78,48 +100,77 @@ export class MissionScene {
     this.moonHole={dir:{value:new THREE.Vector3(0,-1,0)},cos:{value:Math.cos(140/RADIUS_KM)}};
     this.moon=mesh(new THREE.SphereGeometry(RADIUS_KM/1000,256,192),lunarMaterial({vertexColors:false,map:texture('moon-color.jpg',true,'error.moonTexture'),color:0xf2efe8,normalMap:texture('moon-normal.jpg',false),normalScale:1.25,normalY:1,hole:this.moonHole}),this.world);
     this.localEarth=mesh(new THREE.SphereGeometry(1,48,32),new THREE.MeshStandardMaterial({map:this.earthDay,roughness:.85}),this.local);
-    this.vehicle=new Spacecraft(this.materials);setLayer(this.vehicle.group,1);this.world.add(this.vehicle.group);
-    this.spent={};for(const [kind] of SPENT){const g=new THREE.Group(),body=new THREE.Group();body.scale.setScalar(.001);body.add(buildSpent(this.materials,kind));g.add(body);g.visible=false;setLayer(g,1);this.world.add(g);this.spent[kind]=g;}
-    this.localVehicle=new Spacecraft(this.materials);this.local.add(this.localVehicle.group);
-    this.descentLeft=new THREE.Group();this.descentLeft.scale.setScalar(.001);this.descentLeft.add(buildDescentStage(this.materials));this.descentLeft.visible=false;this.local.add(this.descentLeft);
+    this.vehicle=new Spacecraft(this.materials,nasa);setLayer(this.vehicle.group,1);this.world.add(this.vehicle.group);
+    this.spent={};for(const [kind] of SPENT){const g=new THREE.Group(),body=new THREE.Group();body.scale.setScalar(.001);body.add(buildSpent(this.materials,kind,nasa));g.add(body);g.visible=false;setLayer(g,1);this.world.add(g);this.spent[kind]=g;}
+    this.localVehicle=new Spacecraft(this.materials,nasa);this.local.add(this.localVehicle.group);
+    this.descentLeft=new THREE.Group();this.descentLeft.scale.setScalar(.001);this.descentLeft.add(buildDescentStage(this.materials,nasa));this.descentLeft.visible=false;this.local.add(this.descentLeft);
     // The Sun itself: a small hot disc with glare, far behind everything.
-    this.sunSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture([[0,'rgba(255,255,255,1)'],[.014,'rgba(255,252,240,1)'],[.03,'rgba(255,244,220,.55)'],[.09,'rgba(255,236,200,.16)'],[.3,'rgba(255,230,190,.045)'],[1,'rgba(255,230,190,0)']]),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,toneMapped:false,fog:false}));this.sunSprite.scale.setScalar(1500);this.world.add(this.sunSprite);
+    this.sunSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture([[0,'rgba(255,255,255,1)'],[.014,'rgba(255,252,240,1)'],[.03,'rgba(255,244,220,.55)'],[.09,'rgba(255,236,200,.16)'],[.3,'rgba(255,230,190,.045)'],[1,'rgba(255,230,190,0)']]),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,toneMapped:false,fog:false}));this.sunSprite.material.color.setRGB(14,13.4,12.4);this.sunSprite.scale.setScalar(1500);this.world.add(this.sunSprite);
+    // The Milky Way (NASA SVS Deep Star Maps 2020), in celestial coordinates, behind the catalogue stars.
+    this.milkyWay=new THREE.Mesh(new THREE.SphereGeometry(4800,48,32),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,depthTest:false,uniforms:{uMap:{value:texture('milkyway.jpg',true)},uGain:{value:.62}},
+      vertexShader:'varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader:'uniform sampler2D uMap;uniform float uGain;varying vec3 vDir;void main(){vec3 w=normalize(vDir);vec3 j=vec3(w.x,-w.z,w.y);float ra=atan(j.y,j.x);float dec=asin(clamp(j.z,-1.,1.));vec2 uv=vec2(.5-ra/6.28318530718,.5+dec/3.14159265359);vec3 c=texture2D(uMap,uv).rgb;gl_FragColor=vec4(c*c*uGain,1.);}'}));
+    this.milkyWay.material.uniforms.uMap.value.generateMipmaps=false;this.milkyWay.material.uniforms.uMap.value.minFilter=THREE.LinearFilter;
+    this.milkyWay.renderOrder=-10;this.milkyWay.frustumCulled=false;this.world.add(this.milkyWay);
+    // What the spacecraft reflects in space: the scene itself, captured around it now and then.
+    this.cubeTarget=new THREE.WebGLCubeRenderTarget(128,{type:THREE.HalfFloatType});this.cubeCamera=new THREE.CubeCamera(.00001,10000,this.cubeTarget);this.cubeCamera.children.forEach(c=>c.layers.set(0));
+    this.pmrem=new THREE.PMREMGenerator(this.renderer);this.reflection=null;this.reflectionAge=1e9;this.sunOnVehicle=1;
     this.makeTerrain(terrain);this.makeOcean();
     this.pad=new LaunchPad(this.water.material);this.pad.group.visible=false;this.scene.add(this.pad.group);
     this.padVehicle=new Spacecraft(this.materials);this.padVehicle.set('saturnV');this.pad.group.add(this.padVehicle.group);
     this.trail=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.8}));this.world.add(this.trail);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
     this.canvas=canvas;this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError(t('error.contextLost'));};canvas.addEventListener('webglcontextlost',this.onContextLost);
-    loadStarCatalog().then(data=>{if(!data||this.disposed)return;this.stars=createStarField(data,4000);this.stars.material.uniforms.uPixelRatio.value=this.renderer.getPixelRatio();setRotationRows(this.stars,[1,0,0],[0,0,1],[0,-1,0]);this.stars.visible=this.world.visible;this.scene.add(this.stars);this.dirty=true;});
+    loadStarCatalog().then(data=>{if(!data||this.disposed)return;this.stars=createStarField(data,4000);this.stars.material.uniforms.uPixelRatio.value=this.renderer.getPixelRatio();setRotationRows(this.stars,[1,0,0],[0,0,1],[0,-1,0]);this.stars.material.uniforms.uOpacity.value=.6;this.stars.visible=this.world.visible;this.scene.add(this.stars);this.dirty=true;});
     this.render=now=>{
       if(this.disposed)return;now=now??performance.now();this.animateCamera(now);
+      const world=this.world.visible,pad=this.pad.group.visible;
       // Moving dust, waves, smoke and burning engines keep drawing while they are on screen.
       if(this.dustLevel>.02&&this.local.visible){this.landing.updateDust(this.dustLevel,now/1000);this.dirty=true;}
-      if(this.oceanGroup.visible||this.pad.group.visible){this.water.material.normalMap.offset.set(now*.0000045,now*.0000031);this.dirty=true;}
-      if(this.sample?.throttle>0&&(this.world.visible||this.pad.group.visible)){(this.pad.group.visible?this.padVehicle:this.vehicle).engine(this.engineLevel??this.sample.throttle);this.dirty=true;}
+      if(this.oceanGroup.visible||pad){this.water.material.normalMap.offset.set(now*.0000045,now*.0000031);this.dirty=true;}
+      if(this.sample?.throttle>0&&(world||pad)){(pad?this.padVehicle:this.vehicle).engine(this.engineLevel??this.sample.throttle);this.dirty=true;}
+      // The ground shakes the camera while the first stage burns close by.
+      if(pad&&this.padTarget&&!this.manualCamera){const k=(this.engineLevel||0)*Math.max(0,1-this.sample.altitudeKm/1.2)*.0012,t=now/1000;this.controls.target.copy(this.padTarget).add(new THREE.Vector3(Math.sin(t*47)+Math.sin(t*83+1),Math.sin(t*59+2)+Math.sin(t*101),0).multiplyScalar(k));this.controls.update();}
       if(this.dirty&&!document.hidden&&!this.contextLost){
-        const camera=this.camera,r=this.renderer;
+        const camera=this.camera;
         if(this.stars){this.stars.matrix.setPosition(camera.position);this.stars.matrixWorldNeedsUpdate=true;}
-        this.sunSprite.position.copy(camera.position).addScaledVector(this.sunWorld,3000);
+        this.milkyWay.position.copy(camera.position);this.sunSprite.position.copy(camera.position).addScaledVector(this.sunWorld,3000);
         camera.updateMatrixWorld();this.sunView.value.copy(this.sunWorld).transformDirection(camera.matrixWorldInverse);
-        r.clear();camera.layers.set(0);
-        if(this.world.visible){
-          camera.near=this.nearA;camera.far=10000;camera.updateProjectionMatrix();r.render(this.scene,camera);
-          const d=camera.position.distanceTo(this.vehicle.group.position);
-          r.clearDepth();camera.layers.set(1);camera.near=Math.max(1e-9,d*.04);camera.far=d*60+.002;camera.updateProjectionMatrix();r.render(this.scene,camera);camera.layers.set(0);
-        }else{camera.updateProjectionMatrix();r.render(this.scene,camera);}
+        if(world&&++this.reflectionAge>40)this.captureReflection();
+        this.film.uniforms.uTime.value=now/1000;this.composer.render();
         this.labels();this.dirty=false;
       }
       this.frame=requestAnimationFrame(this.render);
     };this.render();
+  }
+  // One frame into the current target. In space: the distant bodies first, then the spacecraft with its own
+  // depth range, its own shadows and the sunlight it really gets (none inside the shadow of the Earth or the Moon).
+  draw(){
+    const r=this.renderer,camera=this.camera,sun=this.sunlight;camera.layers.set(0);
+    if(!this.world.visible){camera.updateProjectionMatrix();r.render(this.scene,camera);return;}
+    const at=this.vehicle.group.position,intensity=sun.intensity,position=sun.position.clone(),aim=sun.target.position.clone();
+    camera.near=this.nearA;camera.far=10000;camera.updateProjectionMatrix();r.render(this.scene,camera);
+    const d=camera.position.distanceTo(at),reach=Math.max(2e-5,this.vehicle.height*this.vehicle.group.scale.x*1.6),shadow=sun.shadow;
+    sun.intensity=intensity*this.sunOnVehicle;sun.target.position.copy(at);sun.position.copy(at).addScaledVector(this.sunWorld,reach*6);sun.target.updateMatrixWorld();
+    Object.assign(shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:reach,far:reach*12});shadow.camera.updateProjectionMatrix();shadow.normalBias=reach*.004;shadow.bias=-.0006;
+    r.clearDepth();camera.layers.set(1);camera.near=Math.max(1e-9,d*.04);camera.far=d*60+.002;camera.updateProjectionMatrix();r.render(this.scene,camera);camera.layers.set(0);
+    sun.intensity=intensity;sun.position.copy(position);sun.target.position.copy(aim);shadow.normalBias=.00004;shadow.bias=-.00002;
+  }
+  // The Earth, the Moon, the Sun and the stars as the spacecraft sees them, filtered for reflections.
+  captureReflection(){
+    this.reflectionAge=0;const r=this.renderer,target=r.getRenderTarget();
+    this.cubeCamera.position.copy(this.vehicle.group.position);this.cubeCamera.children.forEach(c=>{c.near=Math.max(1e-6,this.nearA);c.far=10000;c.updateProjectionMatrix();});
+    this.cubeCamera.update(r,this.scene);
+    this.reflection=this.pmrem.fromCubemap(this.cubeTarget.texture,this.reflection);r.setRenderTarget(target);
+    if(this.envName==='space'||this.envName==='earth'||this.envName==='moon'){this.materials.setEnvironment(this.reflection.texture);this.envLive=true;}
   }
   makeEarth(texture){
     // Earth at 4096 px: day map, city lights only on the night side, the Sun's glint on the oceans,
     // clouds with fine structure and a thin blue limb. Visual only.
     const day=this.earthDay=texture('earth-day.jpg',true,'error.earthTexture'),night=texture('earth-night.jpg',true),brc=texture('earth-brc.jpg',false);
     this.sunWorld=new THREE.Vector3(1,0,0);this.sunView={value:new THREE.Vector3(0,0,1)};this.cloudNoise=noiseTexture();
-    const material=new THREE.MeshStandardMaterial({map:day,roughnessMap:brc,roughness:1,metalness:0,bumpMap:brc,bumpScale:2.5,emissive:0xffd29a,emissiveMap:night,emissiveIntensity:1.3});
-    material.onBeforeCompile=shader=>{shader.uniforms.uSunView=this.sunView;shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 uSunView;').replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat sunSide = dot(normalize(vNormal), uSunView);\ntotalEmissiveRadiance *= smoothstep(.06, -.22, sunSide);\nfloat airRim = pow(1. - saturate(dot(normalize(vNormal), normalize(vViewPosition))), 2.6);\ntotalEmissiveRadiance += vec3(.2, .4, .85) * airRim * smoothstep(-.15, .25, sunSide) * .75;');};
+    const material=new THREE.MeshStandardMaterial({map:day,roughnessMap:brc,roughness:1,metalness:0,emissive:0xffd29a,emissiveMap:night,emissiveIntensity:1.3});
+    material.onBeforeCompile=shader=>{shader.uniforms.uSunView=this.sunView;shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 uSunView;').replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat sunSide = dot(normalize(vNormal), uSunView);\ntotalEmissiveRadiance *= smoothstep(.06, -.22, sunSide);\nfloat airRim = pow(1. - saturate(dot(normalize(vNormal), normalize(vViewPosition))), 2.6);\ntotalEmissiveRadiance += vec3(.2, .4, .85) * airRim * smoothstep(-.15, .25, sunSide) * .45;');};
     const r=EARTH_RADIUS/1000;this.earth=mesh(new THREE.SphereGeometry(r,192,128),material,this.world);this.earth.castShadow=false;
     const clouds=new THREE.MeshStandardMaterial({color:0xffffff,map:brc,transparent:true,depthWrite:false,roughness:1});
     clouds.onBeforeCompile=shader=>{shader.uniforms.uNoise={value:this.cloudNoise};shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D uNoise;').replace('#include <map_fragment>','float cloud = texture2D( map, vMapUv ).b;\nfloat fine = texture2D( uNoise, vMapUv * vec2(56., 28.) ).r;\nfloat finer = texture2D( uNoise, vMapUv * vec2(190., 95.) ).r;\ncloud = smoothstep(.1, .78, cloud * (.5 + .7 * fine + .35 * finer));\ndiffuseColor.a *= cloud;');};
@@ -127,7 +178,7 @@ export class MissionScene {
     this.earth.add(new THREE.Mesh(new THREE.SphereGeometry(r*1.0015,192,128),clouds));
     const limb=new THREE.Mesh(new THREE.SphereGeometry(r*1.022,96,64),new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.BackSide,uniforms:{uSunView:this.sunView},
       vertexShader:'varying vec3 vN;varying vec3 vV;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}',
-      fragmentShader:'uniform vec3 uSunView;varying vec3 vN;varying vec3 vV;void main(){float rim=pow(1.-abs(dot(vN,vV)),2.2);float lit=smoothstep(-.35,.35,dot(-vN,uSunView));gl_FragColor=vec4(vec3(.35,.6,1.)*rim*lit*1.6,rim*lit);}'}));
+      fragmentShader:'uniform vec3 uSunView;varying vec3 vN;varying vec3 vV;void main(){vec3 n=normalize(vN);float rim=pow(clamp(1.-abs(dot(n,normalize(vV))),0.,1.),2.2);float lit=smoothstep(-.35,.35,dot(-n,uSunView));gl_FragColor=vec4(vec3(.35,.6,1.)*rim*lit*.85,rim*lit);}'}));
     this.earth.add(limb);
   }
   makeTerrain(terrain){
@@ -149,11 +200,11 @@ export class MissionScene {
     this.skyUniforms={uZenith:{value:new THREE.Color(.16,.34,.66)},uHorizon:{value:new THREE.Color(.72,.82,.92)},uSun:{value:new THREE.Vector3(0,1,0)},uGlow:{value:new THREE.Color(1,.92,.8)}};
     this.sky=new THREE.Mesh(new THREE.SphereGeometry(90,48,24),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:this.skyUniforms,
       vertexShader:'varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:'uniform vec3 uZenith,uHorizon,uSun,uGlow;varying vec3 vDir;void main(){float y=max(vDir.y,0.);vec3 c=mix(uHorizon,uZenith,pow(y,.55));float s=max(dot(vDir,normalize(uSun)),0.);c+=uGlow*(pow(s,600.)*4.+pow(s,12.)*.25);if(vDir.y<0.)c=uHorizon*.55;gl_FragColor=vec4(c,1.);}'}));
+      fragmentShader:'uniform vec3 uZenith,uHorizon,uSun,uGlow;varying vec3 vDir;void main(){float y=max(vDir.y,0.);vec3 c=mix(uHorizon,uZenith,pow(y,.55));float s=max(dot(vDir,normalize(uSun)),0.);c+=uGlow*(pow(s,600.)*4.+pow(s,12.)*.25);if(vDir.y<0.)c=uHorizon*.55;gl_FragColor=vec4(pow(c,vec3(2.2)),1.);}'}));
     this.sky.visible=false;this.scene.add(this.sky);
     const water=new THREE.MeshStandardMaterial({color:0x14405f,roughness:.09,metalness:0,normalMap:waterNormalMap(),normalScale:new THREE.Vector2(.55,.55)});water.normalMap.repeat.set(1600,1600);
     this.water=new THREE.Mesh(new THREE.PlaneGeometry(160,160),water);this.water.rotation.x=-Math.PI/2;this.water.receiveShadow=true;g.add(this.water);
-    this.oceanVehicle=new Spacecraft(this.materials);this.oceanVehicle.set('cmChutes');g.add(this.oceanVehicle.group);
+    this.oceanVehicle=new Spacecraft(this.materials,this.nasa);this.oceanVehicle.set('cmChutes');g.add(this.oceanVehicle.group);
     const c=document.createElement('canvas');c.width=c.height=128;const g2=c.getContext('2d'),gr=g2.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.3,'rgba(255,255,255,.55)');gr.addColorStop(.45,'rgba(240,246,248,.25)');gr.addColorStop(1,'rgba(240,246,248,0)');g2.fillStyle=gr;g2.fillRect(0,0,128,128);
     this.foamMap=new THREE.CanvasTexture(c);this.foam=new THREE.Mesh(new THREE.PlaneGeometry(.016,.016),new THREE.MeshBasicMaterial({map:this.foamMap,transparent:true,opacity:0,depthWrite:false}));this.foam.rotation.x=-Math.PI/2;this.foam.position.y=.00005;g.add(this.foam);
     this.oceanFog=new THREE.Fog(0xb9cde0,4,70);
@@ -196,7 +247,7 @@ export class MissionScene {
     const sceneName=pad?'pad':ocean?'ocean':local?'local':'world';
     if(this.lastScene!==undefined&&sceneName!==this.lastScene&&(sceneName==='pad'||sceneName==='ocean'||this.lastScene==='pad'||this.lastScene==='ocean'))reset=true;
     const envName=ocean||pad?'ocean':LUNAR_PHASES.has(sample.phase)?'moon':EARTH_PHASES.has(sample.phase)?'earth':'space';
-    if(envName!==this.envName){this.envName=envName;this.materials.setEnvironment(this.envs[envName].texture);}
+    if(envName!==this.envName||(!world&&this.envLive)){this.envName=envName;this.envLive=false;this.materials.setEnvironment(world&&this.reflection?this.reflection.texture:this.envs[envName].texture);this.envLive=world&&Boolean(this.reflection);if(world)this.reflectionAge=1e9;}
     this.moon.position.copy(space(sample.moon));
     this.parkingLines[1].position.copy(this.moon.position);this.parkingLines[2].position.copy(this.moon.position);
     this.parkingLines[1].visible=+sample.date<=this.plan.departure;this.parkingLines[2].visible=+sample.date>=this.plan.departure;
@@ -211,11 +262,18 @@ export class MissionScene {
     // Vehicle: the stage, module or capsule flying at this moment of the Apollo profile.
     this.vehicle.set(sample.config);this.engineLevel=sample.throttle||0;this.vehicle.engine(this.engineLevel);this.vehicle.plasma(sample.plasma||0);
     const attitude=v(sample.attitude||sample.direction).normalize();
-    this.vehicle.group.position.copy(space(sample.position));this.vehicle.group.quaternion.setFromUnitVectors(Y,attitude);
+    this.vehicle.group.position.copy(space(sample.position));
+    {
+      // Roll is held against the nearer body (local vertical), as a spacecraft holds attitude in orbit:
+      // without it the model would turn about its own axis as the velocity vector sweeps around.
+      const centre=earthSide?new THREE.Vector3():this.moon.position,out=this.vehicle.group.position.clone().sub(centre).normalize();
+      let z=out.clone().addScaledVector(attitude,-out.dot(attitude));if(z.lengthSq()<1e-4)z=new THREE.Vector3().crossVectors(attitude,Math.abs(attitude.y)<.9?Y:new THREE.Vector3(1,0,0));z.normalize();
+      this.vehicle.group.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(attitude,z),attitude,z));
+    }
     const localTarget=sample.localPosition?new THREE.Vector3(...sample.localPosition):new THREE.Vector3(0,sample.altitudeKm,0);
     localTarget.y+=this.groundY;
     const lv=this.localVehicle;lv.set(sample.config==='ascent'?'ascent':'lm');lv.engine(local?sample.throttle||0:0);
-    lv.group.position.copy(localTarget);if(sample.config==='ascent')lv.group.position.y+=ASCENT_BASE;
+    lv.group.position.copy(localTarget);if(sample.config==='ascent')lv.group.position.y+=lv.ascentBase;
     if(sample.localDirection)lv.group.quaternion.setFromUnitVectors(Y,new THREE.Vector3(...sample.localDirection).normalize());
     this.descentLeft.visible=sample.phase==='ascent'||sample.phase==='lunarReturnOrbit';
     // Engine-blown regolith below ~30 m on landing, and when the ascent engine fires on the descent stage.
@@ -242,12 +300,18 @@ export class MissionScene {
     this.sunlight.intensity=sky?3*sky.day:local?2.7*conditions.sun.diskFraction:3.2;
     this.fill.intensity=sky?.16+.3*sky.day:.03;this.fill.color.set(sky?0xbcd2ea:0xa4c2df);
     const anchor=ocean?this.oceanVehicle.group.position:pad?new THREE.Vector3(0,.06,0):local?localTarget:this.moon.position.clone().multiplyScalar(.5);
-    this.sunlight.target.position.copy(anchor);this.sunlight.position.copy(anchor).add(sun.multiplyScalar(local?200:sky?40:1000));this.sunlight.castShadow=local||pad;
+    this.sunlight.target.position.copy(anchor);this.sunlight.position.copy(anchor).add(sun.multiplyScalar(local?200:sky?40:1000));this.sunlight.castShadow=!ocean;
     const dark=local&&conditions.sun.diskFraction===0;this.earthlight.intensity=dark?.7:0;
     if(local){this.earthlight.target.position.copy(localTarget);this.earthlight.position.copy(localTarget).add(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(200));}
     if(local||pad){const s=local?.45:.3;Object.assign(this.sunlight.shadow.camera,{left:-s,right:s,top:s,bottom:-s,near:.01,far:500});this.sunlight.shadow.camera.updateProjectionMatrix();}
     if(local){this.localEarth.position.copy(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(350));this.localEarth.scale.setScalar(350*EARTH_RADIUS/conditions.earth.distanceKm);}
+    this.sunOnVehicle=1;
     if(world){
+      // Inside the shadow of the nearer body the spacecraft gets no sunlight at all (umbra; no penumbra model).
+      {
+        const centre=earthSide?new THREE.Vector3():this.moon.position,radius=(earthSide?EARTH_RADIUS:RADIUS_KM)/1000,rel=this.vehicle.group.position.clone().sub(centre),along=rel.dot(sunWorld);
+        if(along<0){const off=rel.addScaledVector(sunWorld,-along).length();this.sunOnVehicle=THREE.MathUtils.smoothstep(off,radius*.995,radius*1.012);}
+      }
       // Earthshine or moonshine from the lit ground below, strongest in low orbit over the day side.
       const centre=earthSide?new THREE.Vector3():this.moon.position,radius=(earthSide?EARTH_RADIUS:RADIUS_KM)/1000,out=this.vehicle.group.position.clone().sub(centre),distance=out.length();out.normalize();
       this.shine.color.set(earthSide?0x9cc0ff:0xcfc8bc);this.shine.intensity=(earthSide?1.5:.55)*Math.max(0,out.dot(sunWorld))*Math.pow(radius/distance,2);
@@ -256,9 +320,10 @@ export class MissionScene {
     this.renderer.toneMappingExposure=local?.92:1;
     // Camera.
     const orbit=this.orbitForPhase(sample),key=pad?'pad':ocean?'ocean':local?'local':overview?'overview':this.mode==='follow'?'follow':chase?'chase':sample.phase;
-    const padTarget=pad?new THREE.Vector3(0,PAD_DECK+sample.altitudeKm+.055,0):null;
+    const padTarget=pad?new THREE.Vector3(0,PAD_DECK+sample.altitudeKm+.055,0):null;this.padTarget=padTarget;
     const target=pad?padTarget:ocean?this.oceanVehicle.group.position.clone().add(new THREE.Vector3(0,.021,0)):local?lv.group.position.clone().add(new THREE.Vector3(0,.004,0)):null;
     if(reset||key!==this.cameraKey){
+      if(reset)this.chaseD=0;
       const blend=!reset&&Boolean(this.cameraKey)&&!ocean&&!pad,from={position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()};
       if(blend&&!this.lastLocal&&this.lastPosition&&previous){const oldOrbit=this.orbitForPhase(previous),delta=oldOrbit&&this.lastFollow==='body'?(oldOrbit.body==='Moon'?space(sample.moon.map((x,i)=>x-previous.moon[i])):new THREE.Vector3()):space(sample.position.map((x,i)=>x-previous.position[i]));from.position.add(delta);from.target.add(delta);}
       if(blend&&local!==this.lastLocal){from.position=this.convertView(from.position,sample,local);from.target=this.convertView(from.target,sample,local);from.up=this.convertView(from.up,sample,local,true).normalize();}
@@ -282,8 +347,8 @@ export class MissionScene {
     this.lastLocal=local;this.lastScene=sceneName;this.closeView=flight||chase;
     this.trail.geometry.dispose();let points=sample.phase==='outbound'?this.plan.outboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):sample.phase==='inbound'?this.plan.inboundPath.slice(0,Math.max(2,Math.ceil(sample.t*200))):[];
     if(sample.orbit){
-      const orbit=sample.orbit,count=Math.max(2,Math.min(4000,Math.ceil(sample.t*192*orbit.turns)));
-      points=Array.from({length:count},(_,i)=>{const relative=parkingState(orbit,orbit.start+(+sample.date-orbit.start)*i/(count-1)).relative;return orbit.body==='Earth'?relative:relative.map((x,k)=>x+sample.moon[k]);});
+      const orbit=sample.orbit,span=sample.orbitAt-sample.orbitFrom,count=Math.max(2,Math.min(600,Math.ceil(192*span/(orbit.periodSeconds*1000))));
+      points=Array.from({length:count},(_,i)=>{const relative=parkingState(orbit,sample.orbitFrom+span*i/(count-1)).relative;return orbit.body==='Earth'?relative:relative.map((x,k)=>x+sample.moon[k]);});
     }
     this.trail.geometry=new THREE.BufferGeometry().setFromPoints(points.map(space));this.trail.visible=points.length>1;
     // Beside the spacecraft everything is true size; in the wide views the vehicle is enlarged to stay visible.
@@ -357,7 +422,7 @@ export class MissionScene {
     else if(ocean){const at=target||new THREE.Vector3();this.controls.target.copy(at);this.camera.position.copy(at).add(new THREE.Vector3(.064,-.007,.09));this.camera.position.y=Math.max(.003,this.camera.position.y);this.lastPosition=at.clone();}
     else if(local){const at=target||this.localVehicle.group.position.clone().add(new THREE.Vector3(0,.004,0));this.controls.target.copy(at);this.camera.position.copy(at).add(this.conditions?sideLitView(this.conditions.sun.direction):LOCAL_VIEW);this.lastPosition=at.clone();}
     else if(this.mode==='auto'&&chase){
-      const pose=this.chasePose(sample);this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.lastPosition=pose.target.clone();
+      this.chaseD=0;const pose=this.chasePose(sample);this.camera.position.copy(pose.position);this.controls.target.copy(pose.target);this.camera.up.copy(pose.up);this.lastPosition=pose.target.clone();
     }
     else if(this.mode==='overview'||['outbound','inbound'].includes(sample.phase)&&this.mode==='auto'){
       const center=this.bounds.center,distance=this.bounds.radius/Math.sin(THREE.MathUtils.degToRad(this.camera.fov/2))*1.12/Math.min(this.camera.aspect,1),axis=space(this.plan.outboundCurve[3]).normalize();
@@ -377,11 +442,11 @@ export class MissionScene {
       label.style.display=visible?'block':'none';label.style.transform=`translate(${(p.x*.5+.5)*this.container.clientWidth+10}px,${(-p.y*.5+.5)*this.container.clientHeight}px)`;
     }
   }
-  resize(){const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);this.dirty=true;}
+  resize(){const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.composer.setSize(width,height);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);this.dirty=true;}
   dispose(){
     if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();
     this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material]){mat.map?.dispose?.();mat.dispose();}}});
-    this.materials.dispose();for(const env of Object.values(this.envs))env.dispose();this.landing.dispose();this.water.material.normalMap.dispose();this.foamMap.dispose();this.cloudNoise.dispose();
+    this.materials.dispose();for(const env of Object.values(this.envs))env.dispose();this.cubeTarget.dispose();this.reflection?.dispose();this.pmrem.dispose();this.composer.dispose();this.landing.dispose();this.water.material.normalMap.dispose();this.foamMap.dispose();this.cloudNoise.dispose();
     this.textures.forEach(tex=>tex.dispose());this.regolith?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();
   }
 }

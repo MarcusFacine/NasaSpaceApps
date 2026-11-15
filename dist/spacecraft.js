@@ -83,8 +83,19 @@ export function createMaterials(envMap) {
     chute: new THREE.MeshStandardMaterial({ map: gores, side: THREE.DoubleSide, roughness: 0.92, metalness: 0 }),
     line: new THREE.LineBasicMaterial({ color: 0xdedad0, transparent: true, opacity: 0.55 }),
   };
-  m.dispose = () => { foil.dispose(); quadrants.dispose(); gores.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); };
-  m.setEnvironment = map => { for (const x of Object.values(m)) if (x?.isMeshStandardMaterial && x !== m.chute) x.envMap = map; };
+  // NASA model materials: plain colours become the simulation's own materials (foil, paint, metal);
+  // textured ones (skins, flags, decals) are kept, with the same reflections as the rest.
+  m.lmSkin = std({ color: 0xb4b5b2, metalness: 0.72, roughness: 0.4 });
+  const plain = { blinn1SG: m.gold, blinn9SG: m.amber, blinn6SG: m.black, blinn2SG: m.charcoal, blinn4SG: m.aluminium, blinn3SG: m.lmSkin, initialShadingGr: m.greyPanel, blinn10SG: m.white, blinn13SG: m.bell, apollohorns_blin: m.bell, apollohorns_bli1: m.charcoal };
+  const finish = { blinn14SG: [0.85, 0.24], blinn11SG: [0.4, 0.42] }, kept = new Map();
+  m.nasa = source => {
+    const name = source.name.split('.')[0];
+    if (plain[name] && !source.map) return plain[name];
+    if (!kept.has(source.uuid)) { const c = source.clone(), f = finish[name] || [0.15, 0.6]; c.envMap = m.white.envMap; c.metalness = f[0]; c.roughness = f[1]; kept.set(source.uuid, c); }
+    return kept.get(source.uuid);
+  };
+  m.dispose = () => { foil.dispose(); quadrants.dispose(); gores.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); for (const x of kept.values()) x.dispose(); };
+  m.setEnvironment = map => { for (const x of [...Object.values(m), ...kept.values()]) if (x?.isMeshStandardMaterial && x !== m.chute) x.envMap = map; };
   return m;
 }
 
@@ -93,6 +104,12 @@ function add(parent, geometry, material, position, rotation) {
   mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
 }
 const cyl = (rt, rb, h, s = 40, open = false) => new THREE.CylinderGeometry(rt, rb, h, s, 1, open);
+// A stage of a NASA model, with the simulation's materials.
+function nasaPart(source, m) {
+  const g = new THREE.Group();
+  for (const mesh of source.children) { const c = new THREE.Mesh(mesh.geometry, m.nasa(mesh.material)); c.castShadow = c.receiveShadow = true; g.add(c); }
+  return g;
+}
 // Rocket-engine bell: throat at y = 0, exit at y = −length.
 function bellGeometry(throat, exit, length, segments = 40) {
   const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pts.push(v2(throat + (exit - throat) * Math.pow(t, 0.62), -length * t)); }
@@ -115,22 +132,30 @@ function radialGlow() {
   return glowTexture || (glowTexture = canvasTexture(128, 128, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, 'rgba(255,255,255,.55)'); g.addColorStop(0.5, 'rgba(255,255,255,.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }));
 }
 // Exhaust: bright for the first stage in air, faint for engines in vacuum.
+// Emitters are brighter than white (HDR), so the bloom pass makes them glow like a real exposure.
+const HDR = 2.8;
 function plume(length, radius, color, opacity) {
   const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+  material.color.multiplyScalar(HDR);
   const outer = new THREE.Mesh(new THREE.ConeGeometry(radius, length, 32, 1, true), material);
   outer.rotation.x = Math.PI; outer.position.y = -length / 2; outer.userData.base = opacity;
   const g = new THREE.Group(); g.add(outer);
   const core = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.45, length * 0.45, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff4dc, transparent: true, opacity: Math.min(1, opacity * 1.6), depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-  core.rotation.x = Math.PI; core.position.y = -length * 0.225; core.userData.base = core.material.opacity; g.add(core);
+  core.material.color.multiplyScalar(HDR * 1.4); core.rotation.x = Math.PI; core.position.y = -length * 0.225; core.userData.base = core.material.opacity; g.add(core);
   // Glow at the nozzle: what a camera sees of a burning engine.
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialGlow(), color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: Math.min(1, opacity * 2.4) }));
-  glow.scale.setScalar(radius * 7); glow.position.y = -radius * 0.6; glow.userData.base = glow.material.opacity; glow.userData.glow = true; g.add(glow);
+  glow.material.color.multiplyScalar(HDR); glow.scale.setScalar(radius * 7); glow.position.y = -radius * 0.6; glow.userData.base = glow.material.opacity; glow.userData.glow = true; g.add(glow);
   g.visible = false; return g;
 }
 
 // ---- Command and Service Module (CM apex at +Y) ----
-function buildCM(m, { shield = true, boostCover = false } = {}) {
+function buildCM(m, { shield = true, boostCover = false } = {}, nasa = null) {
   const g = new THREE.Group();
+  if (nasa && !boostCover) {
+    g.add(nasaPart(nasa.csm.cm, m));
+    if (shield) add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42 + nasa.csm.base, 0]);
+    return g;
+  }
   const r = 1.955, h = 3.23;
   add(g, cyl(0.42, r, h, 64), boostCover ? m.white : m.mirror, [0, h / 2, 0]);
   add(g, cyl(0.42, 0.42, 0.12, 32), m.aluminium, [0, h + 0.06, 0]);
@@ -143,7 +168,11 @@ function buildCM(m, { shield = true, boostCover = false } = {}) {
   if (shield) { const cap = add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42, 0]); cap.userData.shield = true; }
   return g;
 }
-export function buildSM(m) {
+export function buildSM(m, nasa = null) {
+  if (nasa) {
+    const g = new THREE.Group(); g.add(nasaPart(nasa.csm.sm, m), nasaPart(nasa.csm.bell, m));
+    const engine = plume(9, 1.3, 0xffc58a, 0.22); engine.position.y = nasa.csm.bellEnd + 0.2; g.add(engine); g.userData.plume = engine; return g;
+  }
   const g = new THREE.Group(), r = 1.955, h = 4.1;
   add(g, cyl(r, r, h, 64), m.aluminium, [0, -h / 2, 0]);
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; add(g, new THREE.BoxGeometry(0.9, 2.6, 0.03), m.radiator, [Math.sin(a) * (r + 0.01), -2.4, Math.cos(a) * (r + 0.01)], [0, a, 0]); }
@@ -159,10 +188,14 @@ export function buildSM(m) {
   g.userData.plume = engine; g.userData.bell = bell; return g;
 }
 // CSM with the CM apex at +3.2 m and the SM below the origin.
-function buildCSM(m) { const g = new THREE.Group(), cm = buildCM(m, { shield: false }), sm = buildSM(m); g.add(cm, sm); g.userData.plume = sm.userData.plume; return g; }
+function buildCSM(m, nasa = null) { const g = new THREE.Group(), cm = buildCM(m, { shield: false }, nasa), sm = buildSM(m, nasa); g.add(cm, sm); g.userData.plume = sm.userData.plume; return g; }
 
 // ---- Lunar Module ----
-export function buildDescentStage(m) {
+export function buildDescentStage(m, nasa = null) {
+  if (nasa) {
+    const g = nasaPart(nasa.lm.descent, m), engine = plume(5, 0.75, 0xffd9a8, 0.12); engine.position.y = 1.15; g.add(engine);
+    g.userData.plume = engine; g.userData.height = nasa.lm.deck; return g;
+  }
   const g = new THREE.Group(), y0 = 1.5, hh = 1.65;
   const oct = new THREE.Shape(); const R = 2.28;
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8, p = [Math.cos(a) * R, Math.sin(a) * R]; i ? oct.lineTo(...p) : oct.moveTo(...p); }
@@ -187,7 +220,8 @@ export function buildDescentStage(m) {
   g.userData.plume = engine; g.userData.height = y0 + hh;
   return g;
 }
-export function buildAscentStage(m) {
+export function buildAscentStage(m, nasa = null) {
+  if (nasa) { const g = nasaPart(nasa.lm.ascent, m), engine = plume(3.5, 0.5, 0xffe2b8, 0.1); engine.position.y = 0.05; g.add(engine); g.userData.plume = engine; return g; }
   const g = new THREE.Group();
   // Cabin: faceted prism seen from the front.
   const s = new THREE.Shape(); [[-1.15, 0], [1.15, 0], [1.4, 0.55], [1.4, 1.7], [1.0, 2.35], [-1.0, 2.35], [-1.4, 1.7], [-1.4, 0.55]].forEach((p, i) => i ? s.lineTo(...p) : s.moveTo(...p));
@@ -216,8 +250,8 @@ export function buildAscentStage(m) {
   g.userData.plume = engine;
   return g;
 }
-export function buildLM(m) {
-  const g = new THREE.Group(), descent = buildDescentStage(m), ascent = buildAscentStage(m);
+export function buildLM(m, nasa = null) {
+  const g = new THREE.Group(), descent = buildDescentStage(m, nasa), ascent = buildAscentStage(m, nasa);
   ascent.position.y = descent.userData.height; g.add(descent, ascent);
   g.userData.plume = descent.userData.plume; g.userData.descent = descent; g.userData.ascent = ascent; return g;
 }
@@ -259,9 +293,9 @@ function buildSaturnV(m, { stage = 1 } = {}) {
 }
 
 // Stages left behind: the same models, without what flies on.
-export function buildSpent(m, kind) {
-  if (kind === 'sm') { const g = buildSM(m); g.userData.plume.visible = false; return g; }
-  if (kind === 'asc') return buildAscentStage(m);
+export function buildSpent(m, kind, nasa = null) {
+  if (kind === 'sm') { const g = buildSM(m, nasa); g.userData.plume.visible = false; if (nasa) g.position.y = -nasa.csm.bellEnd / 2; return g; }
+  if (kind === 'asc') return buildAscentStage(m, nasa);
   const stage = kind === 'sic' ? 1 : kind === 'sii' ? 2 : 3, top = kind === 'sic' ? 48 : kind === 'sii' ? 30.4 : 30.2;
   const g = buildSaturnV(m, { stage });
   for (const child of [...g.children]) if (child === g.userData.plume || child.position.y > top) g.remove(child);
@@ -274,20 +308,21 @@ export function setLayer(object, layer) { object.traverse(o => o.layers.set(laye
 function plasma() {
   const g = new THREE.Group();
   const cap = new THREE.Mesh(new THREE.SphereGeometry(2.6, 32, 16, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), new THREE.MeshBasicMaterial({ color: 0xffb46b, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
-  cap.position.y = 0.6; cap.scale.set(1.15, 0.55, 1.15); g.add(cap);
+  cap.material.color.multiplyScalar(1.5); cap.position.y = 0.6; cap.scale.set(1.15, 0.55, 1.15); g.add(cap);
   const fade = canvasTexture(8, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#000'); gr.addColorStop(0.55, '#333'); gr.addColorStop(1, '#fff'); c.fillStyle = gr; c.fillRect(0, 0, w, h); }, false);
   const wakeMaterial = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
-    uniforms: { uColor: { value: new THREE.Color(1.0, 0.52, 0.26) }, opacity: { value: 0.2 } },
+    uniforms: { uColor: { value: new THREE.Color(1.0, 0.52, 0.26).multiplyScalar(1.4) }, opacity: { value: 0.2 } },
     vertexShader: 'varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
-    fragmentShader: 'uniform vec3 uColor; uniform float opacity; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ float core = pow(abs(dot(vN, vV)), 4.); float tail = pow(1. - vUv.y, 3.); gl_FragColor = vec4(uColor * core * tail * opacity * 2.2, 1.); }'
+    fragmentShader: 'uniform vec3 uColor; uniform float opacity; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ float core = pow(clamp(abs(dot(normalize(vN), normalize(vV))), 0., 1.), 4.); float tail = pow(clamp(1. - vUv.y, 0., 1.), 3.); gl_FragColor = vec4(uColor * core * tail * opacity * 2.2, 1.); }'
   });
-  const wake = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 1.7, 60, 40, 1, true), wakeMaterial);
-  wake.position.y = 31; g.add(wake);
+  // Anchored at the capsule: it only ever grows backwards, away from the heat shield.
+  const wake = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 1.7, 60, 40, 1, true).translate(0, 30, 0), wakeMaterial);
+  wake.position.y = 1.2; g.add(wake);
   // Fireball around the heat shield: a soft additive glow, brightest at peak heating.
   const glowMap = canvasTexture(128, 128, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,240,215,1)'); gr.addColorStop(0.18, 'rgba(255,190,120,.85)'); gr.addColorStop(0.45, 'rgba(255,120,60,.28)'); gr.addColorStop(1, 'rgba(255,90,40,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
-  glow.scale.setScalar(13); glow.position.y = -0.4; g.add(glow);
+  glow.material.color.multiplyScalar(1.15); glow.scale.setScalar(11); glow.position.y = -0.4; g.add(glow);
   g.userData.parts = [[cap, 0.85], [wake, 0.2], [glow, 0.95]]; g.userData.fade = fade; g.userData.glowMap = glowMap; g.visible = false; return g;
 }
 function buildChutes(m) {
@@ -309,22 +344,26 @@ const HEIGHT = { saturnV: 110.6, stage2: 80, sivb: 34, stack: 18, lm: 7, ascent:
 
 // One vehicle that switches configuration with the mission phase.
 export class Spacecraft {
-  constructor(materials) {
-    this.m = materials; this.group = new THREE.Group(); this.body = new THREE.Group(); this.body.scale.setScalar(0.001); this.group.add(this.body);
+  constructor(materials, nasa = null) {
+    this.m = materials; this.nasa = nasa; this.group = new THREE.Group(); this.body = new THREE.Group(); this.body.scale.setScalar(0.001); this.group.add(this.body);
     const m = materials, cfg = this.configs = {};
     cfg.saturnV = buildSaturnV(m, { stage: 1 }); cfg.stage2 = buildSaturnV(m, { stage: 2 }); cfg.sivb = buildSaturnV(m, { stage: 3 });
     for (const [k, model] of [['saturnV', cfg.saturnV], ['stage2', cfg.stage2], ['sivb', cfg.sivb]]) { const h = model.userData.height; model.position.y = -h * 0.45; }
-    const stack = new THREE.Group(), csm1 = buildCSM(m), lm1 = buildLM(m); stack.add(csm1); lm1.rotation.x = Math.PI; lm1.position.y = 3.6 + 6.0; stack.add(lm1); stack.position.y = -2; stack.userData.plume = csm1.userData.plume; cfg.stack = stack;
-    cfg.lm = buildLM(m);
-    cfg.ascent = buildAscentStage(m);
-    const csmA = new THREE.Group(), csm2 = buildCSM(m), asc = buildAscentStage(m); asc.rotation.x = Math.PI; asc.position.y = 3.6 + 3.1; csmA.add(csm2, asc); csmA.userData.plume = csm2.userData.plume; cfg.csmAscent = csmA;
-    cfg.csm = buildCSM(m);
-    const cm = buildCM(m); cm.position.y = -1.5; const glow = plasma(); cm.add(glow); cm.userData.plasma = glow; cfg.cm = cm;
-    const cmc = new THREE.Group(), cm2 = buildCM(m); cm2.rotation.z = 0.48; cmc.add(cm2); const chutes = buildChutes(m); cmc.add(chutes); cmc.userData.chutes = chutes; cfg.cmChutes = cmc;
+    // Docked: the lunar module nose to nose with the command module, as after transposition and docking.
+    const apex = nasa ? nasa.csm.apex + 0.15 : 3.6, lmDock = nasa ? nasa.lm.deck + nasa.lm.dock : 6.0, ascDock = nasa ? nasa.lm.dock : 3.1;
+    const stack = new THREE.Group(), csm1 = buildCSM(m, nasa), lm1 = buildLM(m, nasa); stack.add(csm1); lm1.rotation.x = Math.PI; lm1.position.y = apex + lmDock; stack.add(lm1); stack.position.y = -2; stack.userData.plume = csm1.userData.plume; cfg.stack = stack;
+    cfg.lm = buildLM(m, nasa);
+    cfg.ascent = buildAscentStage(m, nasa);
+    const csmA = new THREE.Group(), csm2 = buildCSM(m, nasa), asc = buildAscentStage(m, nasa); asc.rotation.x = Math.PI; asc.position.y = apex + ascDock; csmA.add(csm2, asc); csmA.userData.plume = csm2.userData.plume; cfg.csmAscent = csmA;
+    cfg.csm = buildCSM(m, nasa);
+    const cm = buildCM(m, {}, nasa); cm.position.y = -1.5; const glow = plasma(); cm.add(glow); cm.userData.plasma = glow; cfg.cm = cm;
+    const cmc = new THREE.Group(), cm2 = buildCM(m, {}, nasa); cm2.rotation.z = 0.48; cmc.add(cm2); const chutes = buildChutes(m); cmc.add(chutes); cmc.userData.chutes = chutes; cfg.cmChutes = cmc;
     for (const model of Object.values(cfg)) { model.visible = false; this.body.add(model); }
     this.name = null; this.set('lm');
   }
   get height() { return HEIGHT[this.name] / 1000; }
+  // Where the ascent stage sits on the descent stage, km.
+  get ascentBase() { return (this.nasa ? this.nasa.lm.deck : 3.15) / 1000; }
   set(name) {
     if (name === this.name) return; if (this.name) this.configs[this.name].visible = false;
     this.name = name; this.configs[name].visible = true;

@@ -1,6 +1,7 @@
 import { evaluate } from './model.js';
 import { HOUR, PHASES, ANIMATION_SECONDS, APOLLO, buildMission, sampleMission } from './mission-model.js';
 import { MissionScene } from './mission-scene.js';
+import { loadNasaModels } from './nasa-models.js';
 import { t, number, utcDate } from './i18n.js';
 
 const $ = s => document.querySelector(s);
@@ -35,7 +36,7 @@ export class MissionUI {
     this.labelPhases(); this.playButton();
     if (this.dialog.open && this.context) { $('#missionCoordinates').textContent = coords(this.context.site); $('#missionSite').textContent = t(`site.${this.context.site.id}`); this.apply(true); }
   }
-  open(context) {
+  async open(context) {
     this.context = context; this.progress = 0; this.stop(); this.plan = null; this.last = performance.now(); this.lastDraw = 0; this.conditionKey = '';
     $('#missionSite').textContent = t(`site.${context.site.id}`); $('#missionCoordinates').textContent = coords(context.site);
     $('#missionWindowHours').value = Math.round((context.window.end - context.window.start) / HOUR); $('#missionWindowHours').disabled = context.window.source === 'search';
@@ -46,7 +47,12 @@ export class MissionUI {
     // A disposed WebGL context cannot be reused until asynchronously restored:
     // each reopened scene gets a fresh canvas with the same attributes.
     const canvas = $('#missionCanvas'), fresh = canvas.cloneNode(false); canvas.replaceWith(fresh);
-    try { this.scene = new MissionScene(fresh, $('#missionViewport'), context.terrain, text => { $('#missionSceneMessage').textContent = text; }, { t }); }
+    // The spacecraft are NASA's own models; they load once, the first time the mission opens.
+    $('#missionSceneMessage').textContent = t('mission.loading');
+    const nasa = await loadNasaModels();
+    if (!this.dialog.open || this.context !== context) return;
+    $('#missionSceneMessage').textContent = '';
+    try { this.scene = new MissionScene(fresh, $('#missionViewport'), context.terrain, text => { $('#missionSceneMessage').textContent = text; }, { t, nasa }); }
     catch { $('#missionSceneMessage').textContent = t('mission.noScene'); }
     this.apply();
     this.tick = now => {
@@ -95,7 +101,7 @@ export class MissionUI {
     $('#missionAltitude').textContent = `${s.altitudeKm < 1 ? `${number(s.altitudeKm * 1000)} m` : `${number(Math.round(s.altitudeKm))} km`} ${t(`alt.${s.altitudeReference}`)}`;
     $('#missionConditions').textContent = t('cond', { sun: t(this.conditions.sun.available ? 'cond.visible' : 'cond.blocked'), earth: t(this.conditions.earth.available ? 'cond.visible' : 'cond.blocked') });
     $('#missionOrbitStatus').textContent = s.orbit
-      ? t('ms.orbit', { turns: number(s.orbitTurns, 2), total: number(s.orbit.turns, 2), speed: number(s.orbit.speedKmS, 2) })
+      ? t('ms.orbit', { turns: number(s.orbitTurns, 2), total: number(s.orbit.turns, 2), speed: number(s.orbit.speedKmS, 2) }) + (s.orbit.turns > 2 ? ` · ${t('ms.oneLap')}` : '')
       : s.engine ? t(['tli', 'loi', 'tei'].includes(s.phase) ? 'ms.burn' : 'ms.thrust') : t(s.phase === 'surface' ? 'ms.surface' : 'ms.flight');
     $('#missionProgress').value = Math.round(this.progress * 1000);
     document.querySelectorAll('[data-mission-phase]').forEach(b => {

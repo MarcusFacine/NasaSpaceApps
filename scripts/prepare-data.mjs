@@ -9,6 +9,12 @@ await mkdir('dist/assets', { recursive: true });
 await cp('node_modules/three/build/three.module.js', 'dist/vendor/three.module.js');
 await cp('node_modules/three/build/three.core.js', 'dist/vendor/three.core.js');
 await cp('node_modules/three/examples/jsm/controls/OrbitControls.js', 'dist/vendor/OrbitControls.js');
+// Loaders and post-processing for the mission scene ("three/addons/" in the import map of dist/app).
+for (const file of ['loaders/GLTFLoader.js', 'loaders/DRACOLoader.js', 'utils/BufferGeometryUtils.js', 'utils/SkeletonUtils.js', 'postprocessing/EffectComposer.js', 'postprocessing/RenderPass.js', 'postprocessing/ShaderPass.js', 'postprocessing/MaskPass.js', 'postprocessing/Pass.js', 'postprocessing/UnrealBloomPass.js', 'postprocessing/OutputPass.js', 'shaders/CopyShader.js', 'shaders/LuminosityHighPassShader.js', 'shaders/OutputShader.js']) {
+  await mkdir(`dist/vendor/addons/${file.split('/')[0]}`, { recursive: true }); await cp(`node_modules/three/examples/jsm/${file}`, `dist/vendor/addons/${file}`);
+}
+await mkdir('dist/vendor/addons/libs/draco', { recursive: true });
+for (const file of ['draco_decoder.js', 'draco_decoder.wasm', 'draco_wasm_wrapper.js']) await cp(`node_modules/three/examples/jsm/libs/draco/gltf/${file}`, `dist/vendor/addons/libs/draco/${file}`);
 await cp('node_modules/three/LICENSE', 'dist/vendor/THREE-LICENSE.txt');
 await cp('node_modules/astronomy-engine/astronomy.browser.min.js', 'dist/vendor/astronomy.browser.min.js');
 // Astronomy Engine's MIT license is included in the browser bundle header.
