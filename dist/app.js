@@ -80,8 +80,11 @@ function restore() {
   } catch { return false; }
 }
 
-let messageTimer = 0;
+let messageTimer = 0, messageKey = null;
+// say(): a message from the dictionary, rewritten if the language changes while it shows.
+function say(key, vars = {}, error = false, sticky = false) { message(t(key, vars), error, sticky); messageKey = { key, vars }; }
 function message(text, error = false, sticky = false) {
+  messageKey = null;
   $('#appMessageText').textContent = text;
   $('#appMessage').className = `message ${text ? 'visible' : ''} ${error ? 'error' : ''}`;
   clearTimeout(messageTimer);
@@ -90,7 +93,7 @@ function message(text, error = false, sticky = false) {
 $('#appMessageClose').addEventListener('click', () => message(''));
 
 function setDate(date, keepMessage = false) {
-  if (!validDate(date)) { message(t('msg.dateRange'), true); $('#dateTime').value = state.date.toISOString().slice(0, 16); return false; }
+  if (!validDate(date)) { say('msg.dateRange', {}, true); $('#dateTime').value = state.date.toISOString().slice(0, 16); return false; }
   state.date = new Date(date); if (!keepMessage) message(''); render(); return true;
 }
 
@@ -113,7 +116,7 @@ async function exploreSite(id) {
 }
 async function toggleCompare(id) {
   if (state.selected.includes(id)) state.selected = state.selected.filter(s => s !== id);
-  else { if (state.selected.length >= 3) { message(t('sites.max')); return; } state.selected = [...state.selected, id]; }
+  else { if (state.selected.length >= 3) { say('sites.max'); return; } state.selected = [...state.selected, id]; }
   message(''); renderSites(); await ensureTerrains(state.selected); render(); refreshBest();
 }
 // Tracks and scene pins switch the explored site among those already compared, keeping the comparison.
@@ -150,7 +153,7 @@ function bindTips(root) {
 addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 addEventListener('scroll', hideTip, { passive: true });
 function setView(view) {
-  state.view = view;
+  state.view = view; $('#sceneBox').dataset.view = view;
   $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
   scene?.setView(view); render();
 }
@@ -286,7 +289,7 @@ function renderTracks() {
 
 function stopPlayback() {
   if (playing) clearInterval(playing); playing = null;
-  const b = $('#playButton'); b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', t('time.play'));
+  const b = $('#playButton'); b.setAttribute('aria-pressed', 'false'); b.dataset.i18nAttr = 'aria-label:time.play'; b.setAttribute('aria-label', t('time.play'));
 }
 
 // Longest continuous Sun + Earth interval for the selection in the next 30 days.
@@ -310,8 +313,8 @@ async function findBestWindow() {
   try {
     await ensureTerrains(state.selected);
     const found = await searchWindow(snapshot.date, snapshot.sites, snapshot.heightM, snapshot.panel);
-    if (!found) { message(t('msg.noWindow')); return; }
-    if (+state.date !== +snapshot.date || state.heightM !== snapshot.heightM || state.selected.join(',') !== snapshot.sites.map(s => s.id).join(',')) { message(t('msg.changed')); return; }
+    if (!found) { say('msg.noWindow'); return; }
+    if (+state.date !== +snapshot.date || state.heightM !== snapshot.heightM || state.selected.join(',') !== snapshot.sites.map(s => s.id).join(',')) { say('msg.changed'); return; }
     setBest(found); setDate(found.start, true); state.window = { start: found.start.toISOString(), end: found.end.toISOString(), key: windowKey() }; render();
     // The result lands in the window card, not in a toast over the sky.
     pulseBest(); button.textContent = t('action.found', { h: found.hours }); setTimeout(() => { if (!searching) button.textContent = t('action.best'); }, 2500);
@@ -388,7 +391,7 @@ $('#hourSlider').addEventListener('input', () => { cancelRitual(); stopPlayback(
 $('#playButton').addEventListener('click', () => {
   cancelRitual();
   if (playing) { stopPlayback(); return; } if (!ready) return;
-  const b = $('#playButton'); b.setAttribute('aria-pressed', 'true'); b.setAttribute('aria-label', t('time.pause'));
+  const b = $('#playButton'); b.setAttribute('aria-pressed', 'true'); b.dataset.i18nAttr = 'aria-label:time.pause'; b.setAttribute('aria-label', t('time.pause'));
   playing = setInterval(() => { if (document.hidden) return; if (!setDate(new Date(+state.date + 10 * 60e3))) stopPlayback(); }, 200);
 });
 // Sun and Earth buttons look through a lens from the observer's eye: the Earth fills the view with its real phase.
@@ -404,7 +407,7 @@ $('#readingLight').addEventListener('click', () => {
   state.readingLight = !state.readingLight; $('#readingLight').setAttribute('aria-pressed', String(state.readingLight));
   scene?.setReadingLight(state.readingLight); render();
 });
-$('#fullscreenButton').addEventListener('click', async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#sceneViewport').requestFullscreen(); } catch { message(t('msg.fullscreen')); } });
+$('#fullscreenButton').addEventListener('click', async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#sceneViewport').requestFullscreen(); } catch { say('msg.fullscreen'); } });
 const about = $('#aboutDialog');
 for (const id of ['#helpButton', '#footerMethod']) $(id).addEventListener('click', () => about.showModal());
 $('.dialog-close').addEventListener('click', () => about.close());
@@ -433,7 +436,7 @@ bindLanguageSwitch();
 // The scene tools sit right above the console, whatever its height.
 const consoleBox = $('.console');
 new ResizeObserver(() => $('#sceneViewport').style.setProperty('--console-h', `${consoleBox.offsetHeight}px`)).observe(consoleBox);
-onLangChange(() => { document.title = t('meta.appTitle'); stripKey = ''; $$('[data-fold]').forEach(b => setFold(b.dataset.fold, b.getAttribute('aria-expanded') === 'true')); renderSites(); render(); mission.refreshLanguage(); if (!searching) $('#bestWindow').textContent = t('action.best'); });
+onLangChange(() => { document.title = t('meta.appTitle'); if (messageKey) $('#appMessageText').textContent = t(messageKey.key, messageKey.vars); stripKey = ''; $$('[data-fold]').forEach(b => setFold(b.dataset.fold, b.getAttribute('aria-expanded') === 'true')); renderSites(); render(); mission.refreshLanguage(); if (!searching) $('#bestWindow').textContent = t('action.best'); });
 document.title = t('meta.appTitle');
 
 // WebMCP tools for agents in the browser.
@@ -478,7 +481,7 @@ const guide = createGuide({
 
 restored = restore();
 $('#height').value = state.heightM; $(`[name=panel][value=${state.panel}]`).checked = true;
-renderSites(); $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
+renderSites(); $('#sceneBox').dataset.view = state.view; $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
 
 async function init() {
   try {
@@ -488,7 +491,7 @@ async function init() {
     await ensureTerrains([...new Set([state.primary, ...state.selected])]);
     ready = true; $('#missionButton').disabled = false;
     try { scene = new LunarScene($('#sceneCanvas'), $('#sceneBox'), sites, text => message(text, true), { t, onSite: id => focusSite(id) }); }
-    catch (error) { message(t('msg.webgl'), true); $('#sceneLoading').innerHTML = `<b>${t('loading.webglTitle')}</b><span>${t('loading.webglSub')}</span>`; console.warn(error); }
+    catch (error) { say('msg.webgl', {}, true); $('#sceneLoading').innerHTML = `<b>${t('loading.webglTitle')}</b><span>${t('loading.webglSub')}</span>`; console.warn(error); }
     scene?.setView(state.view);
     if (restored) { render(); refreshBest(0); } else await openingRitual();
     if (scene) { $('#sceneLoading').classList.add('hidden'); requestAnimationFrame(() => $('#sceneViewport').classList.add('ready')); }

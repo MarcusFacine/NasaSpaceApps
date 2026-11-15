@@ -84,7 +84,7 @@ export class MissionScene {
     this.bounce=new THREE.HemisphereLight(0x000000,0xcfc8bc,0);this.scene.add(this.bounce);
     // What polished metal reflects: regolith near the Moon, oceans and clouds near the Earth, sky over the Pacific.
     this.envs={moon:makeEnvironment(this.renderer,{ground:[.34,.33,.31]}),earth:makeEnvironment(this.renderer,{ground:[.12,.2,.34],horizon:[.4,.52,.72]}),space:makeEnvironment(this.renderer,{sky:[.02,.02,.025],ground:[.07,.07,.075]}),ocean:makeEnvironment(this.renderer,{sky:[.28,.46,.75],ground:[.03,.09,.16],horizon:[.78,.86,.95]})};
-    this.materials=createMaterials(this.envs.space.texture);this.envName='space';
+    this.materials=createMaterials(this.envs.space.texture);this.materials.onTextureLoad=()=>{this.dirty=true;};this.envName='space';
     const loader=new THREE.TextureLoader(),anisotropy=this.renderer.capabilities.getMaxAnisotropy();
     const texture=(file,srgb,error)=>{const tex=loader.load(asset(`./assets/mission/${file}`),()=>this.dirty=true,undefined,error&&(()=>onError(t(error))));if(srgb)tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=anisotropy;this.textures.push(tex);return tex;};
     this.loadTexture=texture;this.canvas=canvas;this.onError=onError;

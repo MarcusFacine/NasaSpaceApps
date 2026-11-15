@@ -206,3 +206,24 @@ Pedido do Ricardo: "na visão da superfície, como se fôssemos o astronauta, at
   - Liga e desliga no botão "Módulo lunar".
 - **Defeito encontrado:** com a sombra próxima redesenhada só durante a caminhada, o mapa dela não existia ao abrir o app, e o WebGL descartava desenhos (`GL_INVALID_OPERATION: Mismatch between texture format and sampler type`). Agora o mapa é criado no primeiro quadro.
 - **Idioma.** A escolha salva passou para a chave `horisite-lang-v2`. Quem tinha clicado em PT antes da mudança (a equipe, por exemplo) agora também abre em inglês, e uma escolha nova continua sendo lembrada. Uma varredura do texto visível em inglês (landing, tutorial, app, guia, "Dados e método" e missão) não achou português.
+
+## Saltos, nave e idiomas (15/11/2026, rodada 2)
+
+Pedidos do Ricardo: "a nave tem que ser profissional e real", "saltos por causa da gravidade da Lua", "o símbolo da NASA Space Apps e não dos Estados Unidos na nave", "várias coisas ficam mudando conforme mexo" (texto alternando inglês/português), e o retorno de teste num Galaxy S23: "os botões estão mudando de lugar quando são pressionados".
+
+- **Saltos.** Gravidade lunar de 1,62 m/s². Espaço (ou o botão Saltar) dá 1,17 m/s de impulso: ~42 cm e ~1,45 s no ar, como o salto de John Young na Apollo 16. A velocidade horizontal da decolagem se mantém no ar, sem controle até o pouso. Correr é o trote dos astronautas: pulinhos de ~6 cm encadeados. A câmera e a sombra do corpo acompanham a altura do salto. Trocar de vista, de local ou voltar ao ponto encerra um salto em andamento.
+- **Nave.** Continua o modelo oficial da NASA, com duas mudanças:
+  - **Manta de Kapton:** gerada no shader a partir da posição em metros na nave, e não das coordenadas de textura (o modelo da NASA as estica, o que desenhava a manta em listras e fazia os painéis com textura parecerem remendos). O amassado combina facetas planas de ~9 cm (Voronoi 3D com inclinação aleatória por célula) e um enrugado fino, e some quando fica menor que ~3 pixels, para não cintilar de longe. O casco do estágio de subida ficou alumínio fosco em vez de espelho. Desempenho medido: 43 quadros/s andando e 60 parado, como antes.
+  - **Logos:** a bandeira dos EUA e a placa "UNITED STATES" foram trocadas pelo logo oficial do NASA Space Apps Challenge (pacote de marca de spaceappschallenge.org, sem distorcer nem girar): placa branca com o logo completo à esquerda e disco branco com o símbolo à direita, nos mesmos retângulos das texturas originais.
+- **Idiomas.** O texto que "ia e voltava" era o tradutor automático do Chrome traduzindo a página em inglês enquanto o app reescrevia os números. As três páginas agora têm `translate="no"` e `<meta name="google" content="notranslate">`.
+  - Uma varredura automática (o app inteiro nos dois idiomas, trocando de idioma no meio) não encontrou texto no idioma errado. Também não há texto mudando sozinho com o app parado.
+  - Corrigido: as mensagens de erro da missão saíam sempre em português e agora têm código traduzido.
+  - Corrigido: os avisos do app e o rótulo do botão reproduzir não acompanhavam a troca de idioma.
+- **Celular.** Ao tocar numa seta, o código marcava a tecla como pressionada com a classe `down`, que também é a classe da seta para trás. A seta tocada pulava para o lugar da de trás e girava, e a de trás, ao ser solta, ia para o canto de cima apontando para cima. O estado pressionado agora é `held`.
+  - Durante a caminhada no celular, a legenda Sol/Terra e o selo de luz se recolhem: a linha "Aqui:" e o painel abaixo dizem o mesmo.
+  - Conferido num S23 emulado (360×780 e 780×360, toque): nenhum controle muda de lugar e nada se sobrepõe.
+- **Revisão independente (Codex).** Achou e foram corrigidos:
+  - tecla presa ao soltar fora da vista Superfície;
+  - salto antigo retomado ao voltar à Superfície;
+  - nave sem redesenho quando os logos terminam de carregar;
+  - avisos e rótulo do botão reproduzir presos no idioma anterior.

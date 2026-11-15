@@ -22,6 +22,8 @@ export const APOLLO = Object.freeze({
   liftoffSeconds:50, liftoffAltitudeKm:3.4
 });
 // Presentation time is independent of the mission's UTC timeline.
+// Errors carry the code of their text in i18n.js (mission.err.*), so the panel shows them in the chosen language.
+const missionError=(code,message)=>Object.assign(new Error(message),{code:`mission.err.${code}`});
 const PHASE_TABLE = [
   ['liftoff','Decolagem',9],['launch','Subida à órbita',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
   ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',5],
@@ -181,15 +183,15 @@ function selectTransferCurve(plan,id,astronomy){
       return;
     }
   }
-  throw new Error('Não foi possível ligar as órbitas sem cruzar os globos. Experimente outra data ou duração de viagem.');
+  throw missionError('cross','Não foi possível ligar as órbitas sem cruzar os globos. Experimente outra data ou duração de viagem.');
 }
 
 export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.outboundHours,stayHours=APOLLO.stayHours,inboundHours=APOLLO.inboundHours,elevationKm=0},astronomy){
   const start=new Date(windowStart),end=new Date(windowEnd),arrival=+start,departure=arrival+stayHours*HOUR;
-  if(!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start)throw new Error('Janela inválida.');
-  for(const hours of [outboundHours,inboundHours])if(!Number.isFinite(hours)||hours<24||hours>240)throw new Error('As viagens devem durar de 24 a 240 horas.');
-  if(!Number.isFinite(stayHours)||stayHours<.5||departure>+end)throw new Error('A permanência precisa caber na janela escolhida (mínimo de 0,5 h).');
-  if(!Number.isFinite(elevationKm)||Math.abs(elevationKm)>20)throw new Error('Elevação lunar inválida.');
+  if(!Number.isFinite(+start)||!Number.isFinite(+end)||end<=start)throw missionError('window','Janela inválida.');
+  for(const hours of [outboundHours,inboundHours])if(!Number.isFinite(hours)||hours<24||hours>240)throw missionError('trip','As viagens devem durar de 24 a 240 horas.');
+  if(!Number.isFinite(stayHours)||stayHours<.5||departure>+end)throw missionError('stay','A permanência precisa caber na janela escolhida (mínimo de 0,5 h).');
+  if(!Number.isFinite(elevationKm)||Math.abs(elevationKm)>20)throw missionError('elevation','Elevação lunar inválida.');
   // Recovery in daylight, as the Apollo flight planners targeted: when the whole Pacific recovery band is
   // dark at the nominal return, the trip back is lengthened or shortened by the smallest amount that puts
   // the Sun at least 15° up over some point of it (at most ±10 h, staying within 24–240 h).
@@ -202,7 +204,7 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
     }
   }
   const launch=arrival-outboundHours*HOUR,returnAt=departure+(inboundHours+returnShiftHours)*HOUR;
-  if(launch<+new Date('2000-01-01T00:00Z')||returnAt>+new Date('2050-12-31T23:59Z'))throw new Error('Toda a missão deve ficar entre 2000 e 2050.');
+  if(launch<+new Date('2000-01-01T00:00Z')||returnAt>+new Date('2050-12-31T23:59Z'))throw missionError('years','Toda a missão deve ficar entre 2000 e 2050.');
   const plan={site,windowStart:start,windowEnd:end,outboundHours,stayHours,inboundHours,returnShiftHours,elevationKm,launch,arrival,departure,returnAt,landingArc:Math.PI/5};
   // Launch from Kennedy LC-39A along the Apollo 11 flight azimuth (72°); orbit insertion ~1,800 km downrange.
   const pad=geoAxes(APOLLO.launchSite.lat,APOLLO.launchSite.lon,new Date(launch),astronomy),az=APOLLO.launchAzimuth*RAD;
@@ -227,7 +229,7 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
   // Whole turns: the orbit is at the same point at its start and end, so the burn can be drawn on the final arc.
   plan.arrivalShift=ARRIVAL_ARC*plan.lunarParking.periodSeconds*1000;
   const teiStart=plan.lunarReturnParking.end,teiEnd=teiStart+.05*HOUR,reentryStart=returnAt-APOLLO.entryMinutes*60000,chuteStart=returnAt-APOLLO.chuteMinutes*60000;
-  if(tliEnd>=loiStart||teiEnd>=reentryStart)throw new Error('A duração não comporta as órbitas e manobras.');
+  if(tliEnd>=loiStart||teiEnd>=reentryStart)throw missionError('duration','A duração não comporta as órbitas e manobras.');
   plan.launchFrame.climb=(plan.earthParking.radiusKm-plan.launchFrame.radiusKm)/PARKING.earthAltitudeKm;
   const liftoffEnd=launch+APOLLO.liftoffSeconds*1000;
   plan.times={liftoff:[launch,liftoffEnd],launch:[liftoffEnd,plan.earthParking.start],earthOrbit:[plan.earthParking.start,tliStart],tli:[tliStart,tliEnd],

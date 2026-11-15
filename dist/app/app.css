@@ -264,7 +264,8 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 24px; border-radius
 .walk-key.left { grid-column: 1; grid-row: 2; } .walk-key.left svg { transform: rotate(-90deg); }
 .walk-key.down { grid-column: 2; grid-row: 2; } .walk-key.down svg { transform: rotate(180deg); }
 .walk-key.right { grid-column: 3; grid-row: 2; } .walk-key.right svg { transform: rotate(90deg); }
-.walk-key:hover, .walk-key.down { background: rgba(40, 40, 44, .9); }
+@media (hover: hover) { .walk-key:hover { background: rgba(40, 40, 44, .9); } }
+.walk-key.held { background: rgba(70, 70, 76, .95); border-color: var(--white); }
 .walk-opts { display: flex; flex-wrap: wrap; gap: 6px; max-width: 300px; }
 .walk-toggle { min-height: 34px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 999px; background: rgba(14, 14, 16, .8); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; }
 .walk-toggle[aria-pressed="true"] { background: var(--white); color: var(--ink); border-color: var(--white); }
@@ -422,6 +423,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .74); }
   .message { top: 18px; }
   .console-fold { display: none; }
 }
+@media (max-height: 500px) and (pointer: coarse) { #sceneBox[data-view="surface"] .color-key, #sceneBox[data-view="surface"] .stage-meta { display: none; } }
 @media (max-width: 720px) {
   .bar { padding: 0 16px; gap: 12px; }
   .bar-nav { gap: 14px; font-size: 14px; }
@@ -452,6 +454,9 @@ dialog::backdrop { background: rgba(0, 0, 0, .74); }
   .walk-pad { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(2, 38px); }
   .walk-opts { max-width: 190px; } .walk-toggle { min-height: 34px; padding: 0 10px; font-size: 12.5px; }
   .walk-info { font-size: 12.5px; } .walk-hint { display: none; }
+  /* Walking on a phone: the walk line ("Here: ...") and the panel below say what the legend and the light badge say. */
+  #sceneBox[data-view="surface"] .color-key, #sceneBox[data-view="surface"] .stage-meta { display: none; }
+  .walk-opts { max-width: 230px; justify-content: center; }
   .guide-card { left: 12px; right: 12px; top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; padding: 18px 18px 14px; }
   .chart-axis { margin-left: 0; }
   .foot { grid-template-columns: 1fr; padding: 32px 16px 44px; }

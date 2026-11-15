@@ -18,23 +18,6 @@ function noise2(seed) {
   };
 }
 
-// Crumpled Kapton/Mylar foil: sharp creases from |noise − ½| at several scales.
-function foilNormalMap(size = 256) {
-  const n = noise2(5), h = new Float32Array(size * size);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    let v = 0, a = 1;
-    for (let o = 0; o < 4; o++) { const p = 6 << o; v += a * Math.abs(n(x / size * p, y / size * p, p) - 0.5); a *= 0.55; }
-    h[y * size + x] = v;
-  }
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const l = h[y * size + (x + size - 1) % size], r = h[y * size + (x + 1) % size], u = h[((y + size - 1) % size) * size + x], d = h[((y + 1) % size) * size + x];
-    const nx = (l - r) * 9, ny = (u - d) * 9, len = Math.hypot(nx, ny, 1), i = (y * size + x) * 4;
-    data[i] = (nx / len * 0.5 + 0.5) * 255; data[i + 1] = (ny / len * 0.5 + 0.5) * 255; data[i + 2] = (1 / len * 0.5 + 0.5) * 255; data[i + 3] = 255;
-  }
-  const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.needsUpdate = true;
-  return t;
-}
 
 function canvasTexture(w, h, draw, srgb = true) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
@@ -58,8 +41,82 @@ export function makeEnvironment(renderer, { sky = [0, 0, 0], ground = [0.34, 0.3
   pmrem.dispose(); material.dispose(); return target;
 }
 
+// Crumpled Kapton/Mylar foil computed from the position on the vehicle (metres), not from texture coordinates:
+// NASA's mesh stretches its UVs, which drew the creases as streaks and made textured panels stand out as patches.
+// Flat facets with straight creases, as crumpled foil: 3D Voronoi cells (~9 cm at 11 per metre), each tilted at random,
+// plus two octaves of fine ridged wrinkles (|n − ½| folds, analytic gradients). The slope tilts the normal along the
+// surface; facets under ~3 pixels and wrinkles under ~2 fade out, so the foil does not sparkle from afar.
+const FOIL_VARYINGS = 'varying vec3 vFoilPos, vFoilN, vFoilX, vFoilY, vFoilZ;\n';
+const FOIL_NOISE = `uniform vec3 uFoil;
+vec3 foilHash3(vec3 p) {
+  p = fract(p * vec3(.1031, .1030, .0973));
+  p += dot(p, p.yxz + 33.33);
+  return fract((p.xxy + p.yxx) * p.zyx);
+}
+float foilHash(vec3 p) { return foilHash3(p).x; }
+vec3 foilFacetSlope(vec3 x) {
+  vec3 cell = floor(x), local = fract(x), nearestCell = cell;
+  float nearestDistance = 1e10;
+  for (int z = -1; z <= 1; z++) {
+    for (int y = -1; y <= 1; y++) {
+      for (int ix = -1; ix <= 1; ix++) {
+        vec3 offset = vec3(float(ix), float(y), float(z)), candidate = cell + offset;
+        vec3 delta = offset + foilHash3(candidate) - local;
+        float distanceSquared = dot(delta, delta);
+        if (distanceSquared < nearestDistance) { nearestDistance = distanceSquared; nearestCell = candidate; }
+      }
+    }
+  }
+  vec3 slope = foilHash3(nearestCell + vec3(19.19, 47.77, 73.73)) * 2. - 1.;
+  return slope * inversesqrt(max(dot(slope, slope), 1e-8));
+}
+vec4 foilNoise(vec3 x) {
+  vec3 i = floor(x), w = fract(x), u = w * w * w * (w * (w * 6. - 15.) + 10.), du = 30. * w * w * (w * (w - 2.) + 1.);
+  float a = foilHash(i), b = foilHash(i + vec3(1, 0, 0)), c = foilHash(i + vec3(0, 1, 0)), d = foilHash(i + vec3(1, 1, 0));
+  float e = foilHash(i + vec3(0, 0, 1)), f = foilHash(i + vec3(1, 0, 1)), g = foilHash(i + vec3(0, 1, 1)), h = foilHash(i + vec3(1, 1, 1));
+  float k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f, k7 = -a + b + c - d + e - f - g + h;
+  return vec4(a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z,
+    du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z, k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x, k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y));
+}
+`;
+const FOIL_APPLY = `{
+  float foilPx = length(fwidth(vFoilPos)), foilF = uFoil.y;
+  float foilFacetFade = 1. - smoothstep(1. / 5., 1. / 3., foilPx * foilF);
+  vec3 foilG = vec3(0.);
+  if (foilFacetFade > 0.) foilG = uFoil.x * foilFacetFade * foilFacetSlope(vFoilPos * foilF);
+  // The two wrinkle octaves share a total slope budget of 35% of the facet strength.
+  float foilA = uFoil.x * (.35 / 1.5);
+  foilF *= uFoil.z;
+  for (int i = 0; i < 2; i++) {
+    float foilFade = 1. - smoothstep(1. / 4., 1. / 2., foilPx * foilF);
+    if (foilFade > 0.) {
+      vec4 nd = foilNoise(vFoilPos * foilF + float(i) * 17.31);
+      foilG += foilA * foilFade * sign(nd.x - .5) * nd.yzw;
+    }
+    foilF *= uFoil.z; foilA *= .5;
+  }
+  vec3 foilN = vFoilN * inversesqrt(max(dot(vFoilN, vFoilN), 1e-12));
+  vec3 foilS = foilG - dot(foilG, foilN) * foilN;
+  mat3 foilM = mat3(vFoilX, vFoilY, vFoilZ);
+  vec3 foilTilt = normal - faceDirection * foilM * foilS / max(length(foilM * foilN), 1e-6);
+  normal = foilTilt * inversesqrt(max(dot(foilTilt, foilTilt), 1e-12));
+}
+`;
+// strength: slope of the coarsest creases; frequency: creases per metre; lacunarity: frequency step per octave.
+function crumple(material, strength, frequency, lacunarity = 2.13) {
+  material.normalMap = null;
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uFoil = { value: new THREE.Vector3(strength, frequency, lacunarity) };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + FOIL_VARYINGS)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFoilPos = position; vFoilN = objectNormal; vFoilX = normalMatrix[0]; vFoilY = normalMatrix[1]; vFoilZ = normalMatrix[2];');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + FOIL_VARYINGS + FOIL_NOISE)
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + FOIL_APPLY);
+  };
+  material.customProgramCacheKey = () => 'foil-2';
+  return material;
+}
+
 export function createMaterials(envMap) {
-  const foil = foilNormalMap();
   const std = (o) => new THREE.MeshStandardMaterial({ envMap, envMapIntensity: 1, ...o });
   const quadrants = canvasTexture(256, 64, (g, w, h) => { g.fillStyle = '#f1f0ea'; g.fillRect(0, 0, w, h); g.fillStyle = '#121214'; g.fillRect(0, 0, w / 4, h); g.fillRect(w / 2, 0, w / 4, h); });
   const gores = canvasTexture(512, 64, (g, w, h) => { const n = 24; for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#f3efe6' : '#e2672b'; g.fillRect(i * w / n, 0, w / n + 1, h); } g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, h * 0.82, w, h * 0.06); });
@@ -72,9 +129,9 @@ export function createMaterials(envMap) {
     quadrants: std({ map: quadrants, metalness: 0, roughness: 0.55 }),
     bell: std({ color: 0x3b3d42, metalness: 0.85, roughness: 0.42, side: THREE.DoubleSide }),
     bellBand: std({ color: 0x8d9095, metalness: 0.9, roughness: 0.3, side: THREE.DoubleSide }),
-    gold: std({ color: 0xd7a042, metalness: 1, roughness: 0.3, normalMap: foil, normalScale: new THREE.Vector2(0.9, 0.9) }),
-    amber: std({ color: 0xa8742a, metalness: 1, roughness: 0.38, normalMap: foil, normalScale: new THREE.Vector2(0.7, 0.7) }),
-    silverFoil: std({ color: 0xc9cacb, metalness: 1, roughness: 0.26, normalMap: foil, normalScale: new THREE.Vector2(0.8, 0.8) }),
+    gold: crumple(std({ color: 0xd7a042, metalness: 1, roughness: 0.3 }), 0.3, 11),
+    amber: crumple(std({ color: 0xa8742a, metalness: 1, roughness: 0.38 }), 0.28, 11),
+    silverFoil: crumple(std({ color: 0xc9cacb, metalness: 1, roughness: 0.26 }), 0.28, 12),
     charcoal: std({ color: 0x2b2b2d, metalness: 0.45, roughness: 0.5 }),
     greyPanel: std({ color: 0x8f8f8b, metalness: 0.6, roughness: 0.42 }),
     glass: std({ color: 0x0b1216, metalness: 0.3, roughness: 0.04 }),
@@ -85,16 +142,29 @@ export function createMaterials(envMap) {
   };
   // NASA model materials: plain colours become the simulation's own materials (foil, paint, metal);
   // textured ones (skins, flags, decals) are kept, with the same reflections as the rest.
-  m.lmSkin = std({ color: 0xb4b5b2, metalness: 0.72, roughness: 0.4 });
+  m.lmSkin = crumple(std({ color: 0xaaa9a4, metalness: 0.6, roughness: 0.48 }), 0.025, 1.6);
   const plain = { blinn1SG: m.gold, blinn9SG: m.amber, blinn6SG: m.black, blinn2SG: m.charcoal, blinn4SG: m.aluminium, blinn3SG: m.lmSkin, initialShadingGr: m.greyPanel, blinn10SG: m.white, blinn13SG: m.bell, apollohorns_blin: m.bell, apollohorns_bli1: m.charcoal };
   const finish = { blinn14SG: [0.85, 0.24], blinn11SG: [0.4, 0.42] }, kept = new Map();
+  // NASA's "UNITED STATES" placard and US flag become the NASA Space Apps Challenge logo and emblem (official artwork,
+  // spaceappschallenge.org/brand), on the same rectangles of the same UV layout: a placard and paint on the gold foil.
+  // The second map holds roughness (G) and metalness (B): the foil stays metal, the placard and the paint do not.
+  const DECALS = { blinn8SG: 'lm-placard', blinn12SG: 'lm-emblem' }, decalMaps = [], loader = new THREE.TextureLoader();
+  const decal = (file, srgb) => {
+    // The scene may draw only on demand: m.onTextureLoad (set by the caller) asks for a new picture once a decal arrives.
+    const tex = loader.load(new URL(`./assets/mission/models/${file}.png`, import.meta.url).href, () => m.onTextureLoad?.());
+    tex.flipY = false; tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; tex.anisotropy = 8; decalMaps.push(tex); return tex;
+  };
   m.nasa = source => {
     const name = source.name.split('.')[0];
     if (plain[name] && !source.map) return plain[name];
-    if (!kept.has(source.uuid)) { const c = source.clone(), f = finish[name] || [0.15, 0.6]; c.envMap = m.white.envMap; c.metalness = f[0]; c.roughness = f[1]; kept.set(source.uuid, c); }
+    if (!kept.has(source.uuid)) {
+      const c = source.clone(), f = finish[name] || [0.15, 0.6]; c.envMap = m.white.envMap; c.metalness = f[0]; c.roughness = f[1];
+      if (DECALS[name]) { c.map = decal(DECALS[name], true); c.metalnessMap = c.roughnessMap = decal(`${DECALS[name]}-rm`); c.metalness = c.roughness = 1; c.color.set(0xffffff); crumple(c, 0.3, 11); }
+      kept.set(source.uuid, c);
+    }
     return kept.get(source.uuid);
   };
-  m.dispose = () => { foil.dispose(); quadrants.dispose(); gores.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); for (const x of kept.values()) x.dispose(); };
+  m.dispose = () => { for (const x of decalMaps) x.dispose(); quadrants.dispose(); gores.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); for (const x of kept.values()) x.dispose(); };
   m.setEnvironment = map => { for (const x of [...Object.values(m), ...kept.values()]) if (x?.isMeshStandardMaterial && x !== m.chute) x.envMap = map; };
   return m;
 }

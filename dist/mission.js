@@ -34,6 +34,7 @@ export class MissionUI {
   }
   refreshLanguage() {
     this.labelPhases(); this.playButton();
+    const msg = $('#missionSceneMessage'); if (this.preparing && msg.textContent.startsWith(this.preparing)) msg.textContent = msg.textContent.replace(this.preparing, this.preparing = t('mission.preparing'));
     if (this.dialog.open && this.context) { $('#missionCoordinates').textContent = coords(this.context.site); $('#missionSite').textContent = t(`site.${this.context.site.id}`); this.apply(true); }
   }
   async open(context) {
@@ -52,12 +53,12 @@ export class MissionUI {
     const nasa = await loadNasaModels();
     if (!this.dialog.open || this.context !== context) return;
     // Building the scene and its shaders takes a few seconds: say so, and let the message paint first.
-    const preparing = t('mission.preparing'); $('#missionSceneMessage').textContent = preparing;
+    this.preparing = t('mission.preparing'); $('#missionSceneMessage').textContent = this.preparing;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (!this.dialog.open || this.context !== context) return;
     // The scene is exposed only once built: a language change meanwhile must not reach a half-built scene.
     let scene = null;
-    const show = k => { if (this.pending === scene || this.scene === scene) $('#missionSceneMessage').textContent = `${preparing} ${Math.round(k * 100)}%`; };
+    const show = k => { if (this.pending === scene || this.scene === scene) $('#missionSceneMessage').textContent = `${this.preparing} ${Math.round(k * 100)}%`; };
     try {
       scene = this.pending = new MissionScene(fresh, $('#missionViewport'), context.terrain, text => { $('#missionSceneMessage').textContent = text; }, { t, nasa });
       await scene.build(k => show(k * .6));
@@ -77,7 +78,7 @@ export class MissionUI {
         if (!this.dialog.open || this.context !== context || !this.scene) return;
       }
       this.progress = 0; this.draw(true);
-      if ($('#missionSceneMessage').textContent.startsWith(preparing)) $('#missionSceneMessage').textContent = '';
+      if ($('#missionSceneMessage').textContent.startsWith(this.preparing)) $('#missionSceneMessage').textContent = '';
     }
     this.tick = now => {
       if (!this.dialog.open) return;
@@ -97,7 +98,7 @@ export class MissionUI {
       if (c.window.source !== 'search' && (!Number.isInteger(duration) || duration < 1 || duration > 720)) throw new Error(t('mission.errorWindow'));
       const end = c.window.source === 'search' ? c.window.end : new Date(+c.window.start + duration * HOUR);
       const plan = buildMission({ site: c.site, windowStart: c.window.start, windowEnd: end, outboundHours: Number($('#missionOutbound').value), stayHours: Number($('#missionStay').value), inboundHours: Number($('#missionInbound').value), elevationKm: c.terrain.elevationKm }, this.astronomy);
-      this.plan = plan; this.progress = keepProgress ? keep : 0; this.conditionKey = ''; $('#missionError').textContent = ''; $('#missionStay').max = (end - c.window.start) / HOUR;
+      this.plan = plan; this.progress = keepProgress ? keep : 0; this.conditionKey = ''; this.error = null; $('#missionError').textContent = ''; $('#missionStay').max = (end - c.window.start) / HOUR;
       $('#missionWindowSource').textContent = t(c.window.source === 'search' ? 'mission.windowSearch' : 'mission.windowManual');
       $('#missionWindowStart').textContent = utcDate(c.window.start, true); $('#missionWindowEnd').textContent = t('mission.until', { date: utcDate(end, true) });
       $('#missionEvents').innerHTML = [['launch', plan.launch], ['tli', plan.times.tli[0]], ['loi', plan.times.loi[0]], ['landing', plan.arrival], ['departure', plan.departure], ['tei', plan.times.tei[0]], ['entry', plan.times.arrival[0]], ['return', plan.returnAt]]
@@ -111,7 +112,7 @@ export class MissionUI {
         + (plan.returnShiftHours ? ` ${t('mission.returnShift', { h: `${plan.returnShiftHours > 0 ? '+' : '−'}${number(Math.abs(plan.returnShiftHours), 1)}` })}` : '');
       $('#missionAssessment').classList.toggle('warning', good !== total);
       this.scene?.setPlan(plan); this.draw(true);
-    } catch (error) { $('#missionError').textContent = error.message; }
+    } catch (error) { this.error = error; $('#missionError').textContent = error.code ? t(error.code) : error.message; }
   }
   draw(reset = false) {
     if (!this.plan) return;
