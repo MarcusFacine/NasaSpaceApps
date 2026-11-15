@@ -267,6 +267,8 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     if (globe) this.sunlight.position.copy(bodyToScene(unit(r.eph.sun)).multiplyScalar(450));
     else this.sunlight.position.copy(v3(r.sun.direction).multiplyScalar(450));
     this.sunlight.castShadow = !globe;
+    // During an eclipse the Earth covers part or all of the Sun: the direct light falls with the covered share.
+    this.sunlight.intensity = 3.1 * (1 - (r.sun.eclipse || 0));
     this.earthlight.position.copy(v3(r.earth.direction).multiplyScalar(450));
     this.earthlight.intensity = this.readingLight && !globe ? 0.55 : 0;
     this.fill.intensity = this.readingLight ? 0.35 : globe ? 0.04 : 0;

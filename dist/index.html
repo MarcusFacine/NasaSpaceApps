@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f1ec">
-  <title>Horisite · Pouse onde a luz dura</title>
-  <meta name="description" content="Explorador gratuito do polo sul da Lua: veja no relevo real se há luz do Sol para energia e a Terra no céu para comunicação.">
+  <title>Horisite · Land where the light lasts</title>
+  <meta name="description" content="A free explorer of the Moon’s south pole: see on the real terrain whether there is sunlight for power and Earth in the sky for communication.">
   <meta property="og:title" content="Horisite · lunar landing site navigator">
   <meta property="og:description" content="Relevo LOLA real do polo sul da Lua, luz do Sol e visada para a Terra, hora a hora.">
   <meta property="og:image" content="assets/landing/en/app-desktop.jpg">
@@ -31,13 +31,13 @@
     <div class="wrap">
       <a class="logo" href="./" aria-label="Horisite"><img src="brand/horisite-logo-black.png" alt="Horisite" width="720" height="236"></a>
       <nav>
-        <a href="#como" data-i18n="l.nav.how">Como funciona</a>
-        <a href="#ciencia" data-i18n="l.nav.science">O que mostra</a>
-        <a href="#para-quem" data-i18n="l.nav.who">Para quem</a>
+        <a href="#como" data-i18n="l.nav.how">How it works</a>
+        <a href="#ciencia" data-i18n="l.nav.science">What it shows</a>
+        <a href="#para-quem" data-i18n="l.nav.who">Who it’s for</a>
         <a href="tutorial.html" data-i18n="nav.tutorial">Tutorial</a>
       </nav>
       <div class="lang-switch" role="group" data-i18n-attr="aria-label:lang.label"><button type="button" data-lang-option="pt"><span>PT</span></button><button type="button" data-lang-option="en"><span>EN</span></button></div>
-      <a class="btn btn-primary" href="app/" data-i18n="nav.app">Abrir o Horisite</a>
+      <a class="btn btn-primary" href="app/" data-i18n="nav.app">Open Horisite</a>
     </div>
   </header>
 
@@ -45,19 +45,19 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <h1><span data-i18n="l.hero.a">Pouse onde a </span><span class="mark" data-i18n="l.hero.b">luz</span><span data-i18n="l.hero.c"> dura.</span></h1>
-          <p class="lead" data-i18n="l.hero.lead">O Horisite é um explorador gratuito do polo sul da Lua. Escolha um lugar e uma data e veja, no relevo real, se há luz do Sol para gerar energia e a Terra no céu para falar com casa.</p>
+          <h1><span data-i18n="l.hero.a">Land where the </span><span class="mark" data-i18n="l.hero.b">light</span><span data-i18n="l.hero.c"> lasts.</span></h1>
+          <p class="lead" data-i18n="l.hero.lead">Horisite is a free explorer of the Moon’s south pole. Pick a place and a date and see, on the real terrain, whether there is sunlight for power and Earth in the sky to call home.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="app/" data-i18n="l.cta.open">Abrir no navegador</a>
-            <a class="btn btn-ghost" href="#como" data-i18n="l.cta.how">Ver como funciona</a>
+            <a class="btn btn-primary" href="app/" data-i18n="l.cta.open">Open in your browser</a>
+            <a class="btn btn-ghost" href="#como" data-i18n="l.cta.how">See how it works</a>
           </div>
         </div>
         <div class="moon-stage" aria-hidden="true">
           <div class="moon-fallback"></div>
           <canvas id="moonCanvas"></canvas>
           <div class="orbit-ring"></div>
-          <div class="live-card live-sun" id="liveSun" data-state=""><span class="where" data-i18n="l.live.where">Agora na borda de Shackleton</span><b>—</b><span class="val num">—</span></div>
-          <div class="live-card live-earth" id="liveEarth" data-state=""><span class="where" data-i18n="l.live.where">Agora na borda de Shackleton</span><b>—</b><span class="val num">—</span></div>
+          <div class="live-card live-sun" id="liveSun" data-state=""><span class="where" data-i18n="l.live.where">Right now at the Shackleton rim</span><b>—</b><span class="val num">—</span></div>
+          <div class="live-card live-earth" id="liveEarth" data-state=""><span class="where" data-i18n="l.live.where">Right now at the Shackleton rim</span><b>—</b><span class="val num">—</span></div>
           <div class="spin-badge">
             <svg viewBox="0 0 120 120"><defs><path id="circ" d="M60 60m-46 0a46 46 0 1 1 92 0a46 46 0 1 1-92 0"/></defs><text><textPath href="#circ" id="badgeText" textLength="282" lengthAdjust="spacing">POLO SUL LUNAR · 89,66° S ·</textPath></text></svg>
             <div class="core"><img src="brand/horisite-o.svg" alt=""></div>
@@ -66,11 +66,11 @@
       </div>
       <div class="wrap">
         <div class="stats">
-          <div><b>5</b><span data-i18n="l.s1">regiões de referência no polo sul</span></div>
-          <div><b data-i18n="l.s2.n">30 dias</b><span data-i18n="l.s2">de busca pela melhor janela</span></div>
-          <div><b data-i18n="l.s3.n">0,0024°</b><span data-i18n="l.s3">maior diferença para o JPL Horizons no caso de referência</span></div>
-          <div><b data-i18n="l.s4.n">~130 m</b><span data-i18n="l.s4">entre pontos do relevo 3D, do modelo LOLA de 20 m</span></div>
-          <div><b>15</b><span data-i18n="l.s5">etapas da missão, no perfil das Apollo</span></div>
+          <div><b>5</b><span data-i18n="l.s1">reference regions at the south pole</span></div>
+          <div><b data-i18n="l.s2.n">30 days</b><span data-i18n="l.s2">searched for the best window</span></div>
+          <div><b data-i18n="l.s3.n">0.0024°</b><span data-i18n="l.s3">largest difference from JPL Horizons in the reference case</span></div>
+          <div><b data-i18n="l.s4.n">~130 m</b><span data-i18n="l.s4">between 3D relief points, from the 20 m LOLA model</span></div>
+          <div><b>15</b><span data-i18n="l.s5">mission phases, on the Apollo profile</span></div>
         </div>
       </div>
     </section>
@@ -78,13 +78,13 @@
     <section class="section" id="como">
       <div class="wrap">
         <div class="why-head">
-          <h2 class="section-title"><span data-i18n="l.why.a">No polo sul, </span><span class="mark" data-i18n="l.why.b">cada metro</span><span data-i18n="l.why.c"> de relevo conta.</span></h2>
-          <p data-i18n="l.why.p">Ali o Sol passa rente ao horizonte e a Terra quase não sai do lugar no céu. Uma crista a 20 km pode apagar um painel solar ou cortar a visada para casa; meio quilômetro para o lado pode devolver as duas.</p>
+          <h2 class="section-title"><span data-i18n="l.why.a">At the south pole, </span><span class="mark" data-i18n="l.why.b">every metre</span><span data-i18n="l.why.c"> of terrain counts.</span></h2>
+          <p data-i18n="l.why.p">There the Sun skims the horizon and Earth barely moves in the sky. A ridge 20 km away can switch off a solar panel or cut the line of sight home; half a kilometre aside can give both back.</p>
         </div>
         <div class="why-cards">
-          <article class="why-card why-power"><span class="num">01</span><svg class="icon"><use href="#i-sun"/></svg><h3 data-i18n="l.c1.t">Vai ter energia?</h3><p data-i18n="l.c1.p">A altura do Sol sobre o relevo de verdade e a luz que chega num painel, em W/m².</p></article>
-          <article class="why-card why-earth"><span class="num">02</span><svg class="icon"><use href="#i-half"/></svg><h3 data-i18n="l.c2.t">Dá para falar com a Terra?</h3><p data-i18n="l.c2.p">Se o centro da Terra está acima do horizonte do local, e com quantos graus de folga.</p></article>
-          <article class="why-card why-time"><span class="num">03</span><svg class="icon"><use href="#i-clock"/></svg><h3 data-i18n="l.c3.t">Por quanto tempo?</h3><p data-i18n="l.c3.p">O maior trecho contínuo com Sol e Terra juntos nos próximos 30 dias.</p></article>
+          <article class="why-card why-power"><span class="num">01</span><svg class="icon"><use href="#i-sun"/></svg><h3 data-i18n="l.c1.t">Will there be power?</h3><p data-i18n="l.c1.p">The Sun’s height above the real relief and the light reaching a panel, in W/m².</p></article>
+          <article class="why-card why-earth"><span class="num">02</span><svg class="icon"><use href="#i-half"/></svg><h3 data-i18n="l.c2.t">Can we talk to Earth?</h3><p data-i18n="l.c2.p">Whether Earth’s centre is above the local horizon, and by how many degrees.</p></article>
+          <article class="why-card why-time"><span class="num">03</span><svg class="icon"><use href="#i-clock"/></svg><h3 data-i18n="l.c3.t">For how long?</h3><p data-i18n="l.c3.p">The longest continuous stretch with Sun and Earth together in the next 30 days.</p></article>
         </div>
       </div>
     </section>
@@ -92,51 +92,51 @@
     <section class="wrap">
       <div class="feature">
         <div>
-          <h2 data-i18n="l.f.t">Tudo para comparar luz e visada em cinco regiões.</h2>
-          <p data-i18n="l.f.p">Escolha até três locais, mude o momento e leia a resposta na própria cena 3D: raios até o Sol e a Terra mostram onde o relevo bloqueia.</p>
+          <h2 data-i18n="l.f.t">Everything to compare light and line of sight across five regions.</h2>
+          <p data-i18n="l.f.p">Choose up to three sites, change the moment and read the answer in the 3D scene itself: rays to the Sun and Earth show where the relief blocks them.</p>
           <ul>
-            <li><svg><use href="#i-relief"/></svg><div><b data-i18n="l.f1.t">Relevo real em 3D</b><span data-i18n="l.f1.p">Recortes de 100 km do modelo LOLA do polo sul, com 400 km de contexto até o horizonte.</span></div></li>
-            <li><svg><use href="#i-sun"/></svg><div><b data-i18n="l.f2.t">Luz do Sol e da Terra</b><span data-i18n="l.f2.p">Altura no céu, relevo em cada direção e folga, hora a hora.</span></div></li>
-            <li><svg><use href="#i-window"/></svg><div><b data-i18n="l.f3.t">Melhor janela e missão</b><span data-i18n="l.f3.p">O maior intervalo comum em 30 dias, com a ida e a volta animadas.</span></div></li>
+            <li><svg><use href="#i-relief"/></svg><div><b data-i18n="l.f1.t">Real relief in 3D</b><span data-i18n="l.f1.p">100 km tiles of the LOLA south pole model, with 400 km of context out to the horizon.</span></div></li>
+            <li><svg><use href="#i-sun"/></svg><div><b data-i18n="l.f2.t">Sunlight and Earth</b><span data-i18n="l.f2.p">Height in the sky, relief in each direction and margin, hour by hour.</span></div></li>
+            <li><svg><use href="#i-window"/></svg><div><b data-i18n="l.f3.t">Best window and mission</b><span data-i18n="l.f3.p">The longest common interval in 30 days, and the mission to it as on Apollo: Saturn V, landing, liftoff and splashdown.</span></div></li>
           </ul>
         </div>
-        <div class="shot"><img src="assets/landing/pt/app-desktop.jpg" data-shot="app-desktop" width="1440" height="900" alt="" data-i18n-attr="alt:l.f.alt" loading="lazy"></div>
+        <div class="shot"><img src="assets/landing/pt/app-desktop.jpg" data-shot="app-desktop" width="1440" height="900" alt="The Horisite app: 3D relief of the Shackleton rim with rays to the Sun and Earth, and the answer panel." data-i18n-attr="alt:l.f.alt" loading="lazy"></div>
       </div>
     </section>
 
     <section class="section" id="ciencia">
       <div class="wrap">
-        <h2 class="section-title"><span data-i18n="l.sci.a">Ciência que dá para </span><span class="mark" data-i18n="l.sci.b">ver</span><span data-i18n="l.sci.c">.</span></h2>
+        <h2 class="section-title"><span data-i18n="l.sci.a">Science you can </span><span class="mark" data-i18n="l.sci.b">see</span><span data-i18n="l.sci.c">.</span></h2>
         <div class="bento">
-          <article class="tile t-relief"><img src="assets/landing/pt/relief.jpg" data-shot="relief" alt="" loading="lazy" width="1200" height="760"><h3 data-i18n="l.b1.t">O polo sul real, em 3D, na escala real.</h3><p data-i18n="l.b1.p">Escala vertical 1× · curvatura lunar · sombras do Sol</p></article>
-          <article class="tile t-window"><b>136 h</b><p data-i18n="l.b2.p">maior janela comum entre Shackleton e Malapert a partir de 2 de outubro de 2026, em amostras de 1 hora.</p></article>
-          <article class="tile t-horizon"><h3 data-i18n="l.b3.t">O que o relevo esconde</h3><p data-i18n="l.b3.p">Silhueta real em volta da borda de Shackleton e o caminho do Sol nas próximas 24 horas, calculados agora.</p><svg id="liveHorizon" viewBox="0 0 560 170" role="img" data-i18n-attr="aria-label:l.b3.t"></svg></article>
-          <article class="tile t-earth"><img src="assets/landing/pt/earth.jpg" data-shot="earth" alt="" loading="lazy" width="800" height="500"><h3 data-i18n="l.b7.t">A Terra vista do polo sul, agora.</h3><p data-i18n="l.b7.p">Na lente do app, com a fase real do instante e as luzes das cidades no lado da noite.</p></article>
-          <article class="tile t-lit"><img class="swatch" src="assets/landing/pt/lit.jpg" data-shot="lit" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b4">Sol à vista, a cena acende.</h3></article>
-          <article class="tile t-dark"><img class="swatch" src="assets/landing/pt/dark.jpg" data-shot="dark" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b5">Crista no caminho, fica escuro.</h3></article>
+          <article class="tile t-relief"><img src="assets/landing/pt/relief.jpg" data-shot="relief" alt="" loading="lazy" width="1200" height="760"><h3 data-i18n="l.b1.t">The real south pole, in 3D, at true scale.</h3><p data-i18n="l.b1.p">Vertical scale 1× · lunar curvature · sun shadows</p></article>
+          <article class="tile t-window"><b>136 h</b><p data-i18n="l.b2.p">longest common window for Shackleton and Malapert from 2 October 2026, in 1-hour samples.</p></article>
+          <article class="tile t-horizon"><h3 data-i18n="l.b3.t">What the relief hides</h3><p data-i18n="l.b3.p">The real silhouette around the Shackleton rim and the Sun’s path in the next 24 hours, computed now.</p><svg id="liveHorizon" viewBox="0 0 560 170" role="img" data-i18n-attr="aria-label:l.b3.t"></svg></article>
+          <article class="tile t-earth"><img src="assets/landing/pt/earth.jpg" data-shot="earth" alt="" loading="lazy" width="800" height="500"><h3 data-i18n="l.b7.t">Earth from the south pole, right now.</h3><p data-i18n="l.b7.p">Through the app’s lens, with its real phase at that moment and city lights on the night side.</p></article>
+          <article class="tile t-lit"><img class="swatch" src="assets/landing/pt/lit.jpg" data-shot="lit" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b4">Sun in view, the scene lights up.</h3></article>
+          <article class="tile t-dark"><img class="swatch" src="assets/landing/pt/dark.jpg" data-shot="dark" alt="" loading="lazy" width="640" height="400"><h3 data-i18n="l.b5">Ridge in the way, it goes dark.</h3></article>
         </div>
       </div>
     </section>
 
     <section class="section steps">
       <div class="wrap">
-        <h2 class="section-title"><span data-i18n="l.st.a">De um lugar a uma resposta em </span><span class="mark" data-i18n="l.st.b">quatro passos</span><span data-i18n="l.st.c">.</span></h2>
+        <h2 class="section-title"><span data-i18n="l.st.a">From a place to an answer in </span><span class="mark" data-i18n="l.st.b">four steps</span><span data-i18n="l.st.c">.</span></h2>
         <ol class="step-list">
-          <li><span class="n">01</span><h3 data-i18n="l.st1.t">Escolha os locais</h3><p data-i18n="l.st1.p">Marque até três das cinco regiões de referência do polo sul.</p></li>
-          <li><span class="n">02</span><h3 data-i18n="l.st2.t">Escolha o momento</h3><p data-i18n="l.st2.p">Data e hora UTC, com a barra de 24 horas e a passagem do tempo.</p></li>
-          <li><span class="n">03</span><h3 data-i18n="l.st3.t">Leia a resposta</h3><p data-i18n="l.st3.p">Raios, caminho do Sol e da Terra e a folga sobre o relevo, na cena.</p></li>
-          <li><span class="n">04</span><h3 data-i18n="l.st4.t">Ache a janela</h3><p data-i18n="l.st4.p">O maior trecho com Sol e Terra juntos, e a missão até ele.</p></li>
+          <li><span class="n">01</span><h3 data-i18n="l.st1.t">Pick your sites</h3><p data-i18n="l.st1.p">Tick up to three of the five south pole reference regions.</p></li>
+          <li><span class="n">02</span><h3 data-i18n="l.st2.t">Pick the moment</h3><p data-i18n="l.st2.p">UTC date and time, with the 24-hour bar and time playback.</p></li>
+          <li><span class="n">03</span><h3 data-i18n="l.st3.t">Read the answer</h3><p data-i18n="l.st3.p">Rays, the Sun and Earth paths and the margin over the relief, in the scene.</p></li>
+          <li><span class="n">04</span><h3 data-i18n="l.st4.t">Find the window</h3><p data-i18n="l.st4.p">The longest stretch with Sun and Earth together, and the mission to it.</p></li>
         </ol>
       </div>
     </section>
 
     <section class="section" id="para-quem">
       <div class="wrap">
-        <h2 class="section-title"><span data-i18n="l.who.a">Feito para quem quer </span><span class="mark" data-i18n="l.who.b">entender</span><span data-i18n="l.who.c"> a Lua.</span></h2>
+        <h2 class="section-title"><span data-i18n="l.who.a">Made for people who want to </span><span class="mark" data-i18n="l.who.b">understand</span><span data-i18n="l.who.c"> the Moon.</span></h2>
         <div class="who-cards">
-          <article class="who-card"><span class="label" data-i18n="l.w1.l">Estudantes e professores</span><h3 data-i18n="l.w1.t">Uma aula que dá para girar.</h3><p data-i18n="l.w1.p">Abra o relevo, mude a data e veja a sombra andar. O tutorial traz exemplos que dá para reproduzir.</p></article>
-          <article class="who-card"><span class="label" data-i18n="l.w2.l">Entusiastas do espaço</span><h3 data-i18n="l.w2.t">Vá aonde as missões querem ir.</h3><p data-i18n="l.w2.p">As cinco regiões ficam na área do polo sul que a NASA estuda para os pousos da Artemis.</p></article>
-          <article class="who-card"><span class="label" data-i18n="l.w3.l">Planejamento inicial</span><h3 data-i18n="l.w3.t">Uma primeira olhada rápida.</h3><p data-i18n="l.w3.p">Compare luz e visada em minutos, antes de partir para análises de missão mais finas.</p></article>
+          <article class="who-card"><span class="label" data-i18n="l.w1.l">Students and teachers</span><h3 data-i18n="l.w1.t">A lesson you can turn around.</h3><p data-i18n="l.w1.p">Open the relief, change the date and watch the shadow move. The tutorial has examples you can reproduce.</p></article>
+          <article class="who-card"><span class="label" data-i18n="l.w2.l">Space enthusiasts</span><h3 data-i18n="l.w2.t">Go where missions want to go.</h3><p data-i18n="l.w2.p">All five regions lie in the south polar area NASA studies for Artemis landings.</p></article>
+          <article class="who-card"><span class="label" data-i18n="l.w3.l">Early planning</span><h3 data-i18n="l.w3.t">A fast first pass.</h3><p data-i18n="l.w3.p">Compare light and line of sight in minutes, before moving on to finer mission analysis.</p></article>
         </div>
       </div>
     </section>
@@ -144,18 +144,18 @@
     <section class="wrap">
       <div class="link-band">
         <div>
-          <h2 data-i18n="l.link.t">Abre com um link.</h2>
-          <p data-i18n="l.link.p">Roda no navegador do computador e do celular, sem cadastro e sem instalar nada.</p>
-          <a class="btn btn-primary" href="app/" data-i18n="l.cta.open" style="background:var(--white);color:var(--ink)">Abrir no navegador</a>
+          <h2 data-i18n="l.link.t">Opens with a link.</h2>
+          <p data-i18n="l.link.p">Runs in the browser on computer and phone, with no sign-up and nothing to install.</p>
+          <a class="btn btn-primary" href="app/" data-i18n="l.cta.open" style="background:var(--white);color:var(--ink)">Open in your browser</a>
         </div>
-        <div class="phone"><img src="assets/landing/pt/app-mobile.jpg" data-shot="app-mobile" alt="" data-i18n-attr="alt:l.link.alt" loading="lazy" width="390" height="820"></div>
+        <div class="phone"><img src="assets/landing/pt/app-mobile.jpg" data-shot="app-mobile" alt="Horisite on a phone." data-i18n-attr="alt:l.link.alt" loading="lazy" width="390" height="820"></div>
       </div>
     </section>
 
     <section class="wrap">
       <div class="cta">
-        <h2 data-i18n="l.cta.t">Sua primeira missão ao polo sul começa agora.</h2>
-        <a class="btn btn-primary" href="app/" data-i18n="l.cta.go">Explorar o polo sul</a>
+        <h2 data-i18n="l.cta.t">Your first mission to the south pole starts now.</h2>
+        <a class="btn btn-primary" href="app/" data-i18n="l.cta.go">Explore the south pole</a>
       </div>
     </section>
   </main>
@@ -165,11 +165,11 @@
       <div class="foot-grid">
         <div>
           <a class="logo" href="./" aria-label="Horisite"><img src="brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a>
-          <p data-i18n="footer.made">Explorador independente do polo sul lunar.</p>
+          <p data-i18n="footer.made">An independent explorer of the lunar south pole.</p>
         </div>
-        <div><h2 data-i18n="l.fo.product">Produto</h2><ul><li><a href="#como" data-i18n="l.nav.how">Como funciona</a></li><li><a href="#ciencia" data-i18n="l.nav.science">O que mostra</a></li><li><a href="tutorial.html" data-i18n="nav.tutorial">Tutorial</a></li></ul></div>
-        <div><h2 data-i18n="l.fo.data">Dados</h2><ul><li><a href="https://pgda.gsfc.nasa.gov/products/90" target="_blank" rel="noopener">NASA PGDA · LOLA</a></li><li><a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a></li><li><a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener">HYG Database</a></li><li><a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" rel="noopener">NASA 3D Resources</a></li></ul></div>
-        <div><h2 data-i18n="l.fo.open">Abrir</h2><ul><li><a href="app/" data-i18n="nav.app">Abrir o Horisite</a></li><li><a href="app/" data-i18n="l.fo.method">Dados e método no app</a></li></ul></div>
+        <div><h2 data-i18n="l.fo.product">Product</h2><ul><li><a href="#como" data-i18n="l.nav.how">How it works</a></li><li><a href="#ciencia" data-i18n="l.nav.science">What it shows</a></li><li><a href="tutorial.html" data-i18n="nav.tutorial">Tutorial</a></li></ul></div>
+        <div><h2 data-i18n="l.fo.data">Data</h2><ul><li><a href="https://pgda.gsfc.nasa.gov/products/90" target="_blank" rel="noopener">NASA PGDA · LOLA</a></li><li><a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a></li><li><a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener">HYG Database</a></li><li><a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" rel="noopener">NASA 3D Resources</a></li></ul></div>
+        <div><h2 data-i18n="l.fo.open">Open</h2><ul><li><a href="app/" data-i18n="nav.app">Open Horisite</a></li><li><a href="app/" data-i18n="l.fo.method">Data &amp; method in the app</a></li></ul></div>
       </div>
     </div>
   </footer>

@@ -1,4 +1,4 @@
-// Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, português.
+// Português e inglês. Ordem de escolha: ?lang= na URL, escolha salva, inglês.
 const KEY = 'horisite-lang';
 const listeners = new Set();
 
@@ -34,6 +34,9 @@ const DICT = {
     'loading.failTitle': 'Não foi possível carregar os dados', 'loading.failSub': 'Recarregue a página para tentar de novo.',
     'loading.webglTitle': 'Visualização 3D indisponível', 'loading.webglSub': 'Ative a aceleração gráfica ou use outro navegador. Os cálculos continuam abaixo.',
     'sun': 'Sol', 'earth': 'Terra',
+    'state.eclipse': 'Eclipse total', 'state.partialEclipse': ' · eclipse parcial', 'light.eclipse': 'Eclipse: a Terra cobre o Sol',
+    'verdict.sun.eclipseTotal': 'A Terra cobre todo o disco do Sol: eclipse total, sem luz direta para os painéis.',
+    'verdict.sun.eclipse': 'A Terra cobre {p}% do disco do Sol: eclipse parcial, com {v}% da luz.',
     'state.visible': 'À vista', 'state.blocked': 'Atrás do relevo', 'state.edge': 'No limite', 'state.grazing': ' · rente',
     'answer.above': '{v} acima do relevo', 'answer.below': '{v} abaixo do relevo',
     'answer.elevation': 'No céu', 'answer.azimuth': 'Direção', 'answer.horizon': 'Relevo nessa direção', 'answer.horizonAt': 'Relevo a {az}', 'answer.margin': 'Margem', 'answer.fullSun': '{p}% do Sol pleno a esta distância.',
@@ -113,7 +116,7 @@ const DICT = {
     'about.visibility.t': 'Visibilidade',
     'about.visibility.d': 'Horizonte a cada 0,5° de direção, com o relevo amostrado até ~195 km (detalhado até 50 km). O Sol e o centro da Terra são comparados com esse perfil. Obstáculos menores que a malha não entram.',
     'about.energy.t': 'Energia',
-    'about.energy.d': 'Irradiância incidente aproximada: 1361 W/m² a 1 UA vezes a fração do disco solar à vista. Sem eficiência do painel, perdas, temperatura ou bateria.',
+    'about.energy.d': 'Irradiância incidente aproximada: 1361 W/m² a 1 UA vezes a fração do disco solar à vista, descontado o relevo e, nos eclipses, a parte coberta pela Terra (raio da Terra alargado em 1/85 pela atmosfera, regra de Danjon). Sem eficiência do painel, perdas, temperatura ou bateria.',
     'about.render.t': 'Imagem 3D',
     'about.render.d': 'Sombreamento de regolito (modelo lunar-Lambert) e sombras do Sol. Perto do observador, 20 × 20 km do mesmo DEM a 40 m. O micro-relevo abaixo da malha e as variações de brilho do solo são sintéticos, só visuais. A luz de leitura é opcional e não física. Sombra eterna: mapa de regiões permanentemente sombreadas do PGDA (Barker et al. 2023). Estrelas do catálogo HYG v4.1 até magnitude 6, em posições J2000. Terra orientada pelo tempo sideral, com fase real; texturas de dia, nuvens e luzes noturnas dos exemplos do Three.js.',
     'about.mission.t': 'Missão 3D',
@@ -184,6 +187,9 @@ const DICT = {
     'loading.failTitle': 'The data could not load', 'loading.failSub': 'Reload the page to try again.',
     'loading.webglTitle': '3D view unavailable', 'loading.webglSub': 'Turn on hardware acceleration or try another browser. The calculations remain below.',
     'sun': 'Sun', 'earth': 'Earth',
+    'state.eclipse': 'Total eclipse', 'state.partialEclipse': ' · partial eclipse', 'light.eclipse': 'Eclipse: Earth covers the Sun',
+    'verdict.sun.eclipseTotal': 'Earth covers the whole solar disc: a total eclipse, no direct light for the panels.',
+    'verdict.sun.eclipse': 'Earth covers {p}% of the solar disc: a partial eclipse, with {v}% of the light.',
     'state.visible': 'In view', 'state.blocked': 'Behind the relief', 'state.edge': 'On the edge', 'state.grazing': ' · grazing',
     'answer.above': '{v} above the relief', 'answer.below': '{v} below the relief',
     'answer.elevation': 'In the sky', 'answer.azimuth': 'Direction', 'answer.horizon': 'Relief in that direction', 'answer.horizonAt': 'Relief at {az}', 'answer.margin': 'Margin', 'answer.fullSun': '{p}% of full sunlight at this distance.',
@@ -263,7 +269,7 @@ const DICT = {
     'about.visibility.t': 'Visibility',
     'about.visibility.d': 'Horizon every 0.5° of direction, with relief sampled out to about 195 km (detailed to 50 km). The Sun and the centre of Earth are compared with that profile. Obstacles smaller than the mesh are not included.',
     'about.energy.t': 'Energy',
-    'about.energy.d': 'Approximate incident irradiance: 1361 W/m² at 1 AU times the visible fraction of the solar disc. No panel efficiency, losses, temperature or storage.',
+    'about.energy.d': 'Approximate incident irradiance: 1361 W/m² at 1 AU times the visible fraction of the solar disc, after the relief and, in eclipses, the part covered by Earth (Earth’s radius enlarged by 1/85 for its atmosphere, Danjon’s rule). No panel efficiency, losses, temperature or storage.',
     'about.render.t': '3D image',
     'about.render.d': 'Regolith shading (lunar-Lambert model) and sun shadows. Near the observer, 20 × 20 km of the same DEM at 40 m. Micro-relief below the mesh and ground brightness variations are synthetic and visual only. The reading light is optional and not physical. Permanent shadow: the PGDA map of permanently shadowed regions (Barker et al. 2023). Stars from the HYG v4.1 catalogue to magnitude 6, at J2000 positions. Earth oriented by sidereal time with its real phase; day, cloud and night-light textures from the Three.js examples.',
     'about.mission.t': '3D mission',
@@ -309,7 +315,7 @@ function detect() {
   const fromUrl = new URLSearchParams(location.search).get('lang');
   if (fromUrl === 'pt' || fromUrl === 'en') return fromUrl;
   try { const saved = localStorage.getItem(KEY); if (saved === 'pt' || saved === 'en') return saved; } catch { /* storage optional */ }
-  return 'pt'; // Sempre abre em português (decisão da equipe, 14/11/2026); o inglês fica no botão.
+  return 'en'; // Opens in English (Ricardo, 15/11/2026: the first language is English); Portuguese is on the button.
 }
 let lang = detect();
 

@@ -118,6 +118,13 @@ export class Terrain {
   }
 }
 
+// Area shared by two discs of radii a and b whose centres are d apart (small angles: plane geometry).
+export function discOverlap(a,b,d) {
+  if(d>=a+b)return 0;
+  if(d<=Math.abs(a-b))return Math.PI*Math.min(a,b)**2;
+  const x=clamp((d*d+a*a-b*b)/(2*d*a),-1,1),y=clamp((d*d+b*b-a*a)/(2*d*b),-1,1);
+  return a*a*Math.acos(x)+b*b*Math.acos(y)-.5*Math.sqrt(Math.max(0,(-d+a+b)*(d+a-b)*(d-a+b)*(d+a+b)));
+}
 export function evaluate(site,date,terrain,astronomy,heightM=2,panel='tracking',cached=null) {
   const eph=cached||ephemeris(date,astronomy);
   const sun=horizontal(eph.sun,site,terrain.elevationKm,heightM);
@@ -126,8 +133,16 @@ export function evaluate(site,date,terrain,astronomy,heightM=2,panel='tracking',
   sun.margin=sun.elevation-sun.horizon;earth.margin=earth.elevation-earth.horizon;
   // Fraction of solar disk above an approximately straight local horizon.
   const radius=deg(Math.asin(695700/sun.distanceKm)),q=clamp(sun.margin/radius,-1,1);
-  sun.diskFraction=(Math.acos(-q)+q*Math.sqrt(1-q*q))/Math.PI;
-  sun.available=sun.margin>0;earth.available=earth.margin>0;
+  sun.diskFraction=(Math.acos(-q)+q*Math.sqrt(1-q*q))/Math.PI;sun.terrainFraction=sun.diskFraction;
+  // Eclipse: the Earth in front of the Sun, seen from the site (a lunar eclipse seen from the Earth). The share of the
+  // solar disc behind the Earth's disc comes from their angular radii and separation; the Earth's radius is enlarged
+  // by 1/85 for its atmosphere (Danjon's rule for lunar eclipse shadows). The faint red light refracted by the
+  // atmosphere is not modelled: in a total eclipse there is no direct light.
+  const rs=Math.asin(695700/sun.distanceKm),re=Math.asin(6378.137*(1+1/85)/earth.distanceKm);
+  const separation=Math.acos(clamp(sun.direction.reduce((v,x,i)=>v+x*earth.direction[i],0),-1,1));
+  sun.eclipse=discOverlap(rs,re,separation)/(Math.PI*rs*rs);sun.eclipse=sun.eclipse>1-1e-9?1:sun.eclipse;
+  sun.diskFraction*=1-sun.eclipse;
+  sun.available=sun.margin>0&&sun.eclipse<1;earth.available=earth.margin>0;
   const incidence=panel==='horizontal'?Math.max(0,Math.sin(rad(sun.elevation))):1;
   const irradiance=1361/(sun.distanceKm/AU_KM)**2*sun.diskFraction*incidence;
   return {siteId:site.id,sun,earth,irradiance,eph};

@@ -170,6 +170,8 @@ function computePaths(site, terrain, date) {
 // One plain sentence per body: what the numbers mean for someone standing there.
 function verdict(body, m, edge) {
   if (body === 'sun') {
+    // The Earth in front of the Sun (a lunar eclipse seen from the Earth), when the relief leaves the Sun in view.
+    if (m.eclipse > 0 && m.terrainFraction > 0) return m.eclipse >= 1 ? t('verdict.sun.eclipseTotal') : t('verdict.sun.eclipse', { p: Math.round(m.eclipse * 100), v: Math.round(m.diskFraction * 100) });
     if (m.diskFraction >= 1) return t(m.elevation < 0 ? 'verdict.sun.high' : 'verdict.sun.full');
     if (m.diskFraction > 0) return t('verdict.sun.partial', { p: Math.round(m.diskFraction * 100) });
     return t(m.elevation > 0 ? 'verdict.sun.hidden' : 'verdict.sun.down');
@@ -198,9 +200,10 @@ function render() {
     const m = current[body], row = $(`#${body}Row`);
     // Visible or not is the model's answer (margin > 0, as the window search uses); "grazing" only qualifies it:
     // part of the Sun's disc is hidden, or the relief cuts the Earth's disc (radius ~0.95°).
-    const edge = body === 'sun' ? m.diskFraction > 0 && m.diskFraction < 1 : Math.abs(m.margin) < Math.asin(6378.137 / m.distanceKm) / RAD;
+    const edge = body === 'sun' ? m.terrainFraction > 0 && m.terrainFraction < 1 : Math.abs(m.margin) < Math.asin(6378.137 / m.distanceKm) / RAD;
+    const eclipse = body === 'sun' && m.terrainFraction > 0 ? m.eclipse : 0;
     row.dataset.state = m.available ? 'visible' : 'blocked'; row.dataset.edge = String(edge);
-    $(`#${body}Status`).textContent = t(`state.${m.available ? 'visible' : 'blocked'}`) + (edge ? t('state.grazing') : '');
+    $(`#${body}Status`).textContent = eclipse >= 1 ? t('state.eclipse') : t(`state.${m.available ? 'visible' : 'blocked'}`) + (edge ? t('state.grazing') : '') + (eclipse > 0 ? t('state.partialEclipse') : '');
     // Shown parts are rounded first, so the subtraction on screen adds up.
     const sky = Math.round(m.elevation * 100) / 100, relief = Math.round(m.horizon * 100) / 100, margin = sky - relief;
     $(`#${body}MarginText`).textContent = t(margin >= 0 ? 'answer.above' : 'answer.below', { v: `${number(Math.abs(margin), 2)}°` });
@@ -222,7 +225,7 @@ function render() {
   if (state.heightM > 2) { const low = evaluate(site, d, terrain, astronomy, 2, state.panel); $('#heightEffect').textContent = t('height.effect', { h: state.heightM, a: signedDegrees(low.sun.horizon), b: signedDegrees(current.sun.horizon) }); }
   else $('#heightEffect').textContent = '';
   $('#cameraHint').hidden = state.heightM > 2;
-  const light = state.readingLight ? 'reading' : current.sun.diskFraction === 0 ? 'dark' : current.sun.diskFraction < 1 ? 'partial' : 'real';
+  const light = state.readingLight ? 'reading' : current.sun.eclipse > 0 && current.sun.terrainFraction > 0 ? (current.sun.eclipse >= 1 ? 'eclipse' : 'partial') : current.sun.diskFraction === 0 ? 'dark' : current.sun.diskFraction < 1 ? 'partial' : 'real';
   $('#lightingBadge').textContent = t(`light.${light}`, { p: Math.round(current.sun.diskFraction * 100) }) + (state.psr ? ` · ${t('psr.legend')}` : '');
   $('.stage-meta').dataset.light = light;
   const paths = computePaths(site, terrain, d);

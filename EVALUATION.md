@@ -166,3 +166,15 @@ O que fica aquém:
 ## Guia da primeira visita (15/11/2026)
 
 Pedido do Ricardo: quem entra pela primeira vez recebe um guia que ensina o que cada coisa faz, sem aparecer toda hora. São nove passos sobre os controles reais (locais, o dia hora a hora, reprodução, vistas e observador, a resposta, o gráfico do relevo, a melhor janela, a missão e onde rever). O guia começa só depois do ritual de abertura, não trava a página (o escurecido deixa clicar), fecha com Esc, anda com as setas quando o foco está no cartão e grava a marca ao concluir ou pular; sem armazenamento, aparece uma vez por sessão. Conferido em 1536×864, 1366×768 (inglês), 900×1000 e 390×820, sem erros nem avisos no console; nenhum cartão cobre o próprio alvo.
+
+## Eclipses e idioma inicial (15/11/2026)
+
+- **Eclipses.** O Ricardo notou que em Malapert, às 03:20 UTC de 26/06/2029, a Terra aparecia exatamente na frente do Sol e o painel ainda marcava 1311 W/m². Nessa hora há um eclipse total da Lua visto da Terra; visto da Lua, a Terra cobre o Sol.
+  - **Cálculo:** o modelo passou a calcular a fração do disco do Sol coberta pelo disco da Terra, vistos do local (área de interseção de dois círculos, com o raio da Terra alargado em 1/85 pela atmosfera, regra de Danjon).
+  - **Efeito:** essa fração reduz a luz no painel, e o eclipse total tira o Sol das horas "com Sol" (trilhas, melhor janela e missão). O painel mostra "Eclipse total" ou "eclipse parcial", e a cena 3D escurece na mesma proporção.
+  - **Conferido com o Astronomy Engine (`SearchLunarEclipse`):**
+    - em 26/06/2029, o local entra na sombra total 71 min antes do pico e sai 79 min depois, dentro dos contatos da umbra (±110 min) e da totalidade geocêntrica (±51 min);
+    - no eclipse parcial de 12/01/2028, só a borda sul da Lua entra na umbra, e o polo sul fica no escuro por ~48 min.
+
+    O teste `check-model.mjs` cobre o caso de 2029. A luz vermelha refratada pela atmosfera da Terra não é modelada.
+- **Idioma inicial:** o site abre em inglês (decisão do Ricardo, 15/11). O HTML estático já vem em inglês. Quem escolhe PT no botão continua em PT, e `?lang=pt` também funciona.
