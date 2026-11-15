@@ -12,7 +12,7 @@ export class MissionUI {
   constructor(astronomy, onClose) {
     this.astronomy = astronomy; this.onClose = onClose; this.dialog = $('#missionDialog'); this.progress = 0; this.playing = false;
     $('#closeMission').addEventListener('click', () => this.dialog.close());
-    this.dialog.addEventListener('close', () => { this.stop(); cancelAnimationFrame(this.frame); this.scene?.dispose(); this.scene = null; onClose(); });
+    this.dialog.addEventListener('close', () => { this.stop(); cancelAnimationFrame(this.frame); this.pending?.dispose(); this.pending = null; this.scene?.dispose(); this.scene = null; onClose(); });
     $('#missionForm').addEventListener('submit', e => { e.preventDefault(); this.apply(); });
     $('#missionWindowHours').addEventListener('input', () => { if (!$('#missionWindowHours').disabled) $('#missionStay').max = Number($('#missionWindowHours').value); });
     $('#missionPlay').addEventListener('click', () => { if (!this.plan) return; if (this.playing) this.stop(); else { if (this.progress >= 1) this.progress = 0; this.playing = true; this.last = performance.now(); this.playButton(); } });
@@ -22,7 +22,7 @@ export class MissionUI {
     $('#missionResetCamera').addEventListener('click', () => this.draw(true));
     $('#missionFullscreen').addEventListener('click', async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('#missionViewport').requestFullscreen(); } catch { $('#missionSceneMessage').textContent = t('mission.fullscreen'); } });
     document.addEventListener('visibilitychange', () => { this.last = performance.now(); });
-    window.addEventListener('pagehide', () => { this.stop(); cancelAnimationFrame(this.frame); this.scene?.dispose(); });
+    window.addEventListener('pagehide', () => { this.stop(); cancelAnimationFrame(this.frame); this.pending?.dispose(); this.scene?.dispose(); });
     $('#missionPhases').innerHTML = PHASES.map(p => `<button type="button" data-mission-phase="${p.id}" class="${AT_MOON.has(p.id) ? 'at-moon' : ''}" style="--w:${p.seconds}"></button>`).join('');
     document.querySelectorAll('[data-mission-phase]').forEach(button => button.addEventListener('click', () => { this.stop(); this.progress = PHASES.find(p => p.id === button.dataset.missionPhase).start; this.draw(true); }));
     this.labelPhases();
@@ -51,10 +51,34 @@ export class MissionUI {
     $('#missionSceneMessage').textContent = t('mission.loading');
     const nasa = await loadNasaModels();
     if (!this.dialog.open || this.context !== context) return;
-    $('#missionSceneMessage').textContent = '';
-    try { this.scene = new MissionScene(fresh, $('#missionViewport'), context.terrain, text => { $('#missionSceneMessage').textContent = text; }, { t, nasa }); }
-    catch { $('#missionSceneMessage').textContent = t('mission.noScene'); }
+    // Building the scene and its shaders takes a few seconds: say so, and let the message paint first.
+    const preparing = t('mission.preparing'); $('#missionSceneMessage').textContent = preparing;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!this.dialog.open || this.context !== context) return;
+    // The scene is exposed only once built: a language change meanwhile must not reach a half-built scene.
+    let scene = null;
+    const show = k => { if (this.pending === scene || this.scene === scene) $('#missionSceneMessage').textContent = `${preparing} ${Math.round(k * 100)}%`; };
+    try {
+      scene = this.pending = new MissionScene(fresh, $('#missionViewport'), context.terrain, text => { $('#missionSceneMessage').textContent = text; }, { t, nasa });
+      await scene.build(k => show(k * .6));
+      if (this.pending !== scene || !this.dialog.open || this.context !== context) return;
+      this.pending = null; this.scene = scene;
+    }
+    catch { if (this.pending === scene) { this.pending = null; scene?.dispose(); } $('#missionSceneMessage').textContent = t('mission.noScene'); }
     this.apply();
+    // Warm-up, while the message shows: one picture of each setting (space near the Earth, lunar orbit, the descent,
+    // the lunar liftoff, the entry, the sea) compiles its shaders now instead of stalling the playback later.
+    if (this.scene && this.plan) {
+      const warm = [['launch', .5], ['lunarOrbit', .5], ['descent', .8], ['ascent', .3], ['arrival', .5], ['splashdown', .7]];
+      for (const [i, [id, k]] of warm.entries()) {
+        const phase = PHASES.find(p => p.id === id); if (!phase) continue; show(.6 + .4 * i / warm.length);
+        this.progress = phase.start + (phase.end - phase.start) * k; this.draw(true); this.scene.frameNow();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        if (!this.dialog.open || this.context !== context || !this.scene) return;
+      }
+      this.progress = 0; this.draw(true);
+      if ($('#missionSceneMessage').textContent.startsWith(preparing)) $('#missionSceneMessage').textContent = '';
+    }
     this.tick = now => {
       if (!this.dialog.open) return;
       const dt = Math.min(5000, now - this.last); this.last = now;
@@ -111,6 +135,6 @@ export class MissionUI {
     });
     this.sample = s;
   }
-  playButton() { const b = $('#missionPlay'); b.setAttribute('aria-pressed', String(this.playing)); b.setAttribute('aria-label', t(this.playing ? 'mp.pause' : 'mp.play')); }
+  playButton() { if (this.scene) this.scene.playing = this.playing; const b = $('#missionPlay'); b.setAttribute('aria-pressed', String(this.playing)); b.setAttribute('aria-label', t(this.playing ? 'mp.pause' : 'mp.play')); }
   stop() { this.playing = false; this.playButton(); }
 }

@@ -31,7 +31,7 @@ export class LaunchPad {
     });
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshLambertMaterial({ map })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.group.add(ground);
     const land = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshLambertMaterial({ color: 0x4f5a3c })); land.rotation.x = -Math.PI / 2; land.position.set(-76, -0.0006, 0); this.group.add(land);
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), water); sea.rotation.x = -Math.PI / 2; sea.position.set(84, -0.0004, 0); this.group.add(sea);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), water); sea.rotation.x = -Math.PI / 2; sea.position.set(80.97, 0.0002, 0); this.group.add(sea);
     // Pad mound (elevated 12 m), flame trench running north-south, mobile launcher deck.
     const concrete = new THREE.MeshLambertMaterial({ color: 0xa9a59a }), dark = new THREE.MeshLambertMaterial({ color: 0x2e2d2b }), steel = new THREE.MeshLambertMaterial({ color: 0x7d8185 });
     const add = (geometry, material, x, y, z) => { const m = new THREE.Mesh(geometry, material); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; this.group.add(m); return m; };
@@ -63,9 +63,13 @@ export class LaunchPad {
     geometry.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(count), 1));
     geometry.setAttribute('aHeat', new THREE.BufferAttribute(new Float32Array(count), 1));
     const material = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, uniforms: { uScale: { value: 800 }, uLight: { value: new THREE.Color(0.9, 0.88, 0.85) } },
-      vertexShader: 'attribute float aSize; attribute float aAlpha; attribute float aHeat; varying float vAlpha; varying float vHeat; uniform float uScale; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); gl_PointSize = min(900., aSize * uScale / -mv.z); gl_Position = projectionMatrix * mv; vAlpha = aAlpha; vHeat = aHeat; }',
-      fragmentShader: 'uniform vec3 uLight; varying float vAlpha; varying float vHeat; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .1, d) * vAlpha; if (a < .004) discard; vec3 c = mix(uLight, vec3(1., .62, .3) * 1.5, vHeat * .8); gl_FragColor = vec4(pow(c, vec3(2.2)), a); }'
+      transparent: true, depthWrite: false, uniforms: { uScale: { value: 800 }, uLight: { value: new THREE.Color(0.9, 0.88, 0.85) }, uFlameTop: { value: 0 }, uFlame: { value: 0 } }, // flame: ~150 m below the nozzles
+      // Light from the flame: the exhaust column (from the nozzles down into the trench) is a line source, so the
+      // irradiance on a cloud falls as ~1/d near it and ~1/d² farther out; at night it is what lights the clouds
+      // gold (Apollo 17's night launch). Only the clouds near the ground: higher up, the trail right under the flame is the
+      // flame volume itself (spacecraft.js), and lit puffs there read as a string of beads.
+      vertexShader: 'attribute float aSize; attribute float aAlpha; attribute float aHeat; varying float vAlpha; varying float vHeat; varying float vFlame; uniform float uScale, uFlameTop, uFlame; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); gl_PointSize = min(900., aSize * uScale / -mv.z); gl_Position = projectionMatrix * mv; vAlpha = aAlpha; vHeat = aHeat; vec3 q = vec3(0., clamp(position.y, max(0., uFlameTop - .15), uFlameTop), 0.); float d2 = dot(position - q, position - q); vFlame = uFlame * .0012 / (d2 + .0012) * (1. - smoothstep(.06, .2, position.y)); }',
+      fragmentShader: 'uniform vec3 uLight; varying float vAlpha; varying float vHeat; varying float vFlame; void main(){ float d = length(gl_PointCoord - .5); float a = smoothstep(.5, .1, d) * vAlpha; if (a < .004) discard; vec3 c = mix(uLight, vec3(1., .62, .3) * 1.5, vHeat * .8); gl_FragColor = vec4(pow(c, vec3(2.2)) + vec3(1., .5, .18) * vFlame, a); }'
     });
     const points = new THREE.Points(geometry, material); points.frustumCulled = false; points.userData.seed = seed; return points;
   }
@@ -92,6 +96,8 @@ export class LaunchPad {
     }
     p.needsUpdate = size.needsUpdate = alpha.needsUpdate = heat.needsUpdate = true;
     smoke.material.uniforms.uScale.value = scale; smoke.material.uniforms.uLight.value.setScalar(0.12 + 0.8 * day);
+    // Flame light on the clouds, linear radiance: ~2 next to the flame column, falling off over a few tens of metres.
+    smoke.material.uniforms.uFlameTop.value = PAD_DECK + altitude(t); smoke.material.uniforms.uFlame.value = 2.2 * Math.min(1, ignition * 1.25);
   }
   dispose() { this.groundMap.dispose(); this.group.traverse(o => { o.geometry?.dispose(); if (o.material && o.material !== this.water) o.material.dispose?.(); }); }
 }

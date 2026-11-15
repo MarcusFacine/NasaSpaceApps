@@ -12,12 +12,310 @@ const LUNAR_DIFFUSE = `float lunarMu=saturate(dot(geometryNormal,geometryViewDir
 	float lunarSurge=1.+.3*exp(-lunarPhase/.06);
 	reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*BRDF_Lambert( material.diffuseColor );`;
 
+// ---------------------------------------------------------------------------------------------------
+// Opt-in additions for the mission (all off by default: the explorer's Moon is unchanged).
+//
+// Lunar space. Every mesh of the Moon (globe, LOLA patch, local tiles, landing site) can map its object
+// space into one common frame: Moon-fixed, km, three.js axes (body x, y, z -> x, z, -y), the frame the
+// mission globe uses. Procedural craters live on that frame, so the same crater sits at the same place
+// on the globe from orbit, on the LOLA patch during the descent and on the ground: nothing swims.
+// To keep float32 precision at metre scale, the translation is split into whole 64 km lattice cells
+// (cells, integers) and a remainder kept in the matrix.
+export const LATTICE_KM = 64;
+export function lunarSpace(matrix = new THREE.Matrix4()) {
+  const space = { matrix: { value: new THREE.Matrix4() }, cells: { value: new THREE.Vector3() } };
+  space.set = m => {
+    const t = new THREE.Vector3().setFromMatrixPosition(m), cells = t.clone().divideScalar(LATTICE_KM).round();
+    space.cells.value.copy(cells); space.matrix.value.copy(m).setPosition(t.sub(cells.multiplyScalar(LATTICE_KM)));
+    return space;
+  };
+  return space.set(matrix);
+}
+// The mission globe: object units of 1000 km, object axes = Moon-fixed axes.
+export const globeSpace = (unitKm = 1000) => lunarSpace(new THREE.Matrix4().makeScale(unitKm, unitKm, unitKm));
+// A site's local frame (km; x east, y up, z south; y = 0 at groundKm from the centre), as the mission's
+// local group and LOLA patch use it. basis: siteBasis(site) (Moon-fixed arrays). groundKm: the same value
+// the mission uses for the patch, RADIUS_KM + elevationKm − terrain.height(0, 0).
+export function siteSpace(basis, groundKm) {
+  const v = a => new THREE.Vector3(a[0], a[2], -a[1]), up = v(basis.up);
+  return lunarSpace(new THREE.Matrix4().makeBasis(v(basis.east), up, v(basis.north).negate()).setPosition(up.multiplyScalar(groundKm)));
+}
+
+// Earthshine. Seen from the Moon the Earth shows the complementary phase: its phase angle αE (angle
+// Sun–Earth–Moon) is 180° minus the angle between the Sun and the Earth seen from the Moon, and its lit
+// fraction is (1 + cos αE) / 2. Illuminance it sends to the Moon, relative to sunlight:
+//   E_earth / E_sun = p · (R_E / d)² · Φ(αE),  Φ(α) = (sin α + (π − α) cos α) / π (Lambert sphere)
+// with p = 0.367 (geometric albedo of the Earth), R_E = 6371 km, d = Earth–Moon distance: ≈ 1.0e-4 at
+// full Earth (≈ 13 lx against 1.3e5 lx), the value Danjon's and Goode's earthshine measurements imply.
+// On this scene's scale (sunlight irradiance 3.2) full Earth is ≈ 3.2e-4: invisible next to sunlit
+// ground, as in Apollo frames exposed for daylight. boost is an artistic licence for readability (the
+// eye adapts, an exposure meter opens up); the caller must state it.
+export const EARTH_GEOMETRIC_ALBEDO = 0.367;
+// Colour of earthlight relative to the scene's sunlight: the Earth reflects blue better than red
+// (Rayleigh sky, oceans); measured earthshine spectra give roughly +10 % blue, −5 % red. Linear RGB.
+export const EARTHSHINE_COLOR = new THREE.Color().setRGB(0.93, 1.0, 1.12, THREE.LinearSRGBColorSpace);
+export const earthPhaseFunction = a => (Math.sin(a) + (Math.PI - a) * Math.cos(a)) / Math.PI;
+export const earthIlluminatedFraction = phaseAngle => (1 + Math.cos(phaseAngle)) / 2;
+export function earthshineIrradiance(phaseAngle, distanceKm = 384400, boost = 1, sunIrradiance = 3.2) {
+  const a = Math.min(Math.PI, Math.max(0, phaseAngle));
+  return sunIrradiance * EARTH_GEOMETRIC_ALBEDO * (6371 / distanceKm) ** 2 * earthPhaseFunction(a) * boost;
+}
+// Shared uniforms; direction: unit vector from the Moon towards the Earth in lunar-space axes (the
+// mission globe's object axes). intensity: irradiance on the sunlight scale (earthshineIrradiance).
+export function earthshineUniforms() {
+  return { direction: { value: new THREE.Vector3(0, 0, 1) }, color: { value: EARTHSHINE_COLOR.clone() }, intensity: { value: 0 } };
+}
+
+// Procedural crater detail. Octave L has square cells of 2^L km on the three axis planes of lunar space
+// (a cube map around the Moon: each point uses the face of its dominant axis). Each cell holds one crater,
+// its centre placed at random where the whole crater (ejecta included) stays inside the cell, so a point
+// only looks at its own cell: one table read per octave (integrated GPUs pay for every octave at every
+// pixel, so the per-octave cost is what matters). Distances are measured on the tangent plane of the
+// surface (the projected offset is lifted along the face axis), so craters stay round on the sphere and
+// on slopes. Near a cube edge both faces are searched and each crater is drawn by the face of its own
+// centre, so no seam cuts a crater. With one crater per cell and the cell halving each octave, the
+// cumulative density follows N(>D) ∝ D^-2, the equilibrium slope of small lunar craters (Gault 1970;
+// Xiao & Werner 2015); inside an octave the rim radius follows the same power law (0.06 to 0.15 cell).
+// A quarter of the cells stay empty, so the spacing is not too even. Ages are uniform: a few per cent are
+// fresh (simple bowl, depth/D ≈ 0.2, rim height ≈ 0.036 D, Pike 1977; ejecta thickness ∝ r^-3, McGetchin
+// et al. 1973; brighter, immature ejecta), most are degraded by diffusion into shallow hollows with low,
+// broad rims (depth/D 0.005–0.15, most of them shallow; Fassett & Thomson 2014). Each
+// crater adds an exact slope (bump normal), its own shadow (the ray towards the Sun tested against the rim
+// it must clear, with the penumbra of the 0.53° solar disc) and, when fresh, a brighter albedo. Octaves
+// fade by the pixel footprint (no shimmer) and above baseKm, where the texture or mesh already carries
+// the relief. Display only.
+// lattices: 2 doubles the craters (a second lattice offset by half a cell) for ~+1.8 ms on a full-screen
+// globe on the Intel iGPU; the presets use 1 to keep space shots above 45 fps. Only the globe and the
+// orbital ring may use 2: the ground meshes must stay at 1, like the landing-site geometry they meet.
+export const DETAIL_GLOBE = { coarseKm: 32, fineKm: 0.125, baseKm: 2.7, lattices: 1 };   // 4096 px LROC/LOLA maps: 2.7 km/px
+export const DETAIL_PATCH = { coarseKm: 32, fineKm: 0.125, baseKm: 1.6, lattices: 1 };   // orbital patch, 480 m DEM on a 1.56 km grid
+export const DETAIL_CONTEXT = { coarseKm: 16, fineKm: 0.0625, baseKm: 1.6 };
+export const DETAIL_TILE = { coarseKm: 2, fineKm: 0.0156, baseKm: 0.13 };   // 100 km tile, 130 m grid
+export const DETAIL_INNER = { coarseKm: 0.5, fineKm: 0.0039, baseKm: 0.04 }; // 20 km tile, 40 m grid
+// Landing site: its craters above geometryKm are real geometry (craterField); the material adds their shadows
+// (a grazing Sun defeats the shadow map on flat ground) and draws the smaller craters in full. macroNormal: the
+// mesh carries the uncratered LOLA normal in a 'lunarNormal' attribute, the reference plane of every crater.
+export const DETAIL_GROUND = { coarseKm: 0.5, fineKm: 0.00098, baseKm: 0, geometryKm: 0.02, macroNormal: true };
+function detailLevels({ coarseKm = 16, fineKm = 0.0625, geometryKm = 0, lattices = 1 } = {}) {
+  const hi = Math.min(6, Math.round(Math.log2(coarseKm))), lo = Math.min(hi, Math.round(Math.log2(fineKm)));
+  return { hi, count: hi - lo + 1, geo: geometryKm > 0 ? Math.round(Math.log2(geometryKm)) : 99, lattices: Math.max(1, Math.min(2, lattices | 0)) };
+}
+// uniform vec4: relief strength, albedo strength, shadow strength, baseKm (0 = none). Tunable at runtime
+// through material.userData.lunarDetail.value.
+const detailVector = ({ strength = 1, albedo = 1, shadows = 1, baseKm = 0 } = {}) => new THREE.Vector4(strength, albedo, shadows, baseKm);
+
+// Crater table: 512 × 512 float RGBA, one crater per entry: centre u, v inside its cell (cell units,
+// placed so the crater with its ejecta fits in the cell), rim radius r (cell units), and depth class +
+// age (integer part 0..15 -> degraded depth, fraction -> age). Made once from xorshift32 with a fixed seed,
+// read with texelFetch by the shader and from the same array by the CPU: shader and landing-site geometry
+// agree exactly. An octave's lattice repeats after 512 cells; octaves and faces read the table at
+// different offsets.
+const TABLE = 512, mod512 = x => x - TABLE * Math.floor(x / TABLE);
+// Smoothstep of its own, independent of the helpers further down.
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const crispness = age => sstep(0.02, 0.15, age), reachOf = (r, age) => r * (2.3 - 0.4 * crispness(age));
+// Built on first use only (the explorer, which uses none of this, never pays for it).
+let TABLE_DATA = null;
+const tableData = () => TABLE_DATA || (TABLE_DATA = (() => {
+  const d = new Float32Array(TABLE * TABLE * 4); let s = 0x2545F491;
+  const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 8) / 16777216; };
+  for (let i = 0; i < TABLE * TABLE; i++) {
+    // A quarter of the cells stay empty (centre moved out of reach): gaps break the even spacing.
+    const r = 0.06 / Math.sqrt(1 - 0.84 * rnd()), age = rnd(), reach = reachOf(r, age), depth = Math.floor(rnd() * 16), empty = rnd() < 0.25;
+    d.set([Math.fround(empty ? 9 : reach + rnd() * (1 - 2 * reach)), Math.fround(reach + rnd() * (1 - 2 * reach)), Math.fround(r), Math.fround(depth + age)], i * 4);
+  }
+  return d;
+})());
+let craterTexture = null;
+export function craterTable() {
+  if (!craterTexture) {
+    craterTexture = new THREE.DataTexture(tableData(), TABLE, TABLE, THREE.RGBAFormat, THREE.FloatType);
+    craterTexture.minFilter = craterTexture.magFilter = THREE.NearestFilter; craterTexture.generateMipmaps = false; craterTexture.needsUpdate = true;
+  }
+  return craterTexture;
+}
+// Faces: 0 = x (plane y,z), 1 = y (plane x,z), 2 = z (plane x,y).
+const dominant = (x, y, z) => { const a = Math.abs(x), b = Math.abs(y), c = Math.abs(z); return a >= b && a >= c ? 0 : b >= c ? 1 : 2; };
+const plane = (x, y, z, f) => f === 0 ? [y, z] : f === 1 ? [x, z] : [x, y];
+// Table offset of an octave on a face (keeps octaves and faces independent).
+const tableOffset = (L, face, negative) => [mod512((L + 20) * 97 + face * 211 + (negative ? 53 : 0)), mod512((L + 20) * 61 + face * 137 + (negative ? 29 : 0))];
+
+// One crater, shared by GLSL and JS (same numbers). rho: distance from the centre in rim radii; heights
+// in rim radii. Fresh: parabolic bowl from the floor (−0.33) to the rim crest (+0.072) at rho = 1, then
+// ejecta 0.072·rho^-3. Degraded: −deep·(rho²−1)·e^(−1.5 rho²), a hollow with a low, broad rim at
+// rho ≈ 1.29. wa (0 fresh .. 1 degraded) blends them; both taper to zero over [re − 0.8, re].
+const CRATER_GLSL = `
+vec2 lunarPlane(vec3 p,int f){return f==0?p.yz:f==1?p.xz:p.xy;}
+// p2 = rho². Returns the height h and g = (dh/drho)/rho (no square root on the common, degraded path).
+void lunarCrater(float p2,float wa,float deep,float re,out float h,out float g){
+  float ts=re-.8,k=1./(re*re-ts*ts),u=clamp((p2-ts*ts)*k,0.,1.),t=1.-u*u*(3.-2.*u),gt=-12.*u*(1.-u)*k;
+  float e=exp(-1.5*p2),ho=deep*(p2-1.)*e;
+  h=ho*t;g=deep*e*(5.-3.*p2)*t+ho*gt;
+  if(wa<1.){
+    float hf,gf;
+    if(p2<1.){hf=-.33+.402*p2;gf=.804;}
+    else{float r3=1./(p2*sqrt(p2));hf=.072*r3*t;gf=.072*r3*(gt-3.*t/p2);}
+    h=mix(hf,h,wa);g=mix(gf,g,wa);
+  }
+}`;
+function lunarCrater(rho, wa, deep, re) {
+  const p2 = rho * rho, ts = re - 0.8, u = Math.min(1, Math.max(0, (p2 - ts * ts) / (re * re - ts * ts))), t = 1 - u * u * (3 - 2 * u);
+  const hf = p2 < 1 ? -0.33 + 0.402 * p2 : 0.072 / (p2 * rho) * t;
+  const ho = deep * (p2 - 1) * Math.exp(-1.5 * p2) * t;
+  return hf + (ho - hf) * wa;
+}
+const freshness = age => 1 - smooth(0, 0.06, age);
+
+// Fragment code of the crater field. Needs lunarSpace uniforms/varyings, normalMatrix and uCraterTable.
+const DETAIL_GLSL = (hi, count, geo, lattices) => `{
+  vec3 lp=vLunarPos,up=normalize(vLunarUp);
+  // Pixel footprint in km (screen derivatives of the lunar-space position).
+  float fp=max(max(length(dFdx(lp)),length(dFdy(lp))),1e-7);
+  mat3 toView=normalMatrix*transpose(mat3(uLunarSpace));toView*=1./max(length(toView[0]),1e-30);
+  vec3 sunD=up;float sunOn=0.;
+  #if NUM_DIR_LIGHTS > 0
+  lunarSunView=directionalLights[0].direction;sunD=normalize(transpose(toView)*lunarSunView);sunOn=1.;
+  #endif
+  float su=dot(sunD,up);vec3 sh=sunD-su*up;float shl=length(sh);vec3 sdir=sh/max(shl,1e-6);float tanE=su/max(shl,1e-3);
+  bool casting=sunOn>0.&&su>0.&&uLunarDetail.z>0.;
+  // Sun below the local horizon of the mesh: a slope facing away from a low Sun shades itself and
+  // everything on it (crater walls turned towards the Sun included). Relief rising above the mean surface
+  // keeps the light about a degree longer (a 1 km rim sees the Sun 1.9° past the terminator).
+  float horizon=sunOn>0.?mix(1.,smoothstep(-.018,.004,su),uLunarDetail.z):1.;
+  // Cube faces: the dominant axis of the Moon-centred position, the next one, and the distance (km) to their edge.
+  vec3 T=lp+uLunarCells*${LATTICE_KM}.,aT=abs(T);int fa,fb;float a1,a2;
+  if(aT.x>=aT.y&&aT.x>=aT.z){fa=0;a1=aT.x;fb=aT.y>=aT.z?1:2;a2=max(aT.y,aT.z);}
+  else if(aT.y>=aT.z){fa=1;a1=aT.y;fb=aT.x>=aT.z?0:2;a2=max(aT.x,aT.z);}
+  else{fa=2;a1=aT.z;fb=aT.x>=aT.y?0:1;a2=max(aT.x,aT.y);}
+  float seamKm=(a1-a2)*.7071;
+  vec3 grad=vec3(0.);float shade=1.,bright=0.;
+  for(int f=0;f<2;f++){
+    int face=f==0?fa:fb;
+    // Plane coordinates and the lift onto the tangent plane, once per face.
+    float tf=face==0?T.x:face==1?T.y:T.z,nf=face==0?up.x:face==1?up.y:up.z;nf=(nf<0.?-1.:1.)*max(abs(nf),.2);
+    vec2 P=lunarPlane(lp,face),K=-lunarPlane(up,face)/nf,C=lunarPlane(uLunarCells,face),off=vec2(float(face)*211.,float(face)*137.)+(tf<0.?vec2(53.,29.):vec2(0.));
+    for(int i=0;i<${count};i++){
+      int L=${hi}-i;float cell=exp2(float(L));
+      bool band=seamKm<.5*cell;if(f==1&&!band)continue;
+      float w=smoothstep(12.,26.,cell/fp);
+      if(uLunarDetail.w>0.)w*=1.-smoothstep(10.,24.,cell/uLunarDetail.w);
+      if(w<.004)continue;
+      vec2 sm=mod(C*exp2(float(${Math.log2(LATTICE_KM)}-L)),512.)+off+vec2(float(L+20)*97.,float(L+20)*61.);
+      for(int lat=0;lat<${lattices};lat++){
+      // Lattices beyond the first are offset by half a cell and read the table elsewhere: denser, less even fields.
+      vec2 g=P/cell+float(lat)*.5,cl=floor(g);
+      vec4 c=texelFetch(uCraterTable,ivec2(mod(cl+sm+vec2(float(lat)*263.,float(lat)*389.),512.)),0);
+      // Offset from the crater centre, lifted from the face plane onto the tangent plane (km).
+      vec2 qp=(g-cl-c.xy)*cell;
+      vec3 t=face==0?vec3(dot(K,qp),qp):face==1?vec3(qp.x,dot(K,qp),qp.y):vec3(qp,dot(K,qp));
+      float age=fract(c.w),wa=smoothstep(.02,.15,age),re=2.3-.4*wa,irk=1./(c.z*cell),p2=dot(t,t)*irk*irk;
+      if(p2>re*re)continue;
+      if(band){vec3 A=abs(T-t);if((A.x>=A.y&&A.x>=A.z?0:A.y>=A.z?1:2)!=face)continue;}
+      float k=floor(c.w),deep=.01+.00128889*k*k,ch,cg;
+      lunarCrater(p2,wa,deep,re,ch,cg);
+      bool geo=L>${geo};   // crater already in the mesh: shadow only
+      if(!geo)grad+=(w*cg*irk)*t;
+      // Fresh craters: immature, brighter interior and ejecta.
+      if(age<.06&&!geo)bright+=w*(1.-smoothstep(0.,.06,age))*(p2<1.?.6+.3*p2:.9/(p2*sqrt(sqrt(p2)))*(1.-smoothstep((re-.8)*(re-.8),re*re,p2)));
+      // Cast shadow inside the bowl (craters of a pixel or more): does the ray towards the Sun clear the rim?
+      float rc=1.+.29*wa;
+      if(casting&&p2<rc*rc&&c.z*cell>fp){
+        float b=dot(t,sdir)*irk,te=-b+sqrt(max(b*b-p2+rc*rc,0.)),hb=mix(.072,.055*deep,wa);
+        float m=ch+te*tanE-hb,pen=te*.0093+fp*irk*.8+1e-4;
+        // A point level with the crest sees the Sun: the shadow closes towards the rim, without a step.
+        shade*=1.-w*uLunarDetail.z*(1.-clamp(1.+m/pen,0.,1.))*(1.-smoothstep(.8*rc,rc,sqrt(p2)));
+      }
+      }
+    }
+    if(seamKm>.5*exp2(float(${hi})))break;
+  }
+  vec3 nn=normal-uLunarDetail.x*(toView*grad);normal=nn*inversesqrt(max(dot(nn,nn),1e-12));
+  diffuseColor.rgb*=1.+uLunarDetail.y*.55*min(bright,1.5);
+  lunarSunShadow=shade*horizon;
+}`;
+
+// The crater of octave L that reaches the lunar-space point p (km) on a surface of normal u, if any:
+// fn({ r (km), wa, re, age, deep }, t (offset from its centre on the tangent plane, km), rho).
+// Allocation-free: the landing site calls it for every vertex and octave.
+const CRATER = { r: 0, wa: 0, re: 0, age: 0, deep: 0 }, OFFSET = [0, 0, 0], LOG_LATTICE = Math.log2(LATTICE_KM);
+function eachCrater(px, py, pz, ux, uy, uz, L, cells, fn) {
+  const cell = 2 ** L, k = 2 ** (LOG_LATTICE - L), T0 = px + cells.x * LATTICE_KM, T1 = py + cells.y * LATTICE_KM, T2 = pz + cells.z * LATTICE_KM;
+  const A0 = Math.abs(T0), A1 = Math.abs(T1), A2 = Math.abs(T2), fa = A0 >= A1 && A0 >= A2 ? 0 : A1 >= A2 ? 1 : 2;
+  const fb = fa === 0 ? (A1 >= A2 ? 1 : 2) : fa === 1 ? (A0 >= A2 ? 0 : 2) : (A0 >= A1 ? 0 : 1);
+  const band = ((fa === 0 ? A0 : fa === 1 ? A1 : A2) - (fb === 0 ? A0 : fb === 1 ? A1 : A2)) * 0.7071 <= 0.5 * cell;
+  for (let f = 0; f < (band ? 2 : 1); f++) {
+    const face = f ? fb : fa;
+    let pu, pv, au, av, cu0, cv0, n, tf;
+    if (face === 0) { pu = py; pv = pz; au = uy; av = uz; cu0 = cells.y; cv0 = cells.z; n = ux; tf = T0; }
+    else if (face === 1) { pu = px; pv = pz; au = ux; av = uz; cu0 = cells.x; cv0 = cells.z; n = uy; tf = T1; }
+    else { pu = px; pv = py; au = ux; av = uy; cu0 = cells.x; cv0 = cells.y; n = uz; tf = T2; }
+    const nf = (n < 0 ? -1 : 1) * Math.max(Math.abs(n), 0.2), neg = tf < 0;
+    const ou = (L + 20) * 97 + face * 211 + (neg ? 53 : 0), ov = (L + 20) * 61 + face * 137 + (neg ? 29 : 0);
+    const gu = pu / cell, gv = pv / cell, cu = Math.floor(gu), cv = Math.floor(gv);
+    const i = (mod512(cv + mod512(cv0 * k) + ov) * TABLE + mod512(cu + mod512(cu0 * k) + ou)) * 4, d = TABLE_DATA || tableData();
+    const qu = (gu - cu - d[i]) * cell, qv = (gv - cv - d[i + 1]) * cell, qn = -(au * qu + av * qv) / nf;
+    if (face === 0) { OFFSET[0] = qn; OFFSET[1] = qu; OFFSET[2] = qv; } else if (face === 1) { OFFSET[0] = qu; OFFSET[1] = qn; OFFSET[2] = qv; } else { OFFSET[0] = qu; OFFSET[1] = qv; OFFSET[2] = qn; }
+    const w = d[i + 3], age = w - Math.floor(w), wa = crispness(age), re = 2.3 - 0.4 * wa, rk = d[i + 2] * cell;
+    const q2 = OFFSET[0] * OFFSET[0] + OFFSET[1] * OFFSET[1] + OFFSET[2] * OFFSET[2]; if (q2 > re * re * rk * rk) continue;
+    if (band && dominant(T0 - OFFSET[0], T1 - OFFSET[1], T2 - OFFSET[2]) !== face) continue;
+    CRATER.r = rk; CRATER.wa = wa; CRATER.re = re; CRATER.age = age; CRATER.deep = 0.01 + 0.00128889 * Math.floor(w) ** 2;
+    fn(CRATER, OFFSET, Math.sqrt(q2) / rk);
+  }
+}
+const lunarPoint = (e, x, y, z) => [e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14]];
+const lunarNormal = (e, x, y, z) => { const n = [e[0] * x + e[4] * y + e[8] * z, e[1] * x + e[5] * y + e[9] * z, e[2] * x + e[6] * y + e[10] * z], l = Math.hypot(...n) || 1; return n.map(c => c / l); };
+
+// CPU version of the same crater field (height in km along the normal, albedo boost) for geometry: the
+// landing site carries the coarser octaves as real relief. space: lunarSpace(); x, y, z and the normal
+// nx, ny, nz in that space's object frame (km).
+export function craterField(space, { coarseKm = 0.25, fineKm = 0.004, strength = 1 } = {}) {
+  const { hi, count } = detailLevels({ coarseKm, fineKm }), e = space.matrix.value.elements, cells = space.cells.value;
+  let height = 0, bright = 0;
+  const add = (c, t, rho) => {
+    height += lunarCrater(rho, c.wa, c.deep, c.re) * c.r * strength;
+    if (c.age < 0.06) bright += freshness(c.age) * (rho < 1 ? 0.6 + 0.3 * rho * rho : 0.9 / (rho * rho * Math.sqrt(rho)) * (1 - smooth((c.re - 0.8) ** 2, c.re * c.re, rho * rho)));
+  };
+  const out = { height: 0, bright: 0 };
+  return (x, y, z, nx, ny, nz) => {
+    const px = e[0] * x + e[4] * y + e[8] * z + e[12], py = e[1] * x + e[5] * y + e[9] * z + e[13], pz = e[2] * x + e[6] * y + e[10] * z + e[14];
+    let ux = e[0] * nx + e[4] * ny + e[8] * nz, uy = e[1] * nx + e[5] * ny + e[9] * nz, uz = e[2] * nx + e[6] * ny + e[10] * nz; const l = Math.hypot(ux, uy, uz) || 1; ux /= l; uy /= l; uz /= l;
+    height = 0; bright = 0;
+    for (let i = 0; i < count; i++) eachCrater(px, py, pz, ux, uy, uz, hi - i, cells, add);
+    out.height = height; out.bright = Math.min(bright, 1.5) * 0.55; return out;
+  };
+}
+// Crater records of the same field inside a local square (for rocks): centre (local km), rim radius (km),
+// age (0 fresh .. 1). height(x, z): local surface height, to follow the ground.
+export function craterList(space, half, { coarseKm = 0.25, fineKm = 0.008, up = [0, 1, 0], height = () => 0 } = {}) {
+  const { hi, count } = detailLevels({ coarseKm, fineKm }), e = space.matrix.value.elements, cells = space.cells.value, out = [];
+  const inv = new THREE.Matrix4().copy(space.matrix.value).invert(), [ux, uy, uz] = lunarNormal(e, ...up), p = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    const L = hi - i, cell = 2 ** L, seen = new Set();
+    // Walk the square at a fifth of a cell: every crater is met from some sample inside its reach.
+    for (let x = -half; x <= half; x += cell / 5) for (let z = -half; z <= half; z += cell / 5) {
+      const [px, py, pz] = lunarPoint(e, x, height(x, z), z);
+      eachCrater(px, py, pz, ux, uy, uz, L, cells, (c, t) => {
+        p.set(px - t[0], py - t[1], pz - t[2]); const key = `${Math.round(p.x * 1e5)},${Math.round(p.y * 1e5)},${Math.round(p.z * 1e5)}`; if (seen.has(key)) return; seen.add(key);
+        p.applyMatrix4(inv); if (Math.abs(p.x) <= half && Math.abs(p.z) <= half) out.push({ x: p.x, z: p.z, r: c.r, age: c.age });
+      });
+    }
+  }
+  return out;
+}
+
 // psr: optional shared uniform { value: 0..1 } that makes permanently shadowed ground glow faintly.
 export const PSR_COLOR = new THREE.Color(0x8a7dff);
 // normalY: +1 for image normal maps (north up), −1 for the generated tiles. hole: { dir, cos } uniforms that
 // cut a spherical cap out of a globe (object space), where a finer mesh takes over. transparent: per-vertex alpha.
-export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, normalY = -1, color = 0xffffff, psr = null, hole = null, transparent = false } = {}) {
+// Opt-in (mission): space: lunarSpace() of the mesh (object -> lunar space); earthshine: earthshineUniforms();
+// detail: one of the DETAIL_* presets, or { coarseKm, fineKm (octave range), baseKm (resolution of the texture
+// or mesh: larger craters fade out), lattices (1|2), geometryKm (craters above it are in the mesh: shadows
+// only), macroNormal (use the 'lunarNormal' attribute), strength, albedo, shadows (runtime: material.userData
+// .lunarDetail.value = (strength, albedo, shadows, baseKm)) }. Needs space, else the object frame in km.
+export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, normalY = -1, color = 0xffffff, psr = null, hole = null, transparent = false, space = null, earthshine = null, detail = null } = {}) {
   const material = new THREE.MeshLambertMaterial({ color, vertexColors, map, normalMap, normalScale: new THREE.Vector2(normalScale, normalY * normalScale), transparent });
+  const lunar = space || earthshine || detail ? space || lunarSpace() : null, levels = detail ? detailLevels(detail) : null;
+  if (detail) material.userData.lunarDetail = { value: detailVector(detail) };
   material.onBeforeCompile = shader => {
     if (hole) {
       shader.uniforms.uHoleDir = hole.dir; shader.uniforms.uHoleCos = hole.cos;
@@ -43,8 +341,56 @@ varying float vPsr;`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance += uPsrColor * smoothstep(.35, .95, vPsr) * uPsr * .32;`);
     }
+    if (lunar) {
+      shader.uniforms.uLunarSpace = lunar.matrix; shader.uniforms.uLunarCells = lunar.cells;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform mat4 uLunarSpace;
+uniform vec3 uLunarCells;
+#ifndef USE_NORMALMAP_OBJECTSPACE
+uniform mat3 normalMatrix;
+#endif`);
+    }
+    if (detail) {
+      shader.uniforms.uLunarDetail = material.userData.lunarDetail; shader.uniforms.uCraterTable = { value: craterTable() };
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+uniform mat4 uLunarSpace;
+${detail.macroNormal ? 'attribute vec3 lunarNormal;' : ''}
+varying vec3 vLunarPos;
+varying vec3 vLunarUp;`).replace('#include <begin_vertex>', `#include <begin_vertex>
+vLunarPos = (uLunarSpace * vec4(transformed, 1.)).xyz;
+vLunarUp = mat3(uLunarSpace) * ${detail.macroNormal ? 'lunarNormal' : 'objectNormal'};`);
+      // The crater shadow applies to the Sun only (directional light 0); every other light passes.
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec4 uLunarDetail;
+varying vec3 vLunarPos;
+varying vec3 vLunarUp;
+float lunarSunShadow = 1.;
+vec3 lunarSunView = vec3(0.);
+float lunarCast(vec3 l) { return dot(l, lunarSunView) > .99999 ? lunarSunShadow : 1.; }
+uniform sampler2D uCraterTable;
+${CRATER_GLSL}`).replace('reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*BRDF_Lambert', 'reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*lunarCast(directLight.direction)*BRDF_Lambert')
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${DETAIL_GLSL(levels.hi, levels.count, levels.geo, levels.lattices)}`);
+    }
+    if (earthshine) {
+      // Earthlight with the same lunar-Lambert photometry as sunlight; no shadows (the Earth's disc is
+      // 2° wide and at the poles it grazes the horizon: a known simplification).
+      shader.uniforms.uEarthDir = earthshine.direction; shader.uniforms.uEarthColor = earthshine.color; shader.uniforms.uEarthIntensity = earthshine.intensity;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+uniform vec3 uEarthDir;
+uniform vec3 uEarthColor;
+uniform float uEarthIntensity;`).replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+if (uEarthIntensity > 0.) {
+  vec3 esD = normalMatrix * (transpose(mat3(uLunarSpace)) * uEarthDir), esL = esD * inversesqrt(max(dot(esD, esD), 1e-30));
+  float esNL = saturate(dot(normal, esL));
+  float esMu = saturate(dot(normal, geometryViewDir));
+  float esPhase = acos(clamp(dot(esL, geometryViewDir), -1., 1.));
+  float esK = mix(1., 2. / max(esNL + esMu, .08), clamp(1. - .45 * esPhase, .2, 1.));
+  reflectedLight.directDiffuse += uEarthColor * (uEarthIntensity * esNL * min(esK, 3.2) * (1. + .3 * exp(-esPhase / .06))) * BRDF_Lambert(material.diffuseColor);
+}`);
+    }
   };
-  material.customProgramCacheKey = () => `lunar-lambert-3-${psr ? 'psr' : 'plain'}-${hole ? 'hole' : 'whole'}`;
+  const extra = `${earthshine ? '-es' : ''}${detail ? `-d${levels.hi}.${levels.count}.${levels.geo}.${levels.lattices}${detail.macroNormal ? 'm' : ''}` : ''}${lunar && !detail && !earthshine ? '-space' : ''}`;
+  material.customProgramCacheKey = () => `lunar-lambert-3-${psr ? 'psr' : 'plain'}-${hole ? 'hole' : 'whole'}${extra}`;
   return material;
 }
 

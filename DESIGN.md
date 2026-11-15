@@ -173,6 +173,9 @@ Landing: cartões de 28 px de raio com fundo de cor inteira (amarelo, ardósia, 
 ### Navigation
 Barra simples com o logotipo, links e o seletor PT/EN em pílula com contorno.
 
+### Guia da primeira visita
+Na primeira visita ao app, depois do ritual de abertura, um guia de nove passos recorta o controle real (anel branco, resto da tela escurecido, mas clicável) e põe ao lado um cartão do mesmo vidro dos painéis: título, uma ou duas frases concretas, "n de N", Pular, Voltar e Próximo. No celular o cartão vira uma folha fixa embaixo e a página rola até o alvo ficar acima dela. A marca `horisite-guide-v1` fica no navegador ao concluir ou pular; o guia volta pelo botão **Guia** da barra (ícone de repetir) ou por `?guia=1`. O anel é branco de propósito: amarelo continua sendo só o Sol.
+
 ### Células de 24 horas (assinatura de dados)
 Cada hora é uma célula dividida: metade de cima amarela se o Sol está à vista, metade de baixo rosa se a Terra está à vista, hachura quando atrás do relevo. Aparece no console, numa trilha por local comparado (dia UTC escolhido), com o maior trecho de Sol e Terra juntos à direita.
 

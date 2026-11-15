@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RADIUS_KM, siteBasis } from './model.js';
 import { EARTH_RADIUS, APOLLO, moonPosition, parkingPath, parkingState, toInertial } from './mission-model.js';
-import { lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry, orbitalPatchGeometry } from './lunar-surface.js';
-import { loadStarCatalog, createStarField, setRotationRows } from './stars.js';
+import { lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry, orbitalPatchGeometry, globeSpace, siteSpace, earthshineUniforms, earthshineIrradiance, DETAIL_GLOBE, DETAIL_PATCH, DETAIL_CONTEXT, DETAIL_TILE, DETAIL_INNER } from './lunar-surface.js';
+import { loadStarCatalog } from './stars.js';
+import { createEarthRenderer } from './earth-render.js';
+import { createOcean } from './ocean.js';
+import { CameraFX } from './camera-fx.js';
 import { Spacecraft, createMaterials, makeEnvironment, buildDescentStage, buildSpent, setLayer } from './spacecraft.js';
 import { LandingSite } from './landing-site.js';
 import { LaunchPad, PAD_DECK } from './launch-pad.js';
@@ -24,6 +27,15 @@ const asset=path=>new URL(path,import.meta.url).href;
 const v=a=>new THREE.Vector3(a[0],a[2],-a[1]);
 const space=a=>v(a).multiplyScalar(.001);
 const Y=new THREE.Vector3(0,1,0);
+const ORIGIN=new THREE.Vector3();
+const SPIN=new THREE.Quaternion().setFromAxisAngle(Y,.6); // the capsule's heading on the water
+// Earthshine in space: the physical value (~1e-4 of sunlight) times this stated licence, so the Moon's night side
+// reads as ashen light, as in the photographs; on the ground it stays physical.
+const EARTHSHINE_BOOST=400;
+// The trajectory diagrams show the sky as a long exposure (~20 stops): with the white paths in frame the camera stays
+// at EV 0 and the true starlight (Pogson, anchored on the Sun) would be black. Close views keep the true sky, and the
+// camera opens at most 3 stops there, so the night licences (city lights, airglow, earthshine) are not multiplied.
+const DIAGRAM_STARS=2**20,DIAGRAM_MILKY_WAY=2**22,CLOSE_MAX_EV=3;
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const LUNAR_PHASES=new Set(['loi','lunarOrbit','descent','surface','ascent','lunarReturnOrbit','tei']);
 const EARTH_PHASES=new Set(['liftoff','launch','earthOrbit','tli','arrival']);
@@ -37,47 +49,26 @@ const PAD_CAMERA=new THREE.Vector3(.31,.012,.27); // press site: ~410 m from the
 const SPENT=[['sic','launch',.23,.42,95,900],['sii','launch',.785,.97,60,700],['sivb','outbound',0,.12,45,520],['asc','lunarReturnOrbit',.36,.5,14,200],['sm','arrival',0,.2,18,420]];
 function mesh(geometry,material,parent,position){const m=new THREE.Mesh(geometry,material);if(position)m.position.set(...position);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
 
-// Water normals: a few crossing swell trains plus chop, tileable.
-function waterNormalMap(size=256){
-  const h=new Float32Array(size*size),TAU=Math.PI*2;
-  const waves=[[3,1,1],[2,-3,.6],[5,2,.35],[-4,5,.25],[9,-7,.12],[13,11,.08]];
-  for(let y=0;y<size;y++)for(let x=0;x<size;x++){let s=0;for(const [a,b,amp] of waves)s+=amp*Math.sin(TAU*(a*x+b*y)/size+a*1.7);h[y*size+x]=s;}
-  const data=new Uint8Array(size*size*4);
-  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
-    const l=h[y*size+(x+size-1)%size],r=h[y*size+(x+1)%size],u=h[((y+size-1)%size)*size+x],d=h[((y+1)%size)*size+x];
-    const nx=(l-r)*1.4,ny=(u-d)*1.4,len=Math.hypot(nx,ny,1),i=(y*size+x)*4;
-    data[i]=(nx/len*.5+.5)*255;data[i+1]=(ny/len*.5+.5)*255;data[i+2]=(1/len*.5+.5)*255;data[i+3]=255;
-  }
-  const t=new THREE.DataTexture(data,size,size,THREE.RGBAFormat);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;t.anisotropy=8;t.needsUpdate=true;return t;
-}
-// Tileable value noise (four octaves) for the fine structure of the clouds.
-function noiseTexture(size=256){
-  const hash=(x,y,s)=>{let n=(Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(s,982451653))|0;n=Math.imul(n^(n>>>13),1274126177);return((n^(n>>>16))>>>0)/4294967295;};
-  const noise=(x,y,p,s)=>{const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,w=k=>((k%p)+p)%p,sx=xf*xf*(3-2*xf),sy=yf*yf*(3-2*yf);const a=hash(w(xi),w(yi),s),b=hash(w(xi+1),w(yi),s),c=hash(w(xi),w(yi+1),s),d=hash(w(xi+1),w(yi+1),s);return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
-  const data=new Uint8Array(size*size*4);
-  for(let y=0;y<size;y++)for(let x=0;x<size;x++){let n=0,a=.5;for(let o=0;o<4;o++){const p=8<<o;n+=a*noise(x/size*p,y/size*p,p,o+3);a*=.5;}const i=(y*size+x)*4;data[i]=data[i+1]=data[i+2]=clamp(n/.94)*255;data[i+3]=255;}
-  const t=new THREE.DataTexture(data,size,size,THREE.RGBAFormat);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.generateMipmaps=true;t.minFilter=THREE.LinearMipmapLinearFilter;t.needsUpdate=true;return t;
-}
-function glowTexture(stops){
-  const c=document.createElement('canvas');c.width=c.height=256;const g=c.getContext('2d'),gr=g.createRadialGradient(128,128,0,128,128,128);
-  for(const [at,color] of stops)gr.addColorStop(at,color);g.fillStyle=gr;g.fillRect(0,0,256,256);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
-}
-
 export class MissionScene {
   constructor(canvas,container,terrain,onError,{t=k=>k,nasa=null}={}){
     this.t=t;this.nasa=nasa;this.container=container;this.terrain=terrain;this.mode='auto';this.dirty=true;this.disposed=false;this.cameraKey='';this.textures=[];
-    this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1;this.renderer.setClearColor(0x000000);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
+    this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1;this.renderer.setClearColor(0x000000,0);this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFShadowMap;
     // Two passes when in space: the distant bodies first, then the spacecraft with its own depth range,
     // so a 20 m vehicle and a planet 200 km behind it can share a picture.
     this.renderer.autoClear=false;this.nearA=.0005;
-    // Cinema pipeline: the scene is drawn in linear HDR (half float, 4× MSAA), bright sources bloom,
-    // ACES tone mapping gives the exposure of film, then lens and grain.
+    // Cinema pipeline: the bodies are drawn in linear HDR (half float, 4× MSAA) into the camera's stage (alpha =
+    // coverage). The camera (camera-fx.js) meters and adapts its exposure on the GPU, adds the lens flare and puts the
+    // Milky Way and the stars behind what the scene left open; bright sources bloom, ACES gives the response of film,
+    // then lens and grain.
     {
-      const size=this.renderer.getDrawingBufferSize(new THREE.Vector2()),hdr=this.renderer.extensions.has('EXT_color_buffer_float')||this.renderer.extensions.has('EXT_color_buffer_half_float');
-      this.composer=new EffectComposer(this.renderer,new THREE.WebGLRenderTarget(Math.max(1,size.x),Math.max(1,size.y),{type:hdr?THREE.HalfFloatType:THREE.UnsignedByteType,samples:4}));
-      const stage=new Pass();stage.needsSwap=false;stage.render=(renderer,writeBuffer,readBuffer)=>{renderer.setRenderTarget(readBuffer);renderer.clear();this.draw();};
+      const size=this.renderer.getDrawingBufferSize(new THREE.Vector2()),hdr=this.renderer.extensions.has('EXT_color_buffer_float')||this.renderer.extensions.has('EXT_color_buffer_half_float'),type=hdr?THREE.HalfFloatType:THREE.UnsignedByteType;
+      // The composer's own buffers stay single-sampled: only the bodies need the samples (a full-screen pass into a
+      // 4× MSAA half-float buffer costs ~4 ms on integrated GPUs).
+      this.composer=new EffectComposer(this.renderer,new THREE.WebGLRenderTarget(Math.max(1,size.x),Math.max(1,size.y),{type}));
+      this.fx=new CameraFX(this.renderer);this.fx.createStageTarget({type});this.sunAU=1;
+      const stage=new Pass();stage.needsSwap=false;stage.render=renderer=>{renderer.setRenderTarget(this.fx.stage);renderer.clear();this.draw();};
       this.bloom=new UnrealBloomPass(new THREE.Vector2(size.x/2,size.y/2),.5,.75,1);this.film=new ShaderPass(FILM);
-      for(const pass of [stage,this.bloom,new OutputPass(),this.film])this.composer.addPass(pass);
+      for(const pass of [stage,this.fx.pass,this.bloom,new OutputPass(),this.film])this.composer.addPass(pass);
     }
     this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});this.controls.addEventListener('start',()=>{this.cameraTween=null;this.manualCamera=true;});
     this.world=new THREE.Group();this.local=new THREE.Group();this.oceanGroup=new THREE.Group();this.scene.add(this.world,this.local,this.oceanGroup);
@@ -89,59 +80,92 @@ export class MissionScene {
     this.shine=new THREE.DirectionalLight(0xffffff,0);this.shine.layers.set(1);this.scene.add(this.shine,this.shine.target);
     // Starlight and stray light: just enough to read the spacecraft inside a shadow.
     this.shade=new THREE.AmbientLight(0x93a8cc,.2);this.shade.layers.set(1);this.scene.add(this.shade);
+    // On the Moon: light the sunlit regolith sends back up to the shaded side of the lander.
+    this.bounce=new THREE.HemisphereLight(0x000000,0xcfc8bc,0);this.scene.add(this.bounce);
     // What polished metal reflects: regolith near the Moon, oceans and clouds near the Earth, sky over the Pacific.
     this.envs={moon:makeEnvironment(this.renderer,{ground:[.34,.33,.31]}),earth:makeEnvironment(this.renderer,{ground:[.12,.2,.34],horizon:[.4,.52,.72]}),space:makeEnvironment(this.renderer,{sky:[.02,.02,.025],ground:[.07,.07,.075]}),ocean:makeEnvironment(this.renderer,{sky:[.28,.46,.75],ground:[.03,.09,.16],horizon:[.78,.86,.95]})};
     this.materials=createMaterials(this.envs.space.texture);this.envName='space';
     const loader=new THREE.TextureLoader(),anisotropy=this.renderer.capabilities.getMaxAnisotropy();
     const texture=(file,srgb,error)=>{const tex=loader.load(asset(`./assets/mission/${file}`),()=>this.dirty=true,undefined,error&&(()=>onError(t(error))));if(srgb)tex.colorSpace=THREE.SRGBColorSpace;tex.anisotropy=anisotropy;this.textures.push(tex);return tex;};
-    this.makeEarth(texture);
-    // The Moon: LROC colour and a normal map computed from the LOLA elevation model, both 4096 px. Around
-    // the destination a cap is cut out and the finer LOLA mesh takes its place.
+    this.loadTexture=texture;this.canvas=canvas;this.onError=onError;
+    this.uploads=[];this.drawn=0;this.whenReady=new Promise(resolve=>{this.onReady=resolve;});
+  }
+  // The heavy part, in steps with a frame for the page between them (progress 0..1); resolves when the loop runs.
+  async build(progress=()=>{}){
+    const texture=this.loadTexture,nasa=this.nasa,terrain=this.terrain,container=this.container,canvas=this.canvas,onError=this.onError,t=this.t;
+    const step=async k=>{progress(k);await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve)));return this.disposed;};
+    this.makeEarth(texture);if(await step(.3))return;
+    // The Moon: LROC colour and a normal map computed from the LOLA elevation model, both 4096 px, procedural craters
+    // below their resolution and earthshine on the night side. Around the destination a cap is cut out and the finer
+    // LOLA mesh takes its place.
+    this.earthshine=earthshineUniforms();
     this.moonHole={dir:{value:new THREE.Vector3(0,-1,0)},cos:{value:Math.cos(140/RADIUS_KM)}};
-    this.moon=mesh(new THREE.SphereGeometry(RADIUS_KM/1000,256,192),lunarMaterial({vertexColors:false,map:texture('moon-color.jpg',true,'error.moonTexture'),color:0xf2efe8,normalMap:texture('moon-normal.jpg',false),normalScale:1.25,normalY:1,hole:this.moonHole}),this.world);
+    this.moon=mesh(new THREE.SphereGeometry(RADIUS_KM/1000,256,192),lunarMaterial({vertexColors:false,map:texture('moon-color.jpg',true,'error.moonTexture'),color:0xf2efe8,normalMap:texture('moon-normal.jpg',false),normalScale:1.25,normalY:1,hole:this.moonHole,space:globeSpace(),earthshine:this.earthshine,detail:DETAIL_GLOBE}),this.world);
     this.localEarth=mesh(new THREE.SphereGeometry(1,48,32),new THREE.MeshStandardMaterial({map:this.earthDay,roughness:.85}),this.local);
     this.vehicle=new Spacecraft(this.materials,nasa);setLayer(this.vehicle.group,1);this.world.add(this.vehicle.group);
     this.spent={};for(const [kind] of SPENT){const g=new THREE.Group(),body=new THREE.Group();body.scale.setScalar(.001);body.add(buildSpent(this.materials,kind,nasa));g.add(body);g.visible=false;setLayer(g,1);this.world.add(g);this.spent[kind]=g;}
     this.localVehicle=new Spacecraft(this.materials,nasa);this.local.add(this.localVehicle.group);
+    if(await step(.45))return;
     this.descentLeft=new THREE.Group();this.descentLeft.scale.setScalar(.001);this.descentLeft.add(buildDescentStage(this.materials,nasa));this.descentLeft.visible=false;this.local.add(this.descentLeft);
-    // The Sun itself: a small hot disc with glare, far behind everything.
-    this.sunSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture([[0,'rgba(255,255,255,1)'],[.014,'rgba(255,252,240,1)'],[.03,'rgba(255,244,220,.55)'],[.09,'rgba(255,236,200,.16)'],[.3,'rgba(255,230,190,.045)'],[1,'rgba(255,230,190,0)']]),blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,toneMapped:false,fog:false}));this.sunSprite.material.color.setRGB(14,13.4,12.4);this.sunSprite.scale.setScalar(1500);this.world.add(this.sunSprite);
-    // The Milky Way (NASA SVS Deep Star Maps 2020), in celestial coordinates, behind the catalogue stars.
-    this.milkyWay=new THREE.Mesh(new THREE.SphereGeometry(4800,48,32),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,depthTest:false,uniforms:{uMap:{value:texture('milkyway.jpg',true)},uGain:{value:.62}},
-      vertexShader:'varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:'uniform sampler2D uMap;uniform float uGain;varying vec3 vDir;void main(){vec3 w=normalize(vDir);vec3 j=vec3(w.x,-w.z,w.y);float ra=atan(j.y,j.x);float dec=asin(clamp(j.z,-1.,1.));vec2 uv=vec2(.5-ra/6.28318530718,.5+dec/3.14159265359);vec3 c=texture2D(uMap,uv).rgb;gl_FragColor=vec4(c*c*uGain,1.);}'}));
-    this.milkyWay.material.uniforms.uMap.value.generateMipmaps=false;this.milkyWay.material.uniforms.uMap.value.minFilter=THREE.LinearFilter;
-    this.milkyWay.renderOrder=-10;this.milkyWay.frustumCulled=false;this.world.add(this.milkyWay);
+    // The Sun (camera-fx.js): its true disc, limb-darkened, drawn first so the bodies and the spacecraft cut it; the
+    // camera adds the flare. The Milky Way (NASA SVS Deep Star Maps 2020) goes behind the scene in the camera pass.
+    this.scene.add(this.fx.sun);this.fx.setMilkyWay(texture('milkyway.jpg',true));
     // What the spacecraft reflects in space: the scene itself, captured around it now and then.
     this.cubeTarget=new THREE.WebGLCubeRenderTarget(128,{type:THREE.HalfFloatType});this.cubeCamera=new THREE.CubeCamera(.00001,10000,this.cubeTarget);this.cubeCamera.children.forEach(c=>c.layers.set(0));
     this.pmrem=new THREE.PMREMGenerator(this.renderer);this.reflection=null;this.reflectionAge=1e9;this.sunOnVehicle=1;
-    this.makeTerrain(terrain);this.makeOcean();
-    this.pad=new LaunchPad(this.water.material);this.pad.group.visible=false;this.scene.add(this.pad.group);
+    if(await step(.55))return;
+    this.makeTerrain(terrain);if(await step(.8))return;
+    this.makeOcean();
+    this.pad=new LaunchPad(this.ocean.flatMaterial);this.pad.group.visible=false;this.scene.add(this.pad.group);
     this.padVehicle=new Spacecraft(this.materials);this.padVehicle.set('saturnV');this.pad.group.add(this.padVehicle.group);
+    // NASA 8k imagery, swapped in after the 4k set is on screen: only where an 8k texture and memory to spare exist
+    // (about +470 MiB of GPU memory), not on phones. The 4k set stays on any failure.
+    this.whenReady.then(()=>{if(!this.disposed&&this.renderer.capabilities.maxTextureSize>=8192&&!(navigator.deviceMemory<8)&&matchMedia('(pointer:fine)').matches)this.load8k().then(maps=>this.use8k(maps)).catch(()=>{});});
     this.trail=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.8}));this.world.add(this.trail);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
-    this.canvas=canvas;this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError(t('error.contextLost'));};canvas.addEventListener('webglcontextlost',this.onContextLost);
-    loadStarCatalog().then(data=>{if(!data||this.disposed)return;this.stars=createStarField(data,4000);this.stars.material.uniforms.uPixelRatio.value=this.renderer.getPixelRatio();setRotationRows(this.stars,[1,0,0],[0,0,1],[0,-1,0]);this.stars.material.uniforms.uOpacity.value=.6;this.stars.visible=this.world.visible;this.scene.add(this.stars);this.dirty=true;});
+    this.onContextLost=e=>{e.preventDefault();this.contextLost=true;if(!this.disposed)onError(t('error.contextLost'));};canvas.addEventListener('webglcontextlost',this.onContextLost);
+    // Catalogue stars at their real brightness (Pogson, anchored on the Sun): they show only when the camera opens up.
+    loadStarCatalog().then(data=>{if(!data||this.disposed)return;this.fx.setStars(data);this.dirty=true;});
     this.render=now=>{
       if(this.disposed)return;now=now??performance.now();this.animateCamera(now);
       const world=this.world.visible,pad=this.pad.group.visible;
       // Moving dust, waves, smoke and burning engines keep drawing while they are on screen.
       if(this.dustLevel>.02&&this.local.visible){this.landing.updateDust(this.dustLevel,now/1000);this.dirty=true;}
-      if(this.oceanGroup.visible||pad){this.water.material.normalMap.offset.set(now*.0000045,now*.0000031);this.dirty=true;}
+      if(this.oceanGroup.visible||pad)this.dirty=true; // waves, clouds and spray move every frame
       if(this.sample?.throttle>0&&(world||pad)){(pad?this.padVehicle:this.vehicle).engine(this.engineLevel??this.sample.throttle);this.dirty=true;}
+      if(this.sample?.plasma>0&&world){this.vehicle.plasma(this.sample.plasma);this.dirty=true;}
       // The ground shakes the camera while the first stage burns close by.
       if(pad&&this.padTarget&&!this.manualCamera){const k=(this.engineLevel||0)*Math.max(0,1-this.sample.altitudeKm/1.2)*.0012,t=now/1000;this.controls.target.copy(this.padTarget).add(new THREE.Vector3(Math.sin(t*47)+Math.sin(t*83+1),Math.sin(t*59+2)+Math.sin(t*101),0).multiplyScalar(k));this.controls.update();}
-      if(this.dirty&&!document.hidden&&!this.contextLost){
-        const camera=this.camera;
-        if(this.stars){this.stars.matrix.setPosition(camera.position);this.stars.matrixWorldNeedsUpdate=true;}
-        this.milkyWay.position.copy(camera.position);this.sunSprite.position.copy(camera.position).addScaledVector(this.sunWorld,3000);
-        camera.updateMatrixWorld();this.sunView.value.copy(this.sunWorld).transformDirection(camera.matrixWorldInverse);
-        if(world&&++this.reflectionAge>40)this.captureReflection();
-        this.film.uniforms.uTime.value=now/1000;this.composer.render();
-        this.labels();this.dirty=false;
-      }
+      // The 8k textures go to the GPU one at a time (each upload stalls 120–400 ms on integrated GPUs): while paused,
+      // or on a camera cut during playback, where the picture changes anyway.
+      const upload=!this.playing||this.cut?this.uploads.shift():null;this.cut=false;if(upload){upload();this.dirty=true;}
+      // The automatic exposure adapts on the GPU: keep drawing a few seconds after the last change so it settles.
+      if(this.dirty)this.fx.touch(now);if(this.fx.settling(now))this.dirty=true;
+      if(this.dirty&&!document.hidden&&!this.contextLost)this.frameNow(now);
       this.frame=requestAnimationFrame(this.render);
-    };this.render();
+    };
+    this.render();
+  }
+  // One picture of the current state, now (the render loop, and the warm-up before playback).
+  frameNow(now=performance.now()){
+    const camera=this.camera,world=this.world.visible;
+    camera.updateMatrixWorld();this.sunView.value.copy(this.sunWorld).transformDirection(camera.matrixWorldInverse);
+    if(world)this.earthRender.update(camera,ORIGIN,this.sunWorld,1000,this.moon.position);
+    else if(this.sky.visible&&this.skySun){
+      this.ocean.update(now,camera,this.skySun,{moonDirLocal:this.skyMoon,moonPhaseDeg:this.skyMoonPhase});
+      this.oceanFog.color.copy(this.ocean.fogColor);this.oceanFog.far=this.ocean.fogFar;
+      if(this.oceanGroup.visible){
+        this.renderer.toneMappingExposure=this.ocean.exposure;
+        // Afloat: the capsule heaves and rolls with the sea under it (model origin at the heat shield, ~0.6 m draft).
+        if(this.sample&&this.sample.altitudeKm<.0005){const w=this.ocean.surfaceAt(0,0,this.surf),ov=this.oceanVehicle.group;ov.position.y=w.height-.0006;ov.quaternion.setFromUnitVectors(Y,w.normal).multiply(SPIN);}
+      }
+    }
+    this.updateCameraFX();
+    if(world&&++this.reflectionAge>40)this.captureReflection();
+    this.film.uniforms.uTime.value=now/1000;this.composer.render();
+    this.labels();this.dirty=false;
+    // Ready once a few frames are on screen (the first ones compile the shaders of what is in view).
+    if(++this.drawn===3)this.onReady();
   }
   // One frame into the current target. In space: the distant bodies first, then the spacecraft with its own
   // depth range, its own shadows and the sunlight it really gets (none inside the shadow of the Earth or the Moon).
@@ -151,74 +175,71 @@ export class MissionScene {
     const at=this.vehicle.group.position,intensity=sun.intensity,position=sun.position.clone(),aim=sun.target.position.clone();
     camera.near=this.nearA;camera.far=10000;camera.updateProjectionMatrix();r.render(this.scene,camera);
     const d=camera.position.distanceTo(at),reach=Math.max(2e-5,this.vehicle.height*this.vehicle.group.scale.x*1.6),shadow=sun.shadow;
+    const sunColor=sun.color.clone();if(this.sunTint)sun.color.multiply(this.sunTint);
     sun.intensity=intensity*this.sunOnVehicle;sun.target.position.copy(at);sun.position.copy(at).addScaledVector(this.sunWorld,reach*6);sun.target.updateMatrixWorld();
     Object.assign(shadow.camera,{left:-reach,right:reach,top:reach,bottom:-reach,near:reach,far:reach*12});shadow.camera.updateProjectionMatrix();shadow.normalBias=reach*.004;shadow.bias=-.0006;
     r.clearDepth();camera.layers.set(1);camera.near=Math.max(1e-9,d*.04);camera.far=d*60+.002;camera.updateProjectionMatrix();r.render(this.scene,camera);camera.layers.set(0);
-    sun.intensity=intensity;sun.position.copy(position);sun.target.position.copy(aim);shadow.normalBias=.00004;shadow.bias=-.00002;
+    sun.intensity=intensity;sun.color.copy(sunColor);sun.position.copy(position);sun.target.position.copy(aim);shadow.normalBias=.00004;shadow.bias=-.00002;
   }
   // The Earth, the Moon, the Sun and the stars as the spacecraft sees them, filtered for reflections.
   captureReflection(){
     this.reflectionAge=0;const r=this.renderer,target=r.getRenderTarget();
     this.cubeCamera.position.copy(this.vehicle.group.position);this.cubeCamera.children.forEach(c=>{c.near=Math.max(1e-6,this.nearA);c.far=10000;c.updateProjectionMatrix();});
-    this.cubeCamera.update(r,this.scene);
+    // What lights the spacecraft stays physical. The Sun is already the directional light (reflecting its disc would
+    // count it twice), and the exposure licences of the night side (city lights, moonlit ground, boosted earthshine,
+    // the airglow when the spacecraft is in the shadow) are left out of its reflections.
+    const U=this.earthRender.uniforms,night=U.uNightGain.value,moonE=U.uMoonE.value.clone(),air=this.earthRender.atmosphere.visible,shine=this.earthshine.intensity.value,sunShown=this.fx.sun.visible;
+    U.uNightGain.value=0;U.uMoonE.value.setRGB(0,0,0);this.earthshine.intensity.value=shine/EARTHSHINE_BOOST;this.fx.sun.visible=false;
+    if(this.sunTint&&Math.max(this.sunTint.r,this.sunTint.g,this.sunTint.b)<.05)this.earthRender.atmosphere.visible=false;
+    // Each face is cleared first (the renderer runs with autoClear off for the two-pass draw).
+    const autoClear=r.autoClear;r.autoClear=true;this.cubeCamera.update(r,this.scene);r.autoClear=autoClear;
+    U.uNightGain.value=night;U.uMoonE.value.copy(moonE);this.earthshine.intensity.value=shine;this.earthRender.atmosphere.visible=air;this.fx.sun.visible=sunShown;
     this.reflection=this.pmrem.fromCubemap(this.cubeTarget.texture,this.reflection);r.setRenderTarget(target);
     if(this.envName==='space'||this.envName==='earth'||this.envName==='moon'){this.materials.setEnvironment(this.reflection.texture);this.envLive=true;}
   }
   makeEarth(texture){
-    // Earth at 4096 px: day map, city lights only on the night side, the Sun's glint on the oceans,
-    // clouds with fine structure and a thin blue limb. Visual only.
+    // Earth and atmosphere, physically based (earth-render.js): exact sphere, Hillaire 2020 sky, clouds, city lights.
     const day=this.earthDay=texture('earth-day.jpg',true,'error.earthTexture'),night=texture('earth-night.jpg',true),brc=texture('earth-brc.jpg',false);
-    this.sunWorld=new THREE.Vector3(1,0,0);this.sunView={value:new THREE.Vector3(0,0,1)};this.cloudNoise=noiseTexture();
-    const material=new THREE.MeshStandardMaterial({map:day,roughnessMap:brc,roughness:1,metalness:0,emissive:0xffd29a,emissiveMap:night,emissiveIntensity:1.3});
-    material.onBeforeCompile=shader=>{shader.uniforms.uSunView=this.sunView;shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 uSunView;').replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat sunSide = dot(normalize(vNormal), uSunView);\ntotalEmissiveRadiance *= smoothstep(.06, -.22, sunSide);\nfloat airRim = pow(1. - saturate(dot(normalize(vNormal), normalize(vViewPosition))), 2.6);\ntotalEmissiveRadiance += vec3(.2, .4, .85) * airRim * smoothstep(-.15, .25, sunSide) * .45;');};
-    const r=EARTH_RADIUS/1000;this.earth=mesh(new THREE.SphereGeometry(r,192,128),material,this.world);this.earth.castShadow=false;
-    const clouds=new THREE.MeshStandardMaterial({color:0xffffff,map:brc,transparent:true,depthWrite:false,roughness:1});
-    clouds.onBeforeCompile=shader=>{shader.uniforms.uNoise={value:this.cloudNoise};shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform sampler2D uNoise;').replace('#include <map_fragment>','float cloud = texture2D( map, vMapUv ).b;\nfloat fine = texture2D( uNoise, vMapUv * vec2(56., 28.) ).r;\nfloat finer = texture2D( uNoise, vMapUv * vec2(190., 95.) ).r;\ncloud = smoothstep(.1, .78, cloud * (.5 + .7 * fine + .35 * finer));\ndiffuseColor.a *= cloud;');};
-    clouds.customProgramCacheKey=()=>'earth-clouds-brc';
-    this.earth.add(new THREE.Mesh(new THREE.SphereGeometry(r*1.0015,192,128),clouds));
-    const limb=new THREE.Mesh(new THREE.SphereGeometry(r*1.022,96,64),new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.BackSide,uniforms:{uSunView:this.sunView},
-      vertexShader:'varying vec3 vN;varying vec3 vV;void main(){vec4 mv=modelViewMatrix*vec4(position,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}',
-      fragmentShader:'uniform vec3 uSunView;varying vec3 vN;varying vec3 vV;void main(){vec3 n=normalize(vN);float rim=pow(clamp(1.-abs(dot(n,normalize(vV))),0.,1.),2.2);float lit=smoothstep(-.35,.35,dot(-n,uSunView));gl_FragColor=vec4(vec3(.35,.6,1.)*rim*lit*.85,rim*lit);}'}));
-    this.earth.add(limb);
+    this.sunWorld=new THREE.Vector3(1,0,0);this.sunView={value:new THREE.Vector3(0,0,1)};
+    this.earthRender=createEarthRenderer(this.renderer,{day,night,brc});
+    this.earth=this.earthRender.earth;this.world.add(this.earth,this.earthRender.atmosphere);
   }
   makeTerrain(terrain){
-    // Same LOLA relief as the explorer; around the destination, the landing site at lander scale.
+    // Same LOLA relief as the explorer; around the destination, the landing site at lander scale. The local tiles, the
+    // landing site and the patch share one Moon-fixed space, so their procedural craters are the globe's craters.
     this.regolith=regolithNormalMap(512,11,{craters:0});
-    this.landing=new LandingSite(terrain,{seed:[...terrain.site.id].reduce((s,c)=>s+c.charCodeAt(0),0)});this.local.add(this.landing.group);
-    const detail=mesh(detailedTerrainGeometry(terrain),lunarMaterial({normalMap:this.regolith,normalScale:.3}),this.local);
-    const innerGeometry=innerTerrainGeometry(terrain,{hole:this.landing.half}),inner=innerGeometry&&mesh(innerGeometry,lunarMaterial({normalMap:this.regolith,normalScale:.32}),this.local);
-    const context=contextTerrainGeometry(terrain);if(context)mesh(context,lunarMaterial({normalMap:null}),this.local);
+    const lunar=siteSpace(siteBasis(terrain.site),RADIUS_KM+terrain.elevationKm-terrain.height(0,0)),opt=d=>({space:lunar,earthshine:this.earthshine,detail:d});
+    this.landing=new LandingSite(terrain,{seed:[...terrain.site.id].reduce((s,c)=>s+c.charCodeAt(0),0),space:lunar,earthshine:this.earthshine});this.local.add(this.landing.group);
+    const detail=mesh(detailedTerrainGeometry(terrain),lunarMaterial({normalMap:this.regolith,normalScale:.3,...opt(DETAIL_TILE)}),this.local);
+    const innerGeometry=innerTerrainGeometry(terrain,{hole:this.landing.half}),inner=innerGeometry&&mesh(innerGeometry,lunarMaterial({normalMap:this.regolith,normalScale:.32,...opt(DETAIL_INNER)}),this.local);
+    const context=contextTerrainGeometry(terrain);if(context)mesh(context,lunarMaterial({normalMap:null,...opt(DETAIL_CONTEXT)}),this.local);
     this.groundY=this.landing.heightAt(0,0);this.descentLeft.position.set(0,this.groundY,0);
     // The same relief seen from orbit and on the way down, set into the globe at the destination.
     this.patch=new THREE.Group();this.patch.matrixAutoUpdate=false;this.world.add(this.patch);
-    const orbital=orbitalPatchGeometry(terrain);if(orbital){const m=new THREE.Mesh(orbital,lunarMaterial({normalMap:null,transparent:true,color:0xdedbd4}));this.patch.add(m);}
+    const orbital=orbitalPatchGeometry(terrain);if(orbital){const m=new THREE.Mesh(orbital,lunarMaterial({normalMap:null,transparent:true,color:0xdedbd4,...opt(DETAIL_PATCH)}));this.patch.add(m);}
     for(const source of [detail,inner,this.landing.mesh])if(source)this.patch.add(new THREE.Mesh(source.geometry,source.material));
   }
   makeOcean(){
-    // Pacific recovery area: sky dome, sea with moving swell, the command module under its parachutes.
+    // Pacific recovery area and the Atlantic at the pad (ocean.js): FFT sea to a curved horizon under the earth-render
+    // sky, trade-wind cumulus, the capsule's splash. Needs this.earthRender (makeEarth runs first).
     const g=this.oceanGroup;g.visible=false;
-    this.skyUniforms={uZenith:{value:new THREE.Color(.16,.34,.66)},uHorizon:{value:new THREE.Color(.72,.82,.92)},uSun:{value:new THREE.Vector3(0,1,0)},uGlow:{value:new THREE.Color(1,.92,.8)}};
-    this.sky=new THREE.Mesh(new THREE.SphereGeometry(90,48,24),new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:this.skyUniforms,
-      vertexShader:'varying vec3 vDir;void main(){vDir=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader:'uniform vec3 uZenith,uHorizon,uSun,uGlow;varying vec3 vDir;void main(){float y=max(vDir.y,0.);vec3 c=mix(uHorizon,uZenith,pow(y,.55));float s=max(dot(vDir,normalize(uSun)),0.);c+=uGlow*(pow(s,600.)*4.+pow(s,12.)*.25);if(vDir.y<0.)c=uHorizon*.55;gl_FragColor=vec4(pow(c,vec3(2.2)),1.);}'}));
-    this.sky.visible=false;this.scene.add(this.sky);
-    const water=new THREE.MeshStandardMaterial({color:0x14405f,roughness:.09,metalness:0,normalMap:waterNormalMap(),normalScale:new THREE.Vector2(.55,.55)});water.normalMap.repeat.set(1600,1600);
-    this.water=new THREE.Mesh(new THREE.PlaneGeometry(160,160),water);this.water.rotation.x=-Math.PI/2;this.water.receiveShadow=true;g.add(this.water);
+    this.ocean=createOcean(this.renderer,{earth:this.earthRender});
+    this.sky=this.ocean.sky;this.sky.visible=false;this.scene.add(this.sky);
+    if(this.ocean.clouds){this.ocean.clouds.visible=false;this.scene.add(this.ocean.clouds);}
+    this.water=this.ocean.water;g.add(this.ocean.group);
     this.oceanVehicle=new Spacecraft(this.materials,this.nasa);this.oceanVehicle.set('cmChutes');g.add(this.oceanVehicle.group);
-    const c=document.createElement('canvas');c.width=c.height=128;const g2=c.getContext('2d'),gr=g2.createRadialGradient(64,64,0,64,64,64);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.3,'rgba(255,255,255,.55)');gr.addColorStop(.45,'rgba(240,246,248,.25)');gr.addColorStop(1,'rgba(240,246,248,0)');g2.fillStyle=gr;g2.fillRect(0,0,128,128);
-    this.foamMap=new THREE.CanvasTexture(c);this.foam=new THREE.Mesh(new THREE.PlaneGeometry(.016,.016),new THREE.MeshBasicMaterial({map:this.foamMap,transparent:true,opacity:0,depthWrite:false}));this.foam.rotation.x=-Math.PI/2;this.foam.position.y=.00005;g.add(this.foam);
-    this.oceanFog=new THREE.Fog(0xb9cde0,4,70);
+    this.oceanFog=new THREE.Fog(0xb9cde0,0,100);this.surf={height:0,normal:new THREE.Vector3(0,1,0)};this.key={dir:new THREE.Vector3(),color:new THREE.Color(),intensity:0};
   }
   skyAt(site,date){
     // Real Sun over a point on Earth at that UTC time (day, twilight or night).
     const A=window.Astronomy,observer=new A.Observer(site.lat,site.lon,0);
     const eq=A.Equator(A.Body.Sun,date,observer,true,true),hor=A.Horizon(date,observer,eq.ra,eq.dec,'normal');
     const alt=hor.altitude*Math.PI/180,az=hor.azimuth*Math.PI/180,dir=new THREE.Vector3(Math.sin(az)*Math.cos(alt),Math.sin(alt),-Math.cos(az)*Math.cos(alt));
-    const day=THREE.MathUtils.smoothstep(hor.altitude,-6,8),dusk=Math.max(0,1-Math.abs(hor.altitude-2)/10);
-    this.skyUniforms.uSun.value.copy(dir);
-    this.skyUniforms.uZenith.value.setRGB(.02+.14*day,.035+.31*day,.08+.58*day);
-    this.skyUniforms.uHorizon.value.setRGB(.06+.66*day+.3*dusk,.08+.74*day+.1*dusk,.14+.78*day-.05*dusk);
-    this.oceanFog.color.copy(this.skyUniforms.uHorizon.value);
+    const day=THREE.MathUtils.smoothstep(hor.altitude,-6,8);
+    this.skySun=dir.clone();
+    // The Moon over the same point (it lights the sea at night): direction and phase angle.
+    const mq=A.Equator(A.Body.Moon,date,observer,true,true),mh=A.Horizon(date,observer,mq.ra,mq.dec,'normal'),ma=mh.altitude*Math.PI/180,mz=mh.azimuth*Math.PI/180;
+    this.skyMoon=new THREE.Vector3(Math.sin(mz)*Math.cos(ma),Math.sin(ma),-Math.cos(mz)*Math.cos(ma));this.skyMoonPhase=A.Illumination(A.Body.Moon,date).phase_angle;
     return {dir,day,altitude:hor.altitude};
   }
   setPlan(plan){
@@ -255,7 +276,7 @@ export class MissionScene {
     const coast=world?this.coastShot(sample):null;this.coastNow=coast?this.coastPose(sample,coast):null;
     // Trajectory lines belong to the diagrams, not to the views beside or from the spacecraft.
     const lines=!(flight||chase||coast);
-    this.world.visible=world;this.local.visible=local;this.oceanGroup.visible=ocean;this.pad.group.visible=pad;this.sky.visible=ocean||pad;if(this.stars)this.stars.visible=world;
+    this.world.visible=world;this.local.visible=local;this.oceanGroup.visible=ocean;this.pad.group.visible=pad;this.sky.visible=ocean||pad;if(this.ocean.clouds)this.ocean.clouds.visible=ocean||pad;
     this.scene.fog=ocean||pad?this.oceanFog:null;
     const sceneName=pad?'pad':ocean?'ocean':local?'local':'world';
     if(this.lastScene!==undefined&&sceneName!==this.lastScene&&(sceneName==='pad'||sceneName==='ocean'||this.lastScene==='pad'||this.lastScene==='ocean'))reset=true;
@@ -274,7 +295,7 @@ export class MissionScene {
     // Greenwich faces the sidereal angle (precession ignored: visual only).
     this.earth.rotation.y=window.Astronomy.SiderealTime(sample.date)*Math.PI/12;
     // Vehicle: the stage, module or capsule flying at this moment of the Apollo profile.
-    this.vehicle.set(sample.config);this.engineLevel=sample.throttle||0;this.vehicle.engine(this.engineLevel);this.vehicle.plasma(sample.plasma||0);
+    this.vehicle.set(sample.config);this.engineLevel=sample.throttle||0;
     const attitude=v(sample.attitude||sample.direction).normalize();
     this.vehicle.group.position.copy(space(sample.position));this.vehicle.group.visible=!coast;
     {
@@ -286,7 +307,7 @@ export class MissionScene {
     }
     const localTarget=sample.localPosition?new THREE.Vector3(...sample.localPosition):new THREE.Vector3(0,sample.altitudeKm,0);
     localTarget.y+=this.groundY;
-    const lv=this.localVehicle;lv.set(sample.config==='ascent'?'ascent':'lm');lv.engine(local?sample.throttle||0:0);
+    const lv=this.localVehicle;lv.set(sample.config==='ascent'?'ascent':'lm');lv.engine(local?sample.throttle||0:0,{altitudeKm:sample.altitudeKm,sunlit:conditions.sun.diskFraction>0,groundKm:sample.altitudeKm});
     lv.group.position.copy(localTarget);if(sample.config==='ascent')lv.group.position.y+=lv.ascentBase;
     if(sample.localDirection)lv.group.quaternion.setFromUnitVectors(Y,new THREE.Vector3(...sample.localDirection).normalize());
     this.descentLeft.visible=sample.phase==='ascent'||sample.phase==='lunarReturnOrbit';
@@ -297,28 +318,48 @@ export class MissionScene {
     if(ocean){
       sky=this.skyAt(this.plan.entry.to,sample.date);const ov=this.oceanVehicle;ov.chutes(sample.chutes);
       ov.group.position.set(0,sample.altitudeKm,0);ov.group.rotation.set(0,.6,0);
-      const near=Math.max(0,1-sample.altitudeKm/.004);this.foam.material.opacity=sample.altitudeKm<.0005?.85*(1-sample.altitudeKm/.0005):0;this.foam.scale.setScalar(1+near*.3);
+      // Contact with the water: the splash once, then the white water the hull churns.
+      const wet=sample.altitudeKm<=.0002;if(wet&&!this.splashed)this.ocean.splash(performance.now(),0,0);this.splashed=wet;
+      this.ocean.setCraft(0,0,.00195,wet?.8:0,0);
     }
     if(pad){
       // Launch Complex 39A: the Saturn V at true size, held down while the engines build up, then climbing.
       sky=this.skyAt(APOLLO.launchSite,sample.date);
       const altitude=k=>APOLLO.liftoffAltitudeKm*Math.pow(clamp((k-.15)/.85),2.2),pv=this.padVehicle;
-      pv.group.position.set(0,PAD_DECK+sample.altitudeKm+.45*pv.height,0);pv.plumeLength=clamp((sample.altitudeKm*1000+10)/70,.14,1);
-      this.engineLevel=Math.min(1,sample.ignition*1.25);pv.engine(this.engineLevel);
+      pv.group.position.set(0,PAD_DECK+sample.altitudeKm+.45*pv.height,0);
+      this.engineLevel=Math.min(1,sample.ignition*1.25);pv.engine(this.engineLevel,{altitudeKm:sample.altitudeKm,sunlit:sky.day>.3,groundKm:sample.altitudeKm+PAD_DECK});
       this.pad.update(sample.t,altitude,sample.ignition,sky.day,this.renderer.domElement.height/(2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov/2))));
     }
     // Light.
     const earthHelio=window.Astronomy.HelioVector(window.Astronomy.Body.Earth,sample.date);
-    const sunWorld=v([earthHelio.x,earthHelio.y,earthHelio.z]).negate().normalize();this.sunWorld.copy(sunWorld);
+    const sunWorld=v([earthHelio.x,earthHelio.y,earthHelio.z]).negate().normalize();this.sunWorld.copy(sunWorld);this.sunAU=Math.hypot(earthHelio.x,earthHelio.y,earthHelio.z);
+    // Earthshine: the Earth's direction in the Moon's body axes and its irradiance from the Earth's phase (the angle
+    // Sun–Earth–Moon at the Earth, the complement of the Moon's phase).
+    {
+      const d=this.moon.position.length(),inv=1/Math.max(d,1e-9);
+      this.earthshine.direction.value.copy(this.moon.position).multiplyScalar(-inv).applyQuaternion(this.moon.quaternion.clone().invert());
+      const phase=Math.acos(clamp(sunWorld.dot(this.moon.position.clone().multiplyScalar(inv)),-1,1));
+      this.earthshine.intensity.value=earthshineIrradiance(phase,d*1000,local?1:EARTHSHINE_BOOST);
+    }
     const sun=sky?sky.dir.clone():local?new THREE.Vector3(...conditions.sun.direction):sunWorld.clone();
-    this.sunlight.intensity=sky?3*sky.day:local?2.7*conditions.sun.diskFraction:3.2;
+    this.sunlight.color.set(0xfff6e4);this.sunlight.intensity=local?2.7*conditions.sun.diskFraction:3.2;
     this.fill.intensity=sky?.16+.3*sky.day:.03;this.fill.color.set(sky?0xbcd2ea:0xa4c2df);
+    if(sky){
+      // Key light of the sea scenes (ocean.js): the Sun through the air and any cloud in the way, the Moon at night.
+      const k=this.ocean.keyLight(sky.dir,{moonDirLocal:this.skyMoon,moonPhaseDeg:this.skyMoonPhase,altitudeKm:ocean?Math.max(sample.altitudeKm,0)+.02:.06},this.key);
+      this.sunlight.color.copy(k.color);this.sunlight.intensity=k.intensity;sun.copy(k.dir);
+      // Fill: the sky's own irradiance (earth-render), never below the old night floor (readability).
+      const e=this.earthRender.skyIrradiance(sky.dir.y),m=Math.max(e.r,e.g,e.b);if(m>1e-4)this.fill.color.setRGB(e.r/m,e.g/m,e.b/m);this.fill.intensity=Math.max(m,.16*(1-sky.day));
+    }
     const anchor=ocean?this.oceanVehicle.group.position:pad?new THREE.Vector3(0,.06,0):local?localTarget:this.moon.position.clone().multiplyScalar(.5);
     this.sunlight.target.position.copy(anchor);this.sunlight.position.copy(anchor).add(sun.multiplyScalar(local?200:sky?40:1000));this.sunlight.castShadow=!ocean;
     const dark=local&&conditions.sun.diskFraction===0;this.earthlight.intensity=dark?.7:0;
     if(local){this.earthlight.target.position.copy(localTarget);this.earthlight.position.copy(localTarget).add(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(200));}
     if(local||pad){const s=local?.45:.3;Object.assign(this.sunlight.shadow.camera,{left:-s,right:s,top:s,bottom:-s,near:.01,far:500});this.sunlight.shadow.camera.updateProjectionMatrix();}
     if(local){this.localEarth.position.copy(new THREE.Vector3(...conditions.earth.direction).multiplyScalar(350));this.localEarth.scale.setScalar(350*EARTH_RADIUS/conditions.earth.distanceKm);}
+    // Regolith bounce onto downward faces: albedo × lunar-Lambert gain at grazing light × sin(elevation); 1.1 for the
+    // local ground's albedo (~0.56).
+    this.bounce.intensity=local?1.1*this.sunlight.intensity*Math.max(conditions.sun.direction[1],.03):0;
     this.sunOnVehicle=1;
     if(world){
       // Inside the shadow of the nearer body the spacecraft gets no sunlight at all (umbra; no penumbra model).
@@ -326,11 +367,18 @@ export class MissionScene {
         const centre=earthSide?new THREE.Vector3():this.moon.position,radius=(earthSide?EARTH_RADIUS:RADIUS_KM)/1000,rel=this.vehicle.group.position.clone().sub(centre),along=rel.dot(sunWorld);
         if(along<0){const off=rel.addScaledVector(sunWorld,-along).length();this.sunOnVehicle=THREE.MathUtils.smoothstep(off,radius*.995,radius*1.012);}
       }
+      // Near the Earth the sunlight on the spacecraft comes through the air: red at orbital sunrise and sunset, then gone.
+      if(earthSide){const p=this.vehicle.group.position,rr=p.length();this.sunTint=this.earthRender.sunTransmittance(rr*1000-EARTH_RADIUS,p.dot(sunWorld)/rr,this.sunTint||new THREE.Color());this.sunOnVehicle=1;}else this.sunTint=null;
       // Earthshine or moonshine from the lit ground below, strongest in low orbit over the day side.
       const centre=earthSide?new THREE.Vector3():this.moon.position,radius=(earthSide?EARTH_RADIUS:RADIUS_KM)/1000,out=this.vehicle.group.position.clone().sub(centre),distance=out.length();out.normalize();
       this.shine.color.set(earthSide?0x9cc0ff:0xcfc8bc);this.shine.intensity=(earthSide?1.5:.55)*Math.max(0,out.dot(sunWorld))*Math.pow(radius/distance,2);
       this.shine.target.position.copy(this.vehicle.group.position);this.shine.position.copy(this.vehicle.group.position).addScaledVector(out,-1);
     }
+    // Exhaust and entry plasma, once the sunlight on the vehicle is known: altitude shapes the F-1 plume, fades the
+    // entry glow below ~45 km and times the lunar-liftoff debris; groundKm clips the exhaust at the surface.
+    const lit=this.sunOnVehicle*(world&&this.sunTint?Math.max(this.sunTint.r,this.sunTint.g,this.sunTint.b):1);
+    this.vehicle.engine(pad?0:this.engineLevel,{altitudeKm:sample.altitudeKm,sunlit:lit>.5,groundKm:flight?sample.altitudeKm:null});
+    this.vehicle.plasma(sample.plasma||0,{altitudeKm:sample.altitudeKm});
     this.renderer.toneMappingExposure=local?.92:1;
     // Camera.
     const orbit=this.orbitForPhase(sample),key=pad?'pad':ocean?'ocean':local?'local':overview?'overview':this.mode==='follow'?'follow':coast?`coast-${coast}`:chase?'chase':sample.phase;
@@ -340,6 +388,7 @@ export class MissionScene {
       if(reset)this.chaseD=0;
       // The window shots start and end on a cut, like a film.
       const blend=!reset&&Boolean(this.cameraKey)&&!ocean&&!pad&&!coast&&!this.cameraKey.startsWith('coast'),from={position:this.camera.position.clone(),target:this.controls.target.clone(),up:this.camera.up.clone()};
+      if(!blend){this.fx.resetAdaptation();this.cut=true;}
       if(blend&&!this.lastLocal&&this.lastPosition&&previous){const oldOrbit=this.orbitForPhase(previous),delta=oldOrbit&&this.lastFollow==='body'?(oldOrbit.body==='Moon'?space(sample.moon.map((x,i)=>x-previous.moon[i])):new THREE.Vector3()):space(sample.position.map((x,i)=>x-previous.position[i]));from.position.add(delta);from.target.add(delta);}
       if(blend&&local!==this.lastLocal){from.position=this.convertView(from.position,sample,local);from.target=this.convertView(from.target,sample,local);from.up=this.convertView(from.up,sample,local,true).normalize();}
       this.cameraKey=key;this.setCamera(sample,local,ocean,target,pad,chase,this.coastNow);
@@ -455,6 +504,50 @@ export class MissionScene {
     }
     this.controls.update();this.dirty=true;
   }
+  // The camera: Sun and occluders for the flare, sky orientation, fixed exposure on the pad and the ocean.
+  updateCameraFX(){
+    const fx=this.fx,world=this.world.visible,local=this.local.visible&&this.conditions&&this.sample;
+    fx.sun.visible=world||Boolean(local);fx.setFixedExposure(this.pad.group.visible||this.oceanGroup.visible?1:null);
+    const diagram=world&&!this.closeView;fx.params.stars=diagram?DIAGRAM_STARS:1;fx.params.milkyWay=diagram?DIAGRAM_MILKY_WAY:1;fx.params.maxEV=diagram?20:CLOSE_MAX_EV;
+    if(local){
+      const b=siteBasis(this.plan.site),f=this.sample.frame;
+      fx.setSkyRows(toInertial(b.east,f),toInertial(b.up,f),toInertial(b.north,f).map(x=>-x));
+      fx.update(this.camera,{sunDir:new THREE.Vector3(...this.conditions.sun.direction),distanceAU:this.sunAU});
+    }else{
+      const earth={centre:ORIGIN,radius:EARTH_RADIUS/1000};
+      fx.setSkyRows([1,0,0],[0,0,1],[0,-1,0]);
+      fx.update(this.camera,{sunDir:this.sunWorld,spheres:[earth,{centre:this.moon.position,radius:RADIUS_KM/1000}],earth,distanceAU:this.sunAU});
+    }
+  }
+  // NASA 8k imagery (scripts/prepare-mission-assets.mjs). createImageBitmap decodes off the main thread, each map goes
+  // up in a frame of its own, and the Earth shader's 8k variant compiles in parallel beforehand, so nothing stalls.
+  load8k(){
+    const bitmaps=new THREE.ImageBitmapLoader().setOptions({imageOrientation:'flipY',premultiplyAlpha:'none',colorSpaceConversion:'none'});
+    const r=this.renderer,anisotropy=r.capabilities.getMaxAnisotropy();
+    const load=(file,srgb,single)=>new Promise((ok,ko)=>bitmaps.load(asset(`./assets/mission/${file}`),bitmap=>{
+      const t=new THREE.Texture(bitmap);t.flipY=false;t.colorSpace=srgb?THREE.SRGBColorSpace:THREE.NoColorSpace;t.anisotropy=anisotropy;t.wrapS=THREE.RepeatWrapping;
+      if(single)t.format=THREE.RedFormat; // R8: a quarter of the memory and of the upload time; the shader reads .r
+      t.needsUpdate=true;this.uploads.push(()=>{if(this.disposed){t.dispose();return;}r.initTexture(t);ok(t);});
+    },undefined,ko));
+    return Promise.all([load('earth-day-8k.jpg',true),load('earth-night-8k.jpg',true),load('earth-clouds-8k.jpg',false,true),load('earth-water-8k.png',false,true),load('moon-color-8k.jpg',true),this.warmEarth8k()]);
+  }
+  // The Earth shader with the cloud and water maps, compiled ahead (in parallel where the browser offers it) into the
+  // target the bodies are drawn to: tone mapping and output colour space are part of the program.
+  warmEarth8k(){
+    const m=this.earth.material,r=this.renderer,target=r.getRenderTarget();
+    this.earthWarm=new THREE.ShaderMaterial({uniforms:m.uniforms,vertexShader:m.vertexShader,fragmentShader:m.fragmentShader,defines:{...m.defines,CLOUD_MAP:'',WATER_MAP:''}});
+    let done;r.setRenderTarget(this.fx.stage);
+    try{done=r.compileAsync(new THREE.Mesh(this.earth.geometry,this.earthWarm),this.camera,this.scene);}catch{done=Promise.resolve();}finally{r.setRenderTarget(target);}
+    return done.catch(()=>{});
+  }
+  use8k([day,night,clouds,water,moon]){
+    if(this.disposed){for(const t of [day,night,clouds,water,moon])t.dispose();return;}
+    const U=this.earthRender.uniforms,old=[U.uDay.value,U.uNight.value,this.moon.material.map];
+    this.earthRender.setMaps({day,night,clouds,water,dayStyle:'bmng'});
+    this.moon.material.map=moon;this.localEarth.material.map=day;
+    for(const t of old)t.dispose(); // earth-brc.jpg stays: relief (R)
+    this.textures.push(day,night,clouds,water,moon);this.dirty=true;
+  }
   labels(){
     for(const [name,body] of [['Earth',this.earth],['Moon',this.moon]]){
       const label=document.getElementById(`mission${name}Label`),p=body.position.clone().project(this.camera),visible=this.world.visible&&!this.closeView&&p.z<1&&p.z>-1&&Math.abs(p.x)<.97&&Math.abs(p.y)<.92;
@@ -463,9 +556,9 @@ export class MissionScene {
   }
   resize(){const {width,height}=this.container.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.composer.setSize(width,height);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.cameraKey='';if(this.sample)this.update(this.sample,this.conditions,true);this.dirty=true;}
   dispose(){
-    if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();
+    if(this.disposed)return;this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver?.disconnect();this.canvas.removeEventListener('webglcontextlost',this.onContextLost);this.controls.dispose();
     this.scene.traverse(object=>{object.geometry?.dispose();if(object.material){for(const mat of Array.isArray(object.material)?object.material:[object.material]){mat.map?.dispose?.();mat.dispose();}}});
-    this.materials.dispose();for(const env of Object.values(this.envs))env.dispose();this.cubeTarget.dispose();this.reflection?.dispose();this.pmrem.dispose();this.composer.dispose();this.landing.dispose();this.water.material.normalMap.dispose();this.foamMap.dispose();this.cloudNoise.dispose();
+    this.materials.dispose();for(const env of Object.values(this.envs))env.dispose();this.cubeTarget?.dispose();this.reflection?.dispose();this.pmrem?.dispose();this.composer.dispose();this.landing?.dispose();this.ocean?.dispose();this.earthRender?.dispose();this.fx.dispose();this.earthWarm?.dispose();
     this.textures.forEach(tex=>tex.dispose());this.regolith?.dispose();this.renderer.dispose();this.renderer.forceContextLoss();
   }
 }

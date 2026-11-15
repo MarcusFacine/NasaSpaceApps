@@ -123,3 +123,46 @@ Recursos novos, todos de fontes oficiais ou do próprio Three.js:
 - A câmera treme com a queima do primeiro estágio na plataforma.
 
 Medição no notebook de desenvolvimento (GPU integrada, Direct3D 11): 60 quadros por segundo nas etapas no espaço e 42 na descida.
+
+## Missão: Terra, Lua, Sol e motores fisicamente baseados (15/11/2026, quinta rodada)
+
+Pedido do Ricardo: "o realismo da Terra, da Lua, do Sol e da visão da missão ainda não está como queremos". Cada parte virou um módulo próprio, conferido contra fotos da NASA:
+
+- **Terra e atmosfera** (`earth-render.js`): espalhamento de Hillaire (2020), com tabelas de transmitância, espalhamento múltiplo e irradiância calculadas na GPU. Mar com reflexo do Sol (Cox-Munk), terminador avermelhado, nuvens com sombra, luzes das cidades só depois do anoitecer, luar e airglow.
+- **Texturas 8k da NASA**: Blue Marble NG (setembro de 2004, variante base), Black Marble 2016 em cinza, nuvens do Blue Marble 2002, máscara de água MODIS MOD44W (GIBS) e mosaico LROC WAC da Lua (SVS 4720). Elas entram depois que a cena já está na tela, só em telas com 8 GB de memória ou mais e ponteiro fino (não em celular). O envio para a GPU acontece com a missão pausada ou num corte de câmera.
+- **Câmera e Sol** (`camera-fx.js`): disco solar com escurecimento de borda, reflexo de lente contido, exposição automática na GPU (no máximo 3 pontos de abertura nas vistas de perto), Via Láctea e estrelas HYG no brilho real.
+- **Lua** (`lunar-surface.js`, `landing-site.js`): crateras procedurais num espaço comum da órbita ao solo, pedras em lei de potência e luz da Terra no lado escuro.
+- **Motores e reentrada** (`spacecraft.js`):
+  - F-1 com a forma que muda com a altitude (coluna no nível do mar, bulbo a 40–65 km);
+  - J-2, SPS, DPS e APS quase invisíveis no vácuo;
+  - detritos na decolagem lunar;
+  - plasma da reentrada rosa-violeta no alto, que some abaixo de ~45 km.
+- **Mar** (`ocean.js`): ondas por FFT (espectro de Elfouhaily), céu do mesmo modelo da atmosfera, cúmulos de alísio, borrifo na amerissagem e a cápsula balançando na água.
+
+Licenças artísticas, declaradas também em "Dados e método":
+- luzes noturnas, airglow e luar da Terra ampliados para aparecer;
+- luz da Terra no lado escuro da Lua 400× no espaço (física no solo);
+- chamas e plasma mais fracos que o real;
+- nos diagramas da trajetória, céu como numa exposição longa (~20 pontos).
+
+O que foi corrigido na integração:
+- **Nave rosada na sombra:** a captura em cubo não limpava as faces e acumulava imagens antigas.
+- **Trilha da decolagem com "bolinhas":** a luz da chama agora só alcança as nuvens perto do chão.
+- **Risco de NaN:** três `pow()` podiam receber base negativa (com bloom, um NaN apaga a tela).
+- **Reflexo:** a captura do reflexo da nave deixa de fora as licenças noturnas.
+
+Medição no notebook de desenvolvimento (Intel integrada, Direct3D 11, 1600×900), com a GPU livre:
+- **Velocidade:** 56–60 quadros por segundo no espaço e no mar; 30–32 na descida e no solo (eram ~42; as crateras finas custam ~5 ms).
+- **Abertura:** a cena é montada em etapas, com o andamento na tela ("Preparando a cena 3D… n%"). Em seguida, um aquecimento desenha cada cenário uma vez, para que a reprodução não trave nas trocas de cena; sobram ~0,6 s num corte de câmera.
+- **Custo da primeira abertura:** ~15–20 s neste iGPU, quase tudo compilação de shaders no primeiro quadro do espaço. Na segunda abertura o Chrome já guardou os programas e o tempo cai muito.
+- **Memória:** abrir e fechar a missão três vezes não fez a memória crescer.
+
+O que fica aquém:
+- o anel do eclipse visto de longe é fraco (sem refração nem aerossóis estratosféricos);
+- as nuvens são uma camada 2D;
+- o relevo da Lua vista da órbita continua limitado pelo mapa de normais de 4096 px;
+- a compilação inicial é lenta em Direct3D 11.
+
+## Guia da primeira visita (15/11/2026)
+
+Pedido do Ricardo: quem entra pela primeira vez recebe um guia que ensina o que cada coisa faz, sem aparecer toda hora. São nove passos sobre os controles reais (locais, o dia hora a hora, reprodução, vistas e observador, a resposta, o gráfico do relevo, a melhor janela, a missão e onde rever). O guia começa só depois do ritual de abertura, não trava a página (o escurecido deixa clicar), fecha com Esc, anda com as setas quando o foco está no cartão e grava a marca ao concluir ou pular; sem armazenamento, aparece uma vez por sessão. Conferido em 1536×864, 1366×768 (inglês), 900×1000 e 390×820, sem erros nem avisos no console; nenhum cartão cobre o próprio alvo.

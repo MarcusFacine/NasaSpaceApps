@@ -127,34 +127,594 @@ function rcsQuad(parent, m, position, yaw) {
   return g;
 }
 
-let glowTexture = null;
-function radialGlow() {
-  return glowTexture || (glowTexture = canvasTexture(128, 128, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, 'rgba(255,255,255,.55)'); g.addColorStop(0.5, 'rgba(255,255,255,.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }));
+// ---- Exhaust and entry plasma ----
+// Both are volumes of glowing gas, integrated along every view ray inside a cone-shaped hull (emission and,
+// for the sooty F-1 flame, absorption), so they have no hard edges, get brighter where the eye looks through
+// more gas, and stay on the scene's radiance scale: 1 is a white surface facing the Sun (sunlight 3.2 / π).
+// Only gas that is really bright goes over the bloom threshold (1). Lengths are metres in the model frame.
+
+const smoothstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+const WIEN = 25924; // c2 / 555 nm, K: brightness ratio of two temperatures at the eye's peak sensitivity (Wien's law)
+
+let lookup = null;
+function exhaustTextures() {
+  if (lookup) return lookup;
+  // Tileable value noise: R, G turbulence (four octaves, two seeds), B finer grain stretched into streaks in the shader.
+  const size = 128, nr = noise2(11), ng = noise2(23), nb = noise2(37), data = new Uint8Array(size * size * 4);
+  const fbm = (n, x, y, p0, octaves) => { let v = 0, a = 0.5, sum = 0; for (let o = 0; o < octaves; o++) { const p = p0 << o; v += a * n(x / size * p, y / size * p, p); sum += a; a *= 0.5; } return v / sum; };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = (y * size + x) * 4;
+    data[i] = fbm(nr, x, y, 4, 4) * 255; data[i + 1] = fbm(ng, x, y, 4, 4) * 255; data[i + 2] = fbm(nb, x, y, 16, 2) * 255; data[i + 3] = 255;
+  }
+  const noise = new THREE.DataTexture(data, size, size, THREE.RGBAFormat); noise.wrapS = noise.wrapT = THREE.RepeatWrapping;
+  noise.generateMipmaps = true; noise.minFilter = THREE.LinearMipmapLinearFilter; noise.magFilter = THREE.LinearFilter; noise.needsUpdate = true;
+  // Colour of a black body from 800 K to 10 000 K (even steps in 1/T), linear sRGB normalised to luminance 1:
+  // Planck's law integrated against the CIE 1931 observer (Wyman, Sloan & Shirley 2013 fit). Soot in a flame,
+  // hot char and the heat shield radiate close to grey bodies, so this sets their colour from their temperature.
+  const n = 256, ramp = new Uint16Array(n * 4), lobe = (x, m, s1, s2) => { const t = (x - m) / (x < m ? s1 : s2); return Math.exp(-0.5 * t * t); };
+  for (let i = 0; i < n; i++) {
+    const T = 1e6 / (1250 - 1150 * i / (n - 1));
+    let X = 0, Yl = 0, Z = 0;
+    for (let l = 380; l <= 780; l += 5) {
+      const m = l * 1e-9, B = 1 / (m ** 5 * (Math.exp(0.014388 / (m * T)) - 1));
+      X += B * (1.056 * lobe(l, 599.8, 37.9, 31) + 0.362 * lobe(l, 442, 16, 26.7) - 0.065 * lobe(l, 501.1, 20.4, 26.2));
+      Yl += B * (0.821 * lobe(l, 568.8, 46.9, 40.5) + 0.286 * lobe(l, 530.9, 16.3, 31.1));
+      Z += B * (1.217 * lobe(l, 437, 11.8, 36) + 0.681 * lobe(l, 459, 26, 13.8));
+    }
+    const r = Math.max(0, 3.2406 * X - 1.5372 * Yl - 0.4986 * Z), g = Math.max(0, -0.9689 * X + 1.8758 * Yl + 0.0415 * Z), b = Math.max(0, 0.0557 * X - 0.204 * Yl + 1.057 * Z);
+    const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    [r / L, g / L, b / L, 1].forEach((v, k) => { ramp[i * 4 + k] = THREE.DataUtils.toHalfFloat(v); });
+  }
+  const blackbody = new THREE.DataTexture(ramp, n, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+  blackbody.minFilter = blackbody.magFilter = THREE.LinearFilter; blackbody.wrapS = blackbody.wrapT = THREE.ClampToEdgeWrapping; blackbody.needsUpdate = true;
+  // One hull for every volume: a unit cylinder the vertex shader stretches into the frustum of the moment.
+  const hull = new THREE.CylinderGeometry(1, 1, 1, 32, 1, false);
+  return (lookup = { noise, blackbody, hull });
 }
-// Exhaust: bright for the first stage in air, faint for engines in vacuum.
-// Emitters are brighter than white (HDR), so the bloom pass makes them glow like a real exposure.
-const HDR = 2.8;
-function plume(length, radius, color, opacity) {
-  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
-  material.color.multiplyScalar(HDR);
-  const outer = new THREE.Mesh(new THREE.ConeGeometry(radius, length, 32, 1, true), material);
-  outer.rotation.x = Math.PI; outer.position.y = -length / 2; outer.userData.base = opacity;
-  const g = new THREE.Group(); g.add(outer);
-  const core = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.45, length * 0.45, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff4dc, transparent: true, opacity: Math.min(1, opacity * 1.6), depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-  core.material.color.multiplyScalar(HDR * 1.4); core.rotation.x = Math.PI; core.position.y = -length * 0.225; core.userData.base = core.material.opacity; g.add(core);
-  // Glow at the nozzle: what a camera sees of a burning engine.
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialGlow(), color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: Math.min(1, opacity * 2.4) }));
-  glow.material.color.multiplyScalar(HDR); glow.scale.setScalar(radius * 7); glow.position.y = -radius * 0.6; glow.userData.base = glow.material.opacity; glow.userData.glow = true; g.add(glow);
-  g.visible = false; return g;
+// Linear sRGB of a black body at T kelvin, luminance 1 (CPU twin of the shader's ramp(), from the same table).
+function blackbodyColor(T, target = new THREE.Color()) {
+  const { blackbody } = exhaustTextures(), d = blackbody.image.data, n = blackbody.image.width;
+  const x = Math.min(n - 1, Math.max(0, (1250 - 1e6 / T) / 1150 * (n - 1))), i = Math.floor(x), f = x - i, j = Math.min(n - 1, i + 1);
+  const at = k => THREE.DataUtils.fromHalfFloat(d[i * 4 + k]) * (1 - f) + THREE.DataUtils.fromHalfFloat(d[j * 4 + k]) * f;
+  return target.setRGB(at(0), at(1), at(2));
 }
+
+const VOLUME_VERTEX = /* glsl */`
+uniform vec4 uHull; // frustum r = x + y·a for a in [z, w]; a is the distance downstream along −Y
+varying vec3 vPos;
+void main() {
+  float a = mix(uHull.z, uHull.w, .5 - position.y);
+  float rad = (uHull.x + uHull.y * a) * 1.012; // 32-gon around the analytic cone
+  vPos = vec3(position.x * rad, -a, position.z * rad);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(vPos, 1.);
+}`;
+
+const VOLUME_FRAGMENT = /* glsl */`
+uniform vec3 uCam;          // camera in this frame (metres), computed in double precision on the CPU
+uniform float uTime, uInside, uSteps, uStepLen;
+uniform vec4 uHull, uOccA, uOccB;
+uniform sampler2D uNoise, uRamp;
+varying vec3 vPos;
+
+vec3 ramp(float T) { return texture2D(uRamp, vec2(clamp((1250. - 1e6 / max(T, 100.)) / 1150., 0., 1.), .5)).rgb; }
+// Temperature of gas whose brightness is b times that of the hottest gas (T0), from Wien's law at 555 nm:
+// soot that is ten times dimmer is ~300 K cooler, so the flame reddens exactly where it fades.
+float tempOf(float b, float T0) { return 1. / (1. / T0 - log(clamp(b, 1e-6, 4.)) / 25924.); }
+float sq(float x) { return x * x; }
+
+// Ray o + t·d against the solid frustum r <= x + y·a, z <= a <= w (a = −y). Returns [t_in, t_out] (empty if in > out).
+vec2 frustum(vec3 o, vec3 d, vec4 h) {
+  float oa = -o.y, da = -d.y, tn = -1e6, tf = 1e6;
+  if (abs(da) > 1e-7) { float t0 = (h.z - oa) / da, t1 = (h.w - oa) / da; tn = min(t0, t1); tf = max(t0, t1); }
+  else if (oa < h.z || oa > h.w) return vec2(1., 0.);
+  float s = h.x + h.y * oa, ks = h.y * da;
+  float A = d.x * d.x + d.z * d.z - ks * ks, B = o.x * d.x + o.z * d.z - s * ks, C = o.x * o.x + o.z * o.z - s * s;
+  if (abs(A) < 1e-9) {
+    if (abs(B) < 1e-12) return C <= 0. ? vec2(tn, tf) : vec2(1., 0.);
+    float t = -C / (2. * B); if (B > 0.) tf = min(tf, t); else tn = max(tn, t); return vec2(tn, tf);
+  }
+  float disc = B * B - A * C;
+  if (disc < 0.) return A > 0. ? vec2(1., 0.) : vec2(tn, tf);
+  float q = sqrt(disc), lo = min((-B - q) / A, (-B + q) / A), hi = max((-B - q) / A, (-B + q) / A);
+  if (A > 0.) return vec2(max(tn, lo), min(tf, hi));
+  // Ray steeper than the wall: the inside is the part on the cone's own nappe (radius >= 0).
+  vec2 i1 = vec2(tn, min(tf, lo)), i2 = vec2(max(tn, hi), tf);
+  if (i1.y > i1.x && s + ks * .5 * (i1.x + i1.y) >= 0.) return i1;
+  if (i2.y > i2.x && s + ks * .5 * (i2.x + i2.y) >= 0.) return i2;
+  return vec2(1., 0.);
+}
+// Solid parts of the vehicle inside the hull stop the ray (they are drawn opaque before the gas).
+float occlude(vec3 o, vec3 d, float t0, float t1, vec4 h) {
+  if (h.w <= h.z) return t1;
+  vec2 s = frustum(o, d, h);
+  return s.y > s.x && s.y > t0 ? min(t1, max(s.x, t0)) : t1;
+}
+
+vec4 field(vec3 p);
+float stepAt(vec3 p);
+
+// Emission and absorption integrated front to back; each step uses the exact solution for a constant
+// source over its length. Sample spacing follows the size of the structure where the sample is (fine at the
+// nozzles and the gas cap, coarse in the bulb or the far wake), never finer than chord / uSteps.
+void march(vec3 o, vec3 d, vec2 seg, float jitter, inout vec3 L, inout float T) {
+  if (seg.y <= seg.x) return;
+  float minDt = (seg.y - seg.x) / uSteps, t = seg.x;
+  for (int i = 0; i < 48; i++) {
+    if (t >= seg.y - 1e-5 || T < .004) break;
+    float dt = min(max(stepAt(o + d * t), minDt), seg.y - t);
+    vec4 s = field(o + d * (t + jitter * dt));
+    float tr = exp(-s.a * dt);
+    L += T * s.rgb * (s.a > 1e-4 ? (1. - tr) / s.a : dt);
+    T *= tr; t += dt;
+  }
+}
+
+float clipRay(vec3 o, vec3 d, float t0, float t1);
+
+void main() {
+  // Front faces from outside; back faces (without depth test) when the camera is inside the hull.
+  if (gl_FrontFacing == (uInside > .5)) discard;
+  vec3 o = uCam, d = normalize(vPos - uCam);
+  vec2 seg = frustum(o, d, uHull);
+  float t0 = max(seg.x, 0.), t1 = clipRay(o, d, t0, seg.y);
+  t1 = occlude(o, d, t0, t1, uOccA); t1 = occlude(o, d, t0, t1, uOccB);
+  if (t1 <= t0 + 1e-4) discard;
+  // White-noise jitter of the samples, new every frame: without temporal accumulation it reads as film grain,
+  // where a structured pattern (interleaved gradient noise) would show as a fixed texture.
+  vec3 q3 = fract(vec3(gl_FragCoord.xy, fract(uTime * 7.31) * 113.) * vec3(.1031, .1030, .0973)); q3 += dot(q3, q3.yzx + 33.33);
+  float jitter = fract((q3.x + q3.y) * q3.z);
+  vec3 L = vec3(0.); float T = 1.;
+  march(o, d, vec2(t0, t1), jitter, L, T);
+  gl_FragColor = vec4(min(L, vec3(3e4)), 1. - T); // premultiplied: dst = L + dst·T
+}
+
+#ifndef PLASMA
+uniform vec4 uCores[5];    // exit centre (x, z), exit radius, ignition weight
+uniform int uCoreCount;
+uniform vec4 uShape;       // envelope radius at the exit, spread (tan), altitude bulge, bulge length
+uniform vec4 uAxial;       // brightness e-folding length, merging length, turbine-film length, flat top (0..1)
+uniform vec4 uEmit;        // luminance per metre, T0 (K), turbulence, total exit area (r², weighted)
+uniform vec4 uFilm;        // film extinction, core brightness inside the film, film brightness, soot extinction
+uniform vec4 uTint;        // rgb tint, w: 1 = band emitter (colour = tint), 0 = soot (colour from temperature)
+uniform vec4 uSmoke;       // amount, length (in e-folding lengths), in-scattered luminance, 0
+uniform vec4 uHaze;        // luminance per metre, length, spread (tan), streakiness
+uniform vec4 uRecirc;      // brightness, length, body radius, sheath thickness
+uniform vec4 uGround;      // a of the ground (< 0: none), splash brightness, length of the visible plume, 0
+uniform vec2 uCoreGlow;    // share of the brightness in the hot core at the exit, its e-folding length
+uniform vec4 uNozzle;      // bell length, throat radius, 0, 1 = draw the gas inside the bell (single engines)
+uniform float uStreaks;    // radial streaks of a vacuum plume (0..1)
+
+float stepAt(vec3 p) {
+  float ap = max(-p.y, 0.);
+  float w = uShape.x + ap * uShape.y + uShape.z * (1. - exp(-ap / uShape.w));
+  if (uHaze.x > 0. && length(p.xz) > w) w = max(w, .6 * (uShape.x * .8 + ap * uHaze.z)); // out in the faint, smooth haze
+  return max(uStepLen, mix(.3, .6, smoothstep(10., 40., ap)) * w);
+}
+float clipRay(vec3 o, vec3 d, float t0, float t1) {
+  float oa = -o.y, da = -d.y;
+  if (uNozzle.w > 0.) {
+    // The bell is a thin shell: a ray that reaches it through the exit opening sees the gas inside until it
+    // meets the wall; one that reaches it from outside stops there.
+    vec2 b = frustum(o, d, vec4(uShape.x * 1.01, (uShape.x - uNozzle.y) / uNozzle.x, -uNozzle.x, 0.));
+    if (b.y > b.x && b.y > t0) { float ain = -(o.y + d.y * max(b.x, t0)); t1 = ain > -.03 * uNozzle.x ? min(t1, b.y) : min(t1, max(b.x, t0)); }
+  }
+  if (uGround.x < 0.) return t1;
+  if (oa > uGround.x) return t0;
+  return da > 1e-6 ? min(t1, (uGround.x - oa) / da) : t1;
+}
+
+vec4 field(vec3 p) {
+  float a = -p.y, ap = max(a, 0.), r = length(p.xz), ang = atan(p.z, p.x) * .1591549 + .5;
+  vec3 em = vec3(0.); float sig = 0.;
+  float w = uShape.x + ap * uShape.y + uShape.z * (1. - exp(-ap / uShape.w));
+  // Vacuum plumes flow out in straight rays from the exit; injector and film-cooling non-uniformities show
+  // as radial streaks (OMS photographs). Index: azimuth and the ray's angle from the axis.
+  float st = .5;
+  // Rays, not sheets: the pattern varies with the polar angle as well, so a line of sight averages it.
+  if (uStreaks > 0. || uHaze.x > 0.) { vec2 sv = vec2(ang, r / (ap + uShape.x * 2.)); st = textureLod(uNoise, sv * vec2(2., .9), 0.).b * .6 + textureLod(uNoise, sv * vec2(5., 2.1) + .37, 0.).r * .4; }
+  if (a < 0. && uNozzle.w > 0.) {
+    // Gas inside the bell, seen through the exit: denser and hotter towards the throat.
+    float rn = uShape.x + (uShape.x - uNozzle.y) / uNozzle.x * a;
+    if (r < rn) em += (uTint.w > .5 ? uTint.rgb : ramp(uEmit.y) * uTint.rgb) * uEmit.x * .22 * min(sq(uShape.x / rn), 4.);
+    return vec4(em, 0.);
+  }
+  // Turbulence boils as it is carried downstream (eddies move too fast to be followed frame to frame).
+  float turb = 1.;
+  if (uEmit.z > 0.) {
+    vec2 nu = vec2(ang * 4., ap / (2.5 * w + 4.));
+    // Fixed LOD: the azimuth wraps from 1 to 0 across one half-plane, and derivatives there would pick the coarsest mip.
+    float n = textureLod(uNoise, nu + vec2(0., -uTime * .9), 0.).r * .6 + textureLod(uNoise, nu * vec2(2., 2.6) + vec2(.31, -uTime * 2.3), 0.).g * .4;
+    turb = max(0., 1. + uEmit.z * (n * 2. - 1.) * 2. * smoothstep(0., 8., ap));
+  }
+  if (a >= 0.) {
+    // Separate exhausts at the nozzles, one envelope downstream.
+    float merge = smoothstep(0., uAxial.y, a), flatTop = uAxial.w, cores = 0., film = 0.;
+    if (merge < 1.) for (int i = 0; i < 5; i++) {
+      if (i >= uCoreCount) break;
+      vec4 c = uCores[i]; float wc = c.z + a * uShape.y, dc = length(p.xz - c.xy) / wc;
+      cores += c.w * mix(exp(-2.5 * dc * dc), 1. - smoothstep(.65, 1.12, dc), flatTop) * c.z * c.z / (wc * wc);
+      film = max(film, c.w * smoothstep(.5, .8, dc) * (1. - smoothstep(1., 1.25, dc)));
+    }
+    float x = r / w, merged = mix(exp(-2.5 * x * x), 1. - smoothstep(.65, 1.15, x), flatTop) * uEmit.w / (w * w);
+    // Density fluctuations show at the plume's edges; the far end fades out (no hull edge in sight).
+    float rho = mix(cores, merged, merge) * mix(1., turb, smoothstep(.45, 1.1, x)) * (1. - smoothstep(uGround.z * .6, uGround.z, a));
+    // Brightness falls downstream as the gas expands and cools: a hot core just past the exit (the part that
+    // saturates in photographs) over a fainter, longer glow.
+    // In the high-altitude bulb the gas has expanded far beyond its width at sea level and cooled with it.
+    float wn = uShape.x + ap * uShape.y;
+    float b = (mix(1., exp(-a / uCoreGlow.y), uCoreGlow.x) * exp(-a / uAxial.x)) * turb * pow(max(wn / w, 0.), 1.2) * mix(1., .55 + .9 * st, uStreaks * smoothstep(0., uShape.x, a));
+    if (uAxial.z > 0.) {
+      // F-1: the fuel-rich turbine exhaust that cools the nozzle extension shrouds the hot core in dark,
+      // sooty gas for a few metres, until it mixes with the air and burns.
+      float lit = smoothstep(uAxial.z * .6, uAxial.z * 1.6, a), shell = film * (1. - lit);
+      b *= mix(uFilm.y, 1., lit); b = mix(b, uFilm.z, shell); sig += uFilm.x * shell;
+    }
+    em += (uTint.w > .5 ? uTint.rgb : ramp(tempOf(b, uEmit.y)) * uTint.rgb) * uEmit.x * rho * b;
+    sig += uFilm.w * rho;
+    if (uSmoke.x > 0.) {
+      // Soot that has stopped glowing: absorbs, and scatters daylight (single scattering, isotropic).
+      float sm = uSmoke.x * rho * (1. - exp(-a / uAxial.x)) * exp(-a / (uAxial.x * uSmoke.y)) * (.6 + .8 * turb * .5);
+      sig += uFilm.w * sm; em += vec3(.86, .74, .6) * uSmoke.z * uFilm.w * sm;
+    }
+    if (uHaze.x > 0.) {
+      // In sunlight: droplets and ice in the expanding exhaust scatter light in a broad, radially streaked fan.
+      float wh = uShape.x * .8 + a * uHaze.z, xh = r / wh;
+      em += vec3(.94, .95, .97) * uHaze.x * exp(-2. * xh * xh) * sq(uShape.x / wh) * exp(-a / uHaze.y) * mix(1., .45 + 1.1 * st, uHaze.w);
+    }
+  }
+  if (uRecirc.x > 0. && a < 4. * uRecirc.y) {
+    // F-1 high up: the plume spreads so far that hot gas flows back up around the base of the stage.
+    float up = exp(-abs(a) / uRecirc.y), sh = exp(-sq((r - uRecirc.z - uRecirc.w) / uRecirc.w)), br = uRecirc.x * up * sh * turb;
+    em += ramp(tempOf(br, uEmit.y)) * uEmit.x * .05 * br; sig += uFilm.w * .05 * br;
+  }
+  if (uGround.x >= 0. && uGround.y > 0.) {
+    // Exhaust stopped by a surface spreads along it (the lunar ascent engine firing into the descent stage).
+    float ds = exp(-sq((a - uGround.x) / .3)) * exp(-r / (.5 + .5 * uGround.x));
+    em += ramp(uEmit.y) * uEmit.x * uGround.y * ds;
+  }
+  return vec4(em, sig);
+}
+#else
+uniform vec4 uCM;          // base radius, shield sphere radius, shield depth, afterbody length
+uniform vec4 uPlasma;      // luminance per metre: gas cap, shoulder shear layer, wake, bow-shock envelope
+uniform vec4 uPlasma2;     // wake e-folding length, cap T0, shear T0, flicker
+uniform vec3 uCapTint, uWakeTint, uEnvTint;
+uniform float uEarly;      // 0..1: thin, non-equilibrium shock layer at the start of entry (nitrogen band colours)
+const vec3 N2CAP = vec3(1.25, .8, 1.3), N2WAKE = vec3(1.7, .6, 1.75), COOL = vec3(2.2, .55, .7); // pink-violet; cooling ionised gas
+
+float clipRay(vec3 o, vec3 d, float t0, float t1) { return t1; }
+float stepAt(vec3 p) { return .15 + .07 * max(-p.y, 0.); } // ~0.15 m through the gas cap, metres down the wake
+
+vec4 field(vec3 p) {
+  float a = -p.y, r = length(p.xz), R = uCM.x, hS = uCM.z, ang = atan(p.z, p.x) * .1591549 + .5;
+  vec3 em = vec3(0.);
+  // Gas cap: air between the detached bow shock (standoff ~0.25 m, Billig's blunt-body fit) and the heat shield,
+  // compressed and heated to ~10 000 K; hottest at the stagnation point, cooling towards the shoulder.
+  float aShock = -.28 + r * r / 13., aWall = r < R ? r * r / (2. * uCM.y) : hS;
+  float layer = smoothstep(aShock - .07, aShock + .07, a) * (1. - smoothstep(aWall - .03, aWall + .06, a)) * (1. - smoothstep(R * .9, R + .5, r));
+  float bCap = layer * (1. - .55 * r * r / (R * R));
+  em += mix(ramp(tempOf(bCap, uPlasma2.y)), N2CAP, uEarly) * uCapTint * uPlasma.x * bCap;
+  float s = a - hS;
+  if (s > -.35) {
+    // Shear layer: the cap gas turns the shoulder, separates and closes behind the capsule (the wake neck),
+    // carrying ablation products from the heat shield; streaked by the flow and flickering.
+    float k = smoothstep(-.2, 7., s), rs = mix(R + .14, .75, pow(k, .8)), th = .1 + .07 * max(s, 0.);
+    float bSh = exp(-sq((r - rs) / th)) * exp(-max(s, 0.) / 3.) * smoothstep(-.35, .1, s);
+    bSh *= .55 + .9 * textureLod(uNoise, vec2(ang * 5., s * .05 - uTime * 2.1), 0.).r;
+    em += mix(ramp(tempOf(bSh, uPlasma2.z)), mix(N2CAP, N2WAKE, k), uEarly) * mix(uCapTint, uWakeTint, k) * uPlasma.y * bSh;
+    // Wake: a long trail of ionised gas and ablation products, widening slowly; recirculating gas behind the
+    // afterbody glows dimly. Seen at ~10 km/s its turbulence is smeared into streaks along the flow.
+    float sw = max(s - 2., 0.), ww = .55 + .05 * sw;
+    float bw = exp(-sw / uPlasma2.x) * exp(-2. * r * r / (ww * ww)) * smoothstep(1., 5., s) * .6 / ww;
+    float st = textureLod(uNoise, vec2(ang * 9., s * .012 - uTime * 3.1), 0.).b * textureLod(uNoise, vec2(ang * 3., s * .02 - uTime * 1.3), 0.).g;
+    bw *= .3 + 2.6 * st;
+    float bb = .05 * exp(-max(s, 0.) / 3.) * (1. - smoothstep(rs * .8, rs, r)) * smoothstep(0., .8, s);
+    // Far down the wake the gas cools and recombines: the light reddens towards the pink of nitrogen and the
+    // orange of sodium from the ablator.
+    vec3 wc = mix(ramp(tempOf(bw + bb, uPlasma2.z * .85)), COOL, .45 * smoothstep(8., 60., s));
+    em += mix(wc, N2WAKE, uEarly) * uWakeTint * uPlasma.z * (bw + bb);
+  }
+  // Faint envelope: air behind the bow shock beyond the shoulder (molecular nitrogen bands).
+  float env = exp(-sq((a - aShock) / .2)) * exp(-max(r - R, 0.) / 1.2) * smoothstep(R * .8, R * 1.05, r);
+  em += uEnvTint * uPlasma.w * env;
+  return vec4(em * uPlasma2.w, 0.);
+}
+#endif
+`;
+
+function volumeMaterial(uniforms, defines = {}) {
+  const { noise, blackbody } = exhaustTextures();
+  return new THREE.ShaderMaterial({
+    defines, vertexShader: VOLUME_VERTEX, fragmentShader: VOLUME_FRAGMENT,
+    uniforms: { uCam: { value: new THREE.Vector3() }, uTime: { value: 0 }, uInside: { value: 0 }, uSteps: { value: 20 }, uStepLen: { value: 1 }, uHull: { value: new THREE.Vector4(1, 0, 0, 1) }, uOccA: { value: new THREE.Vector4(0, 0, 0, 0) }, uOccB: { value: new THREE.Vector4(0, 0, 0, 0) }, uNoise: { value: noise }, uRamp: { value: blackbody }, ...uniforms },
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    // Premultiplied: glowing gas adds light, soot also hides what is behind it.
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor
+  });
+}
+// The hull mesh: camera position in its own frame every time it is drawn (double precision: the world frame
+// is in thousands of km), and back faces without depth test when the camera is inside.
+function volumeMesh(material) {
+  const mesh = new THREE.Mesh(exhaustTextures().hull, material), inverse = new THREE.Matrix4(), cam = new THREE.Vector3();
+  mesh.frustumCulled = false;
+  mesh.onBeforeRender = (renderer, scene, camera) => {
+    const u = material.uniforms, h = u.uHull.value;
+    inverse.copy(mesh.matrixWorld).invert(); cam.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(inverse); u.uCam.value.copy(cam);
+    const margin = 3 * camera.near / Math.max(1e-30, mesh.matrixWorld.getMaxScaleOnAxis()), a = -cam.y, r = Math.hypot(cam.x, cam.z);
+    const inside = a > h.z - margin && a < h.w + margin && r < h.x + h.y * a + margin;
+    u.uInside.value = inside ? 1 : 0; material.depthTest = !inside; u.uTime.value = performance.now() / 1000 % 3600;
+  };
+  return mesh;
+}
+
+// Engines and how their exhaust looks. Luminance is per metre of gas at the exit: a ray through a plume ~1 m
+// across therefore sees about that luminance. Sources: see the comments of each entry.
+const ENGINES = {
+  // F-1, RP-1/LOX (Saturn V S-IC). Sea level: an incandescent soot flame, overexposed white-yellow in every
+  // Apollo photograph, opaque enough to hide what is behind it, with the dark turbine-exhaust collar at the
+  // nozzles. With altitude the underexpanded exhaust balloons into the huge translucent bulb filmed at staging.
+  // Exposure licence: ~2400 K soot is some 60× brighter than a sunlit white surface; the flame's surface is held
+  // at ~8 (j / sigma), which any daylight exposure still clips to white, so the bloom stays the flame's own size.
+  f1: { steps: 20, flat: 1, j: 2.4, T0: 2450, turb: 0.35, sigma: 0.3, film: [3.0, 0.3, 0.012, 3.5], tint: [1, 1, 1, 0] },
+  // J-2, LH2/LOX (S-II, S-IVB). Water vapour: almost no visible emission, a faint violet-blue glow at the exit,
+  // and in sunlight a faint fan of condensed ice. No shock diamonds in vacuum.
+  j2: { steps: 14, flat: 0, j: 0.16, T0: 3000, turb: 0, length: 4.5, core: [0.6, 0.8], spread: 0.3, streaks: 0.4, tint: [0.66, 0.66, 1.2, 1], haze: [0.05, 22, 0.55, 0.5] },
+  // Hypergolic engines (Aerozine-50/N2O4) in vacuum: a pale, translucent yellow-orange cone that fades within a
+  // nozzle length or two, like the Shuttle OMS (same AJ10 family as the Apollo SPS) in STS-84 photo 357-008;
+  // in sunlight, a broad grey-white streaky fan of propellant droplets (STS-98 photo 324-004). Their light is not
+  // a black body: T0 only sets the colour, matched to those photographs.
+  sps: { steps: 16, flat: 0, j: 0.65, T0: 3100, turb: 0, length: 4, core: [0.7, 0.8], spread: 0.45, streaks: 0.45, tint: [1, 0.95, 0.97, 0], haze: [0.16, 14, 0.75, 0.5] },
+  // LM descent engine: practically invisible; what the films show at landing is the blown dust.
+  dps: { steps: 12, flat: 0, j: 0.32, T0: 3000, turb: 0, length: 2.6, core: [0.75, 0.5], spread: 0.4, streaks: 0.6, tint: [1, 0.95, 0.97, 0], haze: [0.05, 9, 0.7, 0.8] },
+  // LM ascent engine: invisible on the Apollo 15–17 liftoff TV; a brief glow where it fires into the
+  // descent stage, then only debris.
+  aps: { steps: 12, flat: 0, j: 0.3, T0: 3000, turb: 0, length: 1.8, core: [0.75, 0.35], spread: 0.4, streaks: 0.6, tint: [1, 0.95, 0.97, 0], haze: [0.045, 7, 0.7, 0.8], splash: 2 },
+};
+
+class Exhaust {
+  // cores: nozzle exits [x, z] around the axis; exit: their radius; base: how far the exit plane is above the
+  // vehicle's lowest point (for the distance to the ground); debris: ground depth for the ascent-stage liftoff.
+  constructor(kind, { cores = [[0, 0]], exit = 1, base = 0, debris = null, bell = null } = {}) {
+    this.kind = kind; this.spec = ENGINES[kind]; this.cores = cores; this.exit = exit; this.base = base;
+    const s = this.spec, v4 = () => ({ value: new THREE.Vector4() });
+    this.uniforms = { uCores: { value: Array.from({ length: 5 }, () => new THREE.Vector4()) }, uCoreCount: { value: cores.length }, uShape: v4(), uAxial: v4(), uEmit: v4(), uFilm: v4(), uTint: { value: new THREE.Vector4(...s.tint) }, uSmoke: v4(), uHaze: v4(), uRecirc: v4(), uGround: { value: new THREE.Vector4(-1, 0, 0, 0) }, uCoreGlow: { value: new THREE.Vector2(...(this.spec.core || [0, 1])) }, uNozzle: { value: new THREE.Vector4(bell ? bell[0] : 1, bell ? bell[1] : 0, 0, bell ? 1 : 0) }, uStreaks: { value: this.spec.streaks || 0 } };
+    this.material = volumeMaterial(this.uniforms); this.uniforms = this.material.uniforms; this.uniforms.uSteps.value = s.steps;
+    this.mesh = volumeMesh(this.material);
+    this.group = new THREE.Group(); this.group.add(this.mesh); this.group.visible = false; this.group.userData.exhaust = this;
+    // Spread of the cluster at the exit plane: the envelope that the single exhausts merge into.
+    this.envelope = Math.max(...cores.map(([x, z]) => Math.hypot(x, z))) + exit;
+    if (debris) { this.debris = new LiftoffDebris(debris); this.debris.points.position.y = -base; this.group.add(this.debris.points); }
+  }
+  // level: throttle 0..1; context: altitudeKm, sunlit, groundKm (height of the vehicle's lowest point above the
+  // ground, or null); length: extra length factor.
+  update(level, { altitudeKm = 0, sunlit = true, groundKm = null } = {}, length = 1) {
+    const on = level > 0.01; this.group.visible = on; if (!on) return;
+    const u = this.uniforms, s = this.spec, h = Math.max(0, altitudeKm), sun = sunlit ? 1 : 0, exit = this.exit;
+    // Start sequence of a cluster (Saturn V: centre engine first, then the outboard pairs, 1-2-2).
+    let area = 0;
+    this.cores.forEach(([x, z], i) => {
+      const k = this.cores.length === 5 ? (i === 0 ? smoothstep(0, 0.55, level) : i < 3 ? smoothstep(0.2, 0.8, level) : smoothstep(0.38, 1, level)) : Math.min(1, level * 1.2);
+      u.uCores.value[i].set(x, z, exit, k); area += exit * exit * k;
+    });
+    let spread = s.spread ?? 0.06, bulge = 0, bulgeLength = 30, L = (s.length ?? 35) * length, T0 = s.T0, turb = s.turb, j = s.j * (0.35 + 0.65 * level);
+    let recirc = 0, smoke = 0, merge = this.cores.length > 1 ? (this.kind === 'f1' ? 12 : 8) : 1;
+    if (this.kind === 'f1') {
+      // Ambient pressure falls ~e-fold every 7 km: by 40–65 km the exhaust leaves the nozzles far underexpanded and
+      // swells into a bulb many times the stage's width; with no air left to burn in, it cools to orange, and part
+      // of it flows back up around the base (plume-induced separation, seen in the Apollo staging films).
+      const B = smoothstep(10, 60, h) ** 1.2, high = smoothstep(25, 60, h);
+      spread = 0.06 + 0.1 * B; bulge = 55 * B; j *= 1 + 0.6 * B; L = (35 + 90 * B) * length; T0 = 2450 - 350 * smoothstep(15, 45, h);
+      turb = 0.35 - 0.2 * B; recirc = 0.6 * high; smoke = 1 - smoothstep(8, 30, h);
+      u.uFilm.value.set(s.film[0], s.film[1], s.film[2], s.sigma);
+      u.uAxial.value.set(L, merge, s.film[3], s.flat);
+    } else {
+      u.uFilm.value.set(0, 1, 1, 0); u.uAxial.value.set(L, merge, 0, s.flat);
+    }
+    u.uShape.value.set(this.cores.length > 1 ? this.envelope : exit, spread, bulge, bulgeLength);
+    u.uEmit.value.set(j, T0, turb, area);
+    // Daylight on the smoke: E/(4π) for an isotropic scatterer, E = 3.2 (albedo ~0.5 for soot and steam).
+    u.uSmoke.value.set(smoke, 3, 0.13 * sun + 0.004, 0);
+    u.uHaze.value.set(s.haze ? s.haze[0] * sun * level : 0, s.haze ? s.haze[1] * length : 1, s.haze ? s.haze[2] : 1, s.haze ? s.haze[3] : 0);
+    u.uRecirc.value.set(recirc, 5, 5.1, 1.8);
+    // Distance from the exit plane to the ground along the axis, and the glow where the jet hits it.
+    const ground = groundKm == null ? -1 : Math.max(0.02, groundKm * 1000 + this.base);
+    u.uGround.value.set(ground, ground < 0 || !s.splash ? 0 : s.splash * level * Math.exp(-ground / 0.7), 1e9, 0);
+    // Hull: the frustum that holds the visible gas, no bigger (every pixel it covers is marched): out to where the
+    // exhaust has faded below ~0.4 % of its brightness at the exit, 1.3 envelopes wide.
+    const e = this.cores.length > 1 ? this.envelope : exit, haze = s.haze && sun ? s.haze : null;
+    const reach = (length, e0, sp, limit) => { let a = 0.5; while (a < 3000 && Math.exp(-a / length) * (e0 / (e0 + a * sp)) ** 2 > limit) a *= 1.12; return a; };
+    const width = a => e + a * spread + bulge * (1 - Math.exp(-a / bulgeLength)), hazeW = a => (haze ? e * 0.8 + a * haze[2] : 0);
+    const visible = this.kind === 'f1' ? L * (3.4 - 0.9 * bulge / 55) + 20 : Math.max(reach(L, e, spread, 0.004), haze ? reach(haze[1] * length, e * 0.8, haze[2], 0.01) : 0);
+    const far = Math.min(ground > 0 ? ground + 0.5 : 1e9, visible); u.uGround.value.z = this.kind === 'f1' ? visible : 1e9;
+    // The tightest cone over a concave profile (the bulb saturates) is its tangent at mid-length.
+    const need = a => 1.3 * Math.max(width(a), hazeW(a)), mid = far / 2, eps = Math.max(0.5, far * 0.01);
+    const k = Math.max(0, (need(mid + eps) - need(mid - eps)) / (2 * eps));
+    let r0 = need(mid) - k * mid; for (let i = 0; i <= 32; i++) { const a = far * i / 32; r0 = Math.max(r0, need(a) - k * a); }
+    u.uStepLen.value = this.kind === 'f1' ? 1.5 : exit * 0.3;
+    // Upstream of the exit the hull must still enclose the gas (inside the bell, or recirculating around the
+    // stage) with a positive radius: a cone that crosses its own axis folds over and draws pixels twice.
+    const top = recirc > 0 ? -26 : this.uniforms.uNozzle.value.w > 0 ? -this.uniforms.uNozzle.value.x : 0;
+    const r0top = Math.max(r0, (recirc > 0 ? 5.1 + 3.6 * 1.8 : exit * 1.05) - k * top);
+    u.uHull.value.set(r0top, k, top, far);
+    u.uOccA.value.set(5.05, 0, recirc > 0 ? -400 : 0, recirc > 0 ? -5.9 : 0); // the S-IC itself, above its base
+    if (this.debris) this.debris.update(level, h, sun);
+  }
+}
+
+// Lunar liftoff: the ascent engine firing into the descent stage tears off foil and paint that fly out in
+// straight ballistic arcs (no air) under lunar gravity, glinting in the Sun as they tumble (Apollo 15–17 TV).
+class LiftoffDebris {
+  constructor(groundDepth, count = 240) {
+    const rnd = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(91), start = new Float32Array(count * 3), vel = new Float32Array(count * 3), spin = new Float32Array(count * 4), kind = new Float32Array(count * 2);
+    for (let i = 0; i < count; i++) {
+      const az = rnd() * Math.PI * 2, el = (-8 + rnd() * 50) * Math.PI / 180, v = 3 + 23 * rnd() ** 1.6, r = 0.4 + 1.7 * rnd();
+      start.set([Math.cos(az) * r, -0.15 - rnd() * 0.6, Math.sin(az) * r], i * 3);
+      vel.set([Math.cos(az) * Math.cos(el) * v, Math.sin(el) * v, Math.sin(az) * Math.cos(el) * v], i * 3);
+      spin.set([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5, 4 + 18 * rnd()], i * 4);
+      kind.set([0.03 + 0.14 * rnd() ** 2, rnd() < 0.6 ? 0 : rnd() < 0.7 ? 1 : 2], i * 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(start, 3)); g.setAttribute('aVel', new THREE.BufferAttribute(vel, 3));
+    g.setAttribute('aSpin', new THREE.BufferAttribute(spin, 4)); g.setAttribute('aKind', new THREE.BufferAttribute(kind, 2));
+    this.uniforms = { uTau: { value: 0 }, uLift: { value: 0 }, uGround: { value: groundDepth }, uSun: { value: new THREE.Vector3(0, 1, 0) }, uCam: { value: new THREE.Vector3() }, uSunlit: { value: 1 }, uViewport: { value: new THREE.Vector2(1, 1) } };
+    const material = new THREE.ShaderMaterial({
+      uniforms: this.uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */`
+        attribute vec3 aVel; attribute vec4 aSpin; attribute vec2 aKind;
+        uniform float uTau, uLift, uGround, uSunlit; uniform vec3 uSun, uCam; uniform vec2 uViewport;
+        varying vec3 vCol;
+        void main() {
+          const float G = 1.62; // lunar gravity, m/s²
+          float h0 = position.y + uGround, land = (aVel.y + sqrt(aVel.y * aVel.y + 2. * G * max(h0, 0.))) / G, t = min(uTau, land);
+          vec3 p = position + aVel * t; p.y -= .5 * G * t * t; p.y = max(p.y, -uGround); p.y -= uLift;
+          vec4 mv = modelViewMatrix * vec4(p, 1.);
+          gl_Position = projectionMatrix * mv;
+          float px = projectionMatrix[1][1] * uViewport.y * .5 / max(-mv.z, 1e-20), size = aKind.x * length(modelViewMatrix[0].xyz) * px;
+          gl_PointSize = clamp(size, 1.5, 6.);
+          // Flat flake tumbling about a random axis: diffuse light, and a glint when its normal bisects Sun and eye.
+          vec3 ax = normalize(aSpin.xyz + vec3(1e-4)), n0 = normalize(cross(ax, abs(ax.y) < .9 ? vec3(0., 1., 0.) : vec3(1., 0., 0.)));
+          float ang = aSpin.w * t; vec3 n = n0 * cos(ang) + cross(ax, n0) * sin(ang);
+          vec3 v = normalize(uCam - p + vec3(1e-6)), hv = normalize(uSun + v + vec3(1e-6));
+          vec3 albedo = aKind.y < .5 ? vec3(.85, .56, .2) : aKind.y < 1.5 ? vec3(.82, .82, .84) : vec3(.12, .12, .13);
+          float spec = pow(abs(dot(n, hv)), 60.) * (aKind.y < 1.5 ? 14. : 2.); // crumpled foil: a broad, softened mirror lobe
+          vec3 radiance = albedo * (abs(dot(n, uSun)) * 3.2 / 3.14159 + spec) * uSunlit;
+          // A flake smaller than the point: its light is spread over the point's area.
+          float cover = min(1., size * size / (gl_PointSize * gl_PointSize));
+          vCol = radiance * cover * (1. - smoothstep(7., 11., uTau)) * step(.001, uTau);
+        }`,
+      fragmentShader: /* glsl */`
+        varying vec3 vCol;
+        void main() { float d = length(gl_PointCoord - .5), a = 1. - smoothstep(.25, .5, d); gl_FragColor = vec4(min(vCol * a * 1.6, vec3(200.)), 1.); }`
+    });
+    this.points = new THREE.Points(g, material); this.points.frustumCulled = false;
+    const inverse = new THREE.Matrix4(), size = new THREE.Vector2(), dir = new THREE.Vector3();
+    let lights = null;
+    this.points.onBeforeRender = (renderer, scene, camera) => {
+      const u = this.uniforms; inverse.copy(this.points.matrixWorld).invert();
+      u.uCam.value.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(inverse);
+      u.uViewport.value.copy(renderer.getDrawingBufferSize(size));
+      // The Sun: the strongest directional light of the scene.
+      if (!lights) { lights = []; scene.traverse(o => { if (o.isDirectionalLight) lights.push(o); }); }
+      const sun = lights.reduce((best, l) => (!best || l.intensity > best.intensity ? l : best), null);
+      if (sun) { dir.subVectors(sun.position, sun.target.position).transformDirection(inverse); if (dir.lengthSq() > 0) u.uSun.value.copy(dir.normalize()); }
+    };
+  }
+  // Time since ignition from the height gained: the ascent stage rises at ~1.5 m/s² at first
+  // (15.6 kN on ~4.9 t, minus lunar gravity), h = a t² / 2.
+  update(level, altitudeKm, sunlit) {
+    const lift = altitudeKm * 1000, u = this.uniforms;
+    u.uLift.value = lift; u.uTau.value = level > 0.01 ? Math.sqrt(2 * lift / 1.5) + 0.05 : 0; u.uSunlit.value = sunlit;
+    this.points.visible = u.uTau.value < 11;
+  }
+}
+
+// Re-entry: the gas cap on the heat shield, the shoulder shear layer, the wake, sparks of ablator, and the
+// glowing shield itself. Frame: a downstream from the stagnation point (the group is turned so −Y is downstream).
+class EntryPlasma {
+  constructor(shape, shieldMesh) {
+    this.shape = shape; this.shield = shieldMesh;
+    const u = { uCM: { value: new THREE.Vector4(shape.radius, 4.69, 0.42, shape.afterbody) }, uPlasma: { value: new THREE.Vector4() }, uPlasma2: { value: new THREE.Vector4() }, uCapTint: { value: new THREE.Color() }, uWakeTint: { value: new THREE.Color() }, uEnvTint: { value: new THREE.Color() }, uEarly: { value: 0 } };
+    this.material = volumeMaterial(u, { PLASMA: '' }); this.uniforms = this.material.uniforms;
+    this.mesh = volumeMesh(this.material); this.uniforms.uSteps.value = 26;
+    // Solid capsule: heat-shield cap (as a frustum just inside the spherical cap) and the conical afterbody.
+    const R = shape.radius * 0.985;
+    this.uniforms.uOccA.value.set(1.2 - 0.153 * (R - 1.2) / 0.267, (R - 1.2) / 0.267, 0.153, 0.42);
+    this.uniforms.uOccB.value.set(R + 0.42 * (R - 0.42) / shape.afterbody, -(R - 0.42) / shape.afterbody, 0.42, 0.42 + shape.afterbody);
+    this.sparks = makeSparks(shape);
+    this.group = new THREE.Group(); this.group.rotation.x = Math.PI; this.group.position.y = shape.stagnation;
+    this.group.add(this.mesh, this.sparks); this.group.visible = false;
+    this.temperature = 300; this.last = 0; this.trend = 0; this.lastLevel = 0;
+    this.color = new THREE.Color();
+  }
+  update(level, { altitudeKm = null } = {}) {
+    const now = performance.now() / 1000, dt = Math.min(0.25, Math.max(0, now - (this.last || now))); this.last = now;
+    // Heat-shield surface: ~3000 K at peak heating on a lunar return; the char cools slowly afterwards.
+    const target = 300 + 2650 * Math.max(0, level) ** 0.6, tau = target > this.temperature ? 0.5 : 1.6;
+    this.temperature += (target - this.temperature) * (1 - Math.exp(-dt / tau));
+    if (dt === 0) this.temperature = target;
+    const hot = this.shield?.material;
+    // Exposure licence: real radiance at 3000 K is ~700× a sunlit white surface; capped near 5 so the capsule stays
+    // readable inside its own glow (an auto-exposed camera would darken everything else instead).
+    if (hot?.emissive) { const glow = 5 * Math.exp(WIEN * (1 / 2950 - 1 / this.temperature)); blackbodyColor(this.temperature, hot.emissive); hot.emissiveIntensity = glow; }
+    this.trend = level > this.lastLevel + 1e-4 ? 1 : level < this.lastLevel - 1e-4 ? -1 : this.trend; this.lastLevel = level;
+    const on = level > 0.01; this.group.visible = on; if (!on) return;
+    // Below ~45 km the capsule has slowed under ~2–3 km/s and the shock layer stops glowing (radio blackout ends
+    // near 40 km on Apollo returns); only the cooling heat shield is left. Applied when the altitude is known.
+    const u = this.uniforms, f = level ** 1.6 * (altitudeKm != null ? smoothstep(32, 50, altitudeKm) : 1);
+    this.group.visible = f > 0.002; if (!this.group.visible) return;
+    // Colour through the entry. Above ~80 km the thin, non-equilibrium shock layer glows in nitrogen bands (pink
+    // and violet: Orion EFT-1 window frames); near peak heating the dense gas cap is white-hot and the wake carries
+    // orange ablation products; as the capsule slows, everything cools to orange and red.
+    const early = altitudeKm != null ? smoothstep(72, 92, altitudeKm) : (this.trend > 0 ? 1 - smoothstep(0.25, 0.8, level) : 0);
+    const late = altitudeKm != null ? 1 - smoothstep(45, 62, altitudeKm) : (this.trend < 0 ? 1 - smoothstep(0.2, 0.75, level) : 0);
+    u.uEarly.value = early;
+    u.uCapTint.value.setRGB(1, 1, 1).lerp(this.color.setRGB(1, 0.86, 0.66), late);
+    u.uWakeTint.value.setRGB(1, 1, 1).lerp(this.color.setRGB(1.1, 0.8, 0.75), late * 0.6);
+    u.uEnvTint.value.setRGB(1, 0.5, 1.3);
+    const flick = 1 + 0.05 * Math.sin(now * 37) + 0.04 * Math.sin(now * 91 + 1.7) + 0.03 * Math.sin(now * 13.3);
+    u.uPlasma.value.set(2.4 * f, 0.75 * f, 0.38 * f, 0.08 * f * (0.4 + early));
+    u.uPlasma2.value.set(6 + 24 * level, 4300 + 2400 * level * (1 - 0.4 * late), 2700 + 900 * level, flick);
+    const length = 12 + 110 * level;
+    u.uHull.value.set(2.95, 0.045, -0.75, length);
+    const s = this.sparks.material.uniforms; s.uLevel.value = level; s.uTime.value = now % 3600;
+  }
+}
+// Incandescent fragments of ablator shed at the shoulder and dragged downstream (thousands of m/s² in the
+// shear layer: they leave in a tenth of a second). Drawn as streaks one exposure (1/60 s) long.
+function makeSparks(shape, count = 90) {
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3)); geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  const rnd = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(7), seed = new Float32Array(count * 4);
+  for (let i = 0; i < count; i++) seed.set([rnd(), rnd(), rnd(), rnd()], i * 4);
+  geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 4)); geometry.instanceCount = count;
+  const material = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uLevel: { value: 0 }, uRadius: { value: shape.radius }, uRamp: { value: exhaustTextures().blackbody }, uViewport: { value: new THREE.Vector2(1, 1) } },
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: /* glsl */`
+      attribute vec4 aSeed; uniform float uTime, uLevel, uRadius; uniform vec2 uViewport; uniform sampler2D uRamp;
+      varying float vU; varying vec3 vCol;
+      vec3 at(float t, float g, float az, float drift) {
+        float a = .42 + .5 * g * t * t, k = smoothstep(0., 8., a), r = mix(uRadius + .2, .9, k) + drift * a * .03;
+        return vec3(cos(az) * r, -a, sin(az) * r);
+      }
+      void main() {
+        float life = mix(.12, .3, aSeed.z), cycle = uTime / life + aSeed.x, ph = fract(cycle), n = floor(cycle);
+        float az = 6.2831853 * fract(aSeed.y + n * .618034), g = mix(800., 3500., fract(aSeed.w + n * .3713)), drift = fract(aSeed.z * 7.1 + n * .29) * 2. - 1.;
+        // More spallation the hotter the shield: the number of live sparks follows the heating.
+        float live = step(fract(aSeed.w * 13.7 + n * .4142), uLevel * uLevel);
+        float t = ph * life;
+        vec3 h0 = at(t, g, az, drift), t0 = at(max(t - 1. / 60., 0.), g, az, drift);
+        vec4 head = modelViewMatrix * vec4(h0, 1.), tail = modelViewMatrix * vec4(t0, 1.);
+        vec4 P = mix(tail, head, position.x);
+        // View space can be in units of 1000 km: no absolute epsilons on depth.
+        bool front = head.z < 0. && tail.z < 0.;
+        vec2 sh = front ? head.xy / -head.z - tail.xy / -tail.z : vec2(1., 0.);
+        vec2 dir = dot(sh, sh) > 1e-14 ? normalize(sh) : vec2(1., 0.);
+        float px = 2. * abs(P.z) / (projectionMatrix[1][1] * uViewport.y);
+        P.xy += vec2(-dir.y, dir.x) * position.y * px * 1.1;
+        gl_Position = front ? projectionMatrix * P : vec4(2., 2., 2., 1.);
+        vU = position.y;
+        // Cooling from ~3000 K; a streak spreads the fragment's light over its length (motion blur).
+        float T = 3100. - 1100. * ph, len = max(length(h0 - t0), .05); // metres
+        vCol = texture2D(uRamp, vec2(clamp((1250. - 1e6 / T) / 1150., 0., 1.), .5)).rgb * exp(25924. * (1. / 3100. - 1. / T)) * live * min(6., 2.2 / len) * (1. - ph);
+      }`,
+    fragmentShader: /* glsl */`
+      varying float vU; varying vec3 vCol;
+      void main() { gl_FragColor = vec4(vCol * exp(-3. * vU * vU), 1.); } // additive: src·alpha + dst`
+  });
+  const sparks = new THREE.Mesh(geometry, material); sparks.frustumCulled = false;
+  const size = new THREE.Vector2(); sparks.onBeforeRender = renderer => material.uniforms.uViewport.value.copy(renderer.getDrawingBufferSize(size));
+  return sparks;
+}
+function exhaust(kind, options) { return new Exhaust(kind, options).group; }
 
 // ---- Command and Service Module (CM apex at +Y) ----
 function buildCM(m, { shield = true, boostCover = false } = {}, nasa = null) {
   const g = new THREE.Group();
   if (nasa && !boostCover) {
     g.add(nasaPart(nasa.csm.cm, m));
-    if (shield) add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42 + nasa.csm.base, 0]);
-    return g;
+    if (shield) add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42 + nasa.csm.base, 0]).userData.shield = true;
+    g.userData.base = nasa.csm.base; g.userData.apex = nasa.csm.apex; return g;
   }
   const r = 1.955, h = 3.23;
   add(g, cyl(0.42, r, h, 64), boostCover ? m.white : m.mirror, [0, h / 2, 0]);
@@ -166,12 +726,15 @@ function buildCM(m, { shield = true, boostCover = false } = {}, nasa = null) {
   }
   // Heat shield: shallow spherical cap under the base.
   if (shield) { const cap = add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42, 0]); cap.userData.shield = true; }
-  return g;
+  g.userData.base = 0; g.userData.apex = h; return g;
 }
 export function buildSM(m, nasa = null) {
   if (nasa) {
     const g = new THREE.Group(); g.add(nasaPart(nasa.csm.sm, m), nasaPart(nasa.csm.bell, m));
-    const engine = plume(9, 1.3, 0xffc58a, 0.22); engine.position.y = nasa.csm.bellEnd + 0.2; g.add(engine); g.userData.plume = engine; return g;
+    // Exit plane and radius of NASA's bell (the AJ10-137 exit is 2.5 m across).
+    const box = new THREE.Box3(); for (const b of nasa.csm.bell.children) { if (!b.geometry.boundingBox) b.geometry.computeBoundingBox(); box.union(b.geometry.boundingBox); }
+    const exit = box.isEmpty() ? 1.25 : THREE.MathUtils.clamp((box.max.x - box.min.x + box.max.z - box.min.z) / 4, 0.8, 1.6), end = box.isEmpty() ? nasa.csm.bellEnd : box.min.y;
+    const engine = exhaust('sps', { exit, bell: [box.isEmpty() ? 3.2 : THREE.MathUtils.clamp(box.max.y - box.min.y, 1.5, 3.4), 0.4] }); engine.position.y = end; g.add(engine); g.userData.plume = engine; return g;
   }
   const g = new THREE.Group(), r = 1.955, h = 4.1;
   add(g, cyl(r, r, h, 64), m.aluminium, [0, -h / 2, 0]);
@@ -184,7 +747,7 @@ export function buildSM(m, nasa = null) {
   const boom = new THREE.Group(); boom.position.set(0, -h + 0.2, -r); boom.rotation.x = -0.9; g.add(boom);
   add(boom, cyl(0.05, 0.05, 2.6, 8), m.aluminium, [0, -1.3, 0]);
   for (const [x, y] of [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]]) add(boom, new THREE.SphereGeometry(0.4, 20, 6, 0, Math.PI * 2, 0, 0.7), m.white, [x, -2.6 + y * 0.2, y], [Math.PI / 2, 0, 0]);
-  const engine = plume(9, 1.4, 0xffc58a, 0.22); engine.position.y = -h - 3.3; g.add(engine);
+  const engine = exhaust('sps', { exit: 1.26, bell: [3.2, 0.36] }); engine.position.y = -h - 3.3; g.add(engine);
   g.userData.plume = engine; g.userData.bell = bell; return g;
 }
 // CSM with the CM apex at +3.2 m and the SM below the origin.
@@ -193,7 +756,7 @@ function buildCSM(m, nasa = null) { const g = new THREE.Group(), cm = buildCM(m,
 // ---- Lunar Module ----
 export function buildDescentStage(m, nasa = null) {
   if (nasa) {
-    const g = nasaPart(nasa.lm.descent, m), engine = plume(5, 0.75, 0xffd9a8, 0.12); engine.position.y = 1.15; g.add(engine);
+    const g = nasaPart(nasa.lm.descent, m), engine = exhaust('dps', { exit: 0.75, base: 1.15, bell: [0.9, 0.35] }); engine.position.y = 1.15; g.add(engine);
     g.userData.plume = engine; g.userData.height = nasa.lm.deck; return g;
   }
   const g = new THREE.Group(), y0 = 1.5, hh = 1.65;
@@ -216,12 +779,12 @@ export function buildDescentStage(m, nasa = null) {
   add(g, new THREE.BoxGeometry(0.9, 0.05, 0.7), m.aluminium, [0, y0 + hh + 0.02, 2.45]);
   for (let k = 0; k < 9; k++) add(g, cyl(0.02, 0.02, 0.5, 6), m.aluminium, [0, y0 + hh - 0.25 - k * 0.3, 2.55 + k * 0.2], [0, 0, Math.PI / 2]);
   const dust = new THREE.Group(); g.add(dust);
-  const engine = plume(5, 0.75, 0xffd9a8, 0.12); engine.position.y = y0 - 1.0; g.add(engine);
+  const engine = exhaust('dps', { exit: 0.78, base: y0 - 1.0, bell: [1.0, 0.4] }); engine.position.y = y0 - 1.0; g.add(engine);
   g.userData.plume = engine; g.userData.height = y0 + hh;
   return g;
 }
 export function buildAscentStage(m, nasa = null) {
-  if (nasa) { const g = nasaPart(nasa.lm.ascent, m), engine = plume(3.5, 0.5, 0xffe2b8, 0.1); engine.position.y = 0.05; g.add(engine); g.userData.plume = engine; return g; }
+  if (nasa) { const g = nasaPart(nasa.lm.ascent, m), engine = exhaust('aps', { exit: 0.43, base: 0.05, debris: nasa.lm.deck, bell: [0.5, 0.2] }); engine.position.y = 0.05; g.add(engine); g.userData.plume = engine; return g; }
   const g = new THREE.Group();
   // Cabin: faceted prism seen from the front.
   const s = new THREE.Shape(); [[-1.15, 0], [1.15, 0], [1.4, 0.55], [1.4, 1.7], [1.0, 2.35], [-1.0, 2.35], [-1.4, 1.7], [-1.4, 0.55]].forEach((p, i) => i ? s.lineTo(...p) : s.moveTo(...p));
@@ -246,7 +809,7 @@ export function buildAscentStage(m, nasa = null) {
   for (const sx of [-1, 1]) strut(g, new THREE.Vector3(0.9 * sx, 2.4, -0.9), new THREE.Vector3(1.05 * sx, 3.5, -1.1), 0.01, m.aluminium);
   for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) rcsQuad(g, m, [1.62 * x, 1.95, 1.08 * z], Math.atan2(z, x) * -1);
   add(g, bellGeometry(0.2, 0.43, 0.5), m.bell, [0, 0.12, 0]);
-  const engine = plume(3.5, 0.5, 0xffe2b8, 0.1); engine.position.y = -0.38; g.add(engine);
+  const engine = exhaust('aps', { exit: 0.43, base: -0.38, debris: 3.15, bell: [0.5, 0.2] }); engine.position.y = -0.38; g.add(engine);
   g.userData.plume = engine;
   return g;
 }
@@ -271,7 +834,7 @@ function buildSaturnV(m, { stage = 1 } = {}) {
     const s2 = y; add(g, cyl(5.05, 5.05, 5.5, 64), m.white, [0, s2 + 2.75, 0]);
     if (stage === 2) for (const [x, z] of [[0, 0], [1.8, 1.8], [-1.8, 1.8], [1.8, -1.8], [-1.8, -1.8]]) add(g, bellGeometry(0.3, 0.95, 3.4, 24), m.bell, [x, s2 + 3.2, z]);
     add(g, cyl(5.05, 5.05, 19.3, 64), m.white, [0, s2 + 5.5 + 9.65, 0]);
-    y = s2 + 24.8; if (stage === 2) { plumeAt = s2 + 0.2; plumeKind = 'j2'; }
+    y = s2 + 24.8; if (stage === 2) { plumeAt = s2 - 0.2; plumeKind = 'j2x5'; }
     add(g, cyl(3.3, 5.05, 5.6, 64), m.white, [0, y + 2.8, 0]); y += 5.6;
   }
   if (stage === 3) { add(g, bellGeometry(0.28, 1.0, 3.4, 28), m.bell, [0, y + 3.2, 0]); plumeAt = y - 0.2; plumeKind = 'j2'; y += 3.2; }
@@ -287,7 +850,8 @@ function buildSaturnV(m, { stage = 1 } = {}) {
     add(g, new THREE.ConeGeometry(0.33, 1.6, 24), m.red, [0, y + 3.0 + 4.7 + 0.8, 0]);
     y += 9.3;
   }
-  const kind = plumeKind === 'f1' ? plume(70, 7.5, 0xffa040, 0.55) : plume(stage === 2 ? 18 : 10, stage === 2 ? 3.5 : 1.6, 0xbfd8ff, 0.14);
+  const kind = plumeKind === 'f1' ? exhaust('f1', { cores: [[0, 0], [2.7, 2.7], [-2.7, -2.7], [-2.7, 2.7], [2.7, -2.7]], exit: 1.85 })
+    : plumeKind === 'j2x5' ? exhaust('j2', { cores: [[0, 0], [1.8, 1.8], [-1.8, -1.8], [-1.8, 1.8], [1.8, -1.8]], exit: 0.95 }) : exhaust('j2', { exit: 0.99, bell: [3.4, 0.28] });
   kind.position.y = plumeAt; g.add(kind); g.userData.plume = kind; g.userData.height = y;
   return g;
 }
@@ -305,26 +869,6 @@ export function buildSpent(m, kind, nasa = null) {
 export function setLayer(object, layer) { object.traverse(o => o.layers.set(layer)); return object; }
 
 // ---- Entry and recovery ----
-function plasma() {
-  const g = new THREE.Group();
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(2.6, 32, 16, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), new THREE.MeshBasicMaterial({ color: 0xffb46b, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
-  cap.material.color.multiplyScalar(1.5); cap.position.y = 0.6; cap.scale.set(1.15, 0.55, 1.15); g.add(cap);
-  const fade = canvasTexture(8, 256, (c, w, h) => { const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#000'); gr.addColorStop(0.55, '#333'); gr.addColorStop(1, '#fff'); c.fillStyle = gr; c.fillRect(0, 0, w, h); }, false);
-  const wakeMaterial = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false,
-    uniforms: { uColor: { value: new THREE.Color(1.0, 0.52, 0.26).multiplyScalar(1.4) }, opacity: { value: 0.2 } },
-    vertexShader: 'varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
-    fragmentShader: 'uniform vec3 uColor; uniform float opacity; varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ float core = pow(clamp(abs(dot(normalize(vN), normalize(vV))), 0., 1.), 4.); float tail = pow(clamp(1. - vUv.y, 0., 1.), 3.); gl_FragColor = vec4(uColor * core * tail * opacity * 2.2, 1.); }'
-  });
-  // Anchored at the capsule: it only ever grows backwards, away from the heat shield.
-  const wake = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 1.7, 60, 40, 1, true).translate(0, 30, 0), wakeMaterial);
-  wake.position.y = 1.2; g.add(wake);
-  // Fireball around the heat shield: a soft additive glow, brightest at peak heating.
-  const glowMap = canvasTexture(128, 128, (c, w, h) => { const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(255,240,215,1)'); gr.addColorStop(0.18, 'rgba(255,190,120,.85)'); gr.addColorStop(0.45, 'rgba(255,120,60,.28)'); gr.addColorStop(1, 'rgba(255,90,40,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
-  glow.material.color.multiplyScalar(1.15); glow.scale.setScalar(11); glow.position.y = -0.4; g.add(glow);
-  g.userData.parts = [[cap, 0.85], [wake, 0.2], [glow, 0.95]]; g.userData.fade = fade; g.userData.glowMap = glowMap; g.visible = false; return g;
-}
 function buildChutes(m) {
   const g = new THREE.Group(), lines = [];
   const canopy = (radius, at) => {
@@ -356,9 +900,14 @@ export class Spacecraft {
     cfg.ascent = buildAscentStage(m, nasa);
     const csmA = new THREE.Group(), csm2 = buildCSM(m, nasa), asc = buildAscentStage(m, nasa); asc.rotation.x = Math.PI; asc.position.y = apex + ascDock; csmA.add(csm2, asc); csmA.userData.plume = csm2.userData.plume; cfg.csmAscent = csmA;
     cfg.csm = buildCSM(m, nasa);
-    const cm = buildCM(m, {}, nasa); cm.position.y = -1.5; const glow = plasma(); cm.add(glow); cm.userData.plasma = glow; cfg.cm = cm;
+    // Entry: the capsule's own heat shield glows (a material of its own), wrapped in the plasma.
+    const cm = buildCM(m, {}, nasa); cm.position.y = -1.5;
+    const shield = cm.children.find(c => c.userData.shield); if (shield) shield.material = m.heatShield.clone();
+    const entry = new EntryPlasma({ radius: 1.955, stagnation: cm.userData.base - 0.42, afterbody: cm.userData.apex - cm.userData.base }, shield);
+    cm.add(entry.group); cm.userData.plasma = entry; cfg.cm = cm;
     const cmc = new THREE.Group(), cm2 = buildCM(m, {}, nasa); cm2.rotation.z = 0.48; cmc.add(cm2); const chutes = buildChutes(m); cmc.add(chutes); cmc.userData.chutes = chutes; cfg.cmChutes = cmc;
     for (const model of Object.values(cfg)) { model.visible = false; this.body.add(model); }
+    this.context = { altitudeKm: 0, sunlit: true, groundKm: null }; this.plasmaContext = {};
     this.name = null; this.set('lm');
   }
   get height() { return HEIGHT[this.name] / 1000; }
@@ -368,18 +917,19 @@ export class Spacecraft {
     if (name === this.name) return; if (this.name) this.configs[this.name].visible = false;
     this.name = name; this.configs[name].visible = true;
   }
-  // engine: 0..1 throttle for the active configuration's plume.
-  engine(level) {
+  // engine: 0..1 throttle of the active configuration's engine(s). context (optional, remembered between calls):
+  // altitudeKm (shapes the F-1 plume and times the lunar liftoff debris), sunlit (sunlight on the exhaust),
+  // groundKm (height of the vehicle's lowest point above the ground or pad deck; null in flight).
+  engine(level, context) {
+    if (context) this.context = { ...this.context, ...context };
     const p = this.configs[this.name].userData.plume; if (!p) return;
-    p.visible = level > 0.01; p.children.forEach(c => { c.material.opacity = c.userData.base * level; });
-    // A burning engine is never still: the plume length and glow flicker a little.
-    const time = performance.now() / 1000, flick = 1 + 0.05 * Math.sin(time * 41) + 0.035 * Math.sin(time * 97 + 1.3);
-    p.scale.set(1, (0.85 + 0.3 * level) * flick * (this.plumeLength ?? 1), 1);
+    p.userData.exhaust.update(level, this.context, this.plumeLength ?? 1);
   }
-  plasma(level) {
-    const g = this.configs.cm.userData.plasma; g.visible = level > 0.01;
-    for (const [mesh, base] of g.userData.parts) { if (mesh.material.uniforms) mesh.material.uniforms.opacity.value = base * level; else mesh.material.opacity = base * level; }
-    g.children[1].scale.y = 0.4 + level;
+  // plasma: 0..1 entry heating; context (optional, remembered): altitudeKm, for the colour of the shock layer
+  // (nitrogen pink above ~80 km, white-hot at peak, orange late) and its fade below ~45 km.
+  plasma(level, context) {
+    if (context) this.plasmaContext = { ...this.plasmaContext, ...context };
+    this.configs.cm.userData.plasma.update(level, this.plasmaContext);
   }
   chutes(stage) {
     const c = this.configs.cmChutes.userData.chutes;

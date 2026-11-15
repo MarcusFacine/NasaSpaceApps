@@ -3,6 +3,7 @@ import { Terrain, evaluate, ephemeris, longestRun, clamp, RADIUS_KM, AU_KM } fro
 import { LunarScene } from './scene.js';
 import { MissionUI } from './mission.js';
 import { t, getLang, addDictionary, bindLanguageSwitch, onLangChange, number, signedDegrees, utcDate } from './i18n.js';
+import { createGuide } from './guide.js';
 
 const SHORT = { shackleton: 'Shackleton', malapert: 'Malapert', degerlache: 'de Gerlache', nobile: 'Nobile', haworth: 'Haworth' };
 addDictionary({ pt: { 'dir.S': 'S', 'dir.W': 'O', 'dir.E': 'L' }, en: { 'dir.S': 'S', 'dir.W': 'W', 'dir.E': 'E' } });
@@ -454,6 +455,24 @@ function registerWebMCP() {
   register({ name: 'read_lunar_visibility', title: 'Read lunar visibility', description: 'Reads elevations, margins over the LOLA horizon and irradiance at the selected sites.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute: readVisibility });
 }
 
+// The first-visit guide: nine stops on the real controls. A folded box opens for its step (not saved).
+const hoverTips = matchMedia('(hover: hover)').matches;
+const guide = createGuide({
+  t, onLangChange, button: $('#guideButton'),
+  canStart: () => ready && !ritual && !document.querySelector('dialog[open]'),
+  steps: [
+    { id: 'sites', targets: () => [$('.console-sites')], title: 'guide.sites.t', body: () => (hoverTips ? 'guide.sites.d' : 'guide.sites.touch'), prepare: () => setFold('console', true) },
+    { id: 'time', targets: () => [$('.scrub')], title: 'guide.time.t', body: 'guide.time.d' },
+    { id: 'play', targets: () => [$('#playButton')], title: 'guide.play.t', body: 'guide.play.d' },
+    { id: 'views', targets: () => [$('.view-tabs'), $('.stage-controls')], title: 'guide.views.t', body: 'guide.views.d' },
+    { id: 'answer', targets: () => [$('#sunRow'), $('#earthRow')], title: 'guide.answer.t', body: 'guide.answer.d', prepare: () => { setFold('sun', true); setFold('earth', true); } },
+    { id: 'chart', targets: () => [$('#chartRow')], title: 'guide.chart.t', body: 'guide.chart.d', prepare: () => setFold('chart', true) },
+    { id: 'best', targets: () => [$('#bestWindow'), $('#bestDates')], title: 'guide.best.t', body: 'guide.best.d' },
+    { id: 'mission', targets: () => [$('#missionButton')], title: 'guide.mission.t', body: 'guide.mission.d' },
+    { id: 'again', targets: () => [$('#guideButton')], title: 'guide.again.t', body: 'guide.again.d' },
+  ],
+});
+
 restored = restore();
 $('#height').value = state.heightM; $(`[name=panel][value=${state.panel}]`).checked = true;
 renderSites(); $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === state.view)));
@@ -471,6 +490,7 @@ async function init() {
     if (restored) { render(); refreshBest(0); } else await openingRitual();
     if (scene) { $('#sceneLoading').classList.add('hidden'); requestAnimationFrame(() => $('#sceneViewport').classList.add('ready')); }
     registerWebMCP();
+    guide.maybeStart();
     ensureTerrains(sites.map(s => s.id)).catch(() => { /* other sites load on demand */ });
   } catch (error) {
     message(error.message, true); $('#sceneLoading').innerHTML = `<b>${t('loading.failTitle')}</b><span>${t('loading.failSub')}</span>`; console.error(error);
