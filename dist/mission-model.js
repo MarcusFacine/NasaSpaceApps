@@ -14,11 +14,13 @@ export const APOLLO = Object.freeze({
   outboundHours:103, stayHours:22, inboundHours:71,
   // Splashdown in the Pacific (Apollo 11: 13°19' N, 169°09' W), entry 15.5 min before it.
   splashdown:{ lat:13.32, lon:-169.15 }, entryAltitudeKm:121.9, entryRangeKm:2600, entryAngleDeg:6.5,
-  entryMinutes:15.5, chuteMinutes:7, drogueAltitudeKm:7.3, mainAltitudeKm:3.2
+  entryMinutes:15.5, chuteMinutes:7, drogueAltitudeKm:7.3, mainAltitudeKm:3.2,
+  // Liftoff seen from the ground: ignition, then the first 50 s and ~3.4 km of the climb.
+  liftoffSeconds:50, liftoffAltitudeKm:3.4
 });
 // Presentation time is independent of the mission's UTC timeline.
 const PHASE_TABLE = [
-  ['launch','Lançamento',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
+  ['liftoff','Decolagem',9],['launch','Subida à órbita',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
   ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',10],
   ['descent','Pouso lunar',20],['surface','No solo',8],['ascent','Decolagem lunar',20],
   ['lunarReturnOrbit','Órbita lunar / volta',12],['tei','Injeção à Terra',4],['inbound','Volta à Terra',16],
@@ -221,7 +223,9 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
   const loiEnd=plan.lunarParking.start,loiStart=loiEnd-.1*HOUR;
   const teiStart=plan.lunarReturnParking.end,teiEnd=teiStart+.05*HOUR,reentryStart=returnAt-APOLLO.entryMinutes*60000,chuteStart=returnAt-APOLLO.chuteMinutes*60000;
   if(tliEnd>=loiStart||teiEnd>=reentryStart)throw new Error('A duração não comporta as órbitas e manobras.');
-  plan.times={launch:[launch,plan.earthParking.start],earthOrbit:[plan.earthParking.start,tliStart],tli:[tliStart,tliEnd],
+  plan.launchFrame.climb=(plan.earthParking.radiusKm-plan.launchFrame.radiusKm)/PARKING.earthAltitudeKm;
+  const liftoffEnd=launch+APOLLO.liftoffSeconds*1000;
+  plan.times={liftoff:[launch,liftoffEnd],launch:[liftoffEnd,plan.earthParking.start],earthOrbit:[plan.earthParking.start,tliStart],tli:[tliStart,tliEnd],
     outbound:[tliEnd,loiStart],loi:[loiStart,loiEnd],lunarOrbit:[loiEnd,descentStart],descent:[descentStart,arrival],
     surface:[arrival,departure],ascent:[departure,ascentEnd],lunarReturnOrbit:[ascentEnd,teiStart],tei:[teiStart,teiEnd],
     inbound:[teiEnd,reentryStart],arrival:[reentryStart,chuteStart],splashdown:[chuteStart,returnAt]};
@@ -266,14 +270,20 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
 export function sampleMission(plan,progress,astronomy){
   const p=clamp(progress,0,1),phase=PHASES.find(s=>p<s.end)||PHASES.at(-1),t=presentationTime(clamp((p-phase.start)/(phase.end-phase.start),0,1)),u=smooth(t);
   const [begin,end]=plan.times[phase.id],ms=mix(begin,end,t),date=new Date(ms),moon=moonPosition(date,astronomy),frame=lunarFrame(date,astronomy);
-  let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false;
+  let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false,pad=false,ignition=1;
   const around=(parking,radius)=>{const state=parkingState(parking,ms,radius);direction=state.direction;position=parking.body==='Earth'?state.relative:add(moon,state.relative);altitudeReference=parking.body==='Earth'?'Terra':'Lua';altitudeKm=norm(state.relative)-(parking.body==='Earth'?EARTH_RADIUS:RADIUS_KM);};
   switch(phase.id){
+    case 'liftoff':{
+      // On the pad: ignition and hold-down for the first 15% of the stage, then straight up.
+      const f=plan.launchFrame,k=clamp((t-.15)/.85,0,1);altitudeKm=APOLLO.liftoffAltitudeKm*Math.pow(k,2.2);
+      position=scale(f.p,f.radiusKm+altitudeKm*f.climb);direction=f.p;engine=true;throttle=1;config='saturnV';pad=true;ignition=clamp(t/.15,0,1);break;
+    }
     case 'launch':{
       // Gravity turn: climbs almost vertically, then pitches over to orbital speed at 185 km.
-      const f=plan.launchFrame,at=s=>{const k=clamp(s,0,1),h=1-Math.pow(1-k,2.2);return scale(rotate(f.p,f.q,f.angle*Math.pow(k,1.8)),mix(f.radiusKm,plan.earthParking.radiusKm,h));};
+      const f=plan.launchFrame,h0=APOLLO.liftoffAltitudeKm,alt=k=>h0+(PARKING.earthAltitudeKm-h0)*(1-Math.pow(1-clamp(k,0,1),2.2));
+      const at=s=>scale(rotate(f.p,f.q,f.angle*Math.pow(clamp(s,0,1),1.8)),f.radiusKm+alt(s)*f.climb);
       position=at(t);direction=unit(subtract(at(t+1e-4),at(t-1e-4)));
-      altitudeKm=PARKING.earthAltitudeKm*(1-Math.pow(1-t,2.2));engine=true;throttle=1;
+      altitudeKm=alt(t);engine=true;throttle=1;
       // S-IC burns 2 min 41 s, S-II until 9 min 9 s, S-IVB to orbit insertion at 11 min 39 s.
       config=t<.23?'saturnV':t<.785?'stage2':'sivb';break;
     }
@@ -328,8 +338,8 @@ export function sampleMission(plan,progress,astronomy){
     localPosition=[dot(relative,basis.east),dot(relative,basis.up)-RADIUS_KM-plan.elevationKm,-dot(relative,basis.north)];
     localDirection=[dot(bodyDirection,basis.east),dot(bodyDirection,basis.up),-dot(bodyDirection,basis.north)];
   }
-  if(ocean){localPosition=[0,altitudeKm,0];localDirection=[0,1,0];}
-  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,orbit,
+  if(ocean||pad){localPosition=[0,altitudeKm,0];localDirection=[0,1,0];}
+  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,pad,ignition,orbit,
     orbitTurns:orbit?clamp((ms-orbit.start)/(orbit.periodSeconds*1000),0,orbit.turns):null,
     altitudeKm:Math.max(0,altitudeKm),altitudeReference,elapsedHours:(ms-plan.launch)/HOUR,distanceKm:norm(moon)};
 }

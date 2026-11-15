@@ -14,9 +14,16 @@ const LUNAR_DIFFUSE = `float lunarMu=saturate(dot(geometryNormal,geometryViewDir
 
 // psr: optional shared uniform { value: 0..1 } that makes permanently shadowed ground glow faintly.
 export const PSR_COLOR = new THREE.Color(0x8a7dff);
-export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, color = 0xffffff, psr = null } = {}) {
-  const material = new THREE.MeshLambertMaterial({ color, vertexColors, map, normalMap, normalScale: new THREE.Vector2(normalScale, -normalScale) });
+// normalY: +1 for image normal maps (north up), −1 for the generated tiles. hole: { dir, cos } uniforms that
+// cut a spherical cap out of a globe (object space), where a finer mesh takes over. transparent: per-vertex alpha.
+export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, normalY = -1, color = 0xffffff, psr = null, hole = null, transparent = false } = {}) {
+  const material = new THREE.MeshLambertMaterial({ color, vertexColors, map, normalMap, normalScale: new THREE.Vector2(normalScale, normalY * normalScale), transparent });
   material.onBeforeCompile = shader => {
+    if (hole) {
+      shader.uniforms.uHoleDir = hole.dir; shader.uniforms.uHoleCos = hole.cos;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHolePos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvHolePos = position;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uHoleDir;\nuniform float uHoleCos;\nvarying vec3 vHolePos;').replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (dot(normalize(vHolePos), uHoleDir) > uHoleCos) discard;');
+    }
     const chunk = THREE.ShaderChunk.lights_lambert_pars_fragment;
     const target = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );';
     if (chunk.includes(target)) shader.fragmentShader = shader.fragmentShader.replace('#include <lights_lambert_pars_fragment>', chunk.replace(target, LUNAR_DIFFUSE));
@@ -37,7 +44,7 @@ varying float vPsr;`)
 totalEmissiveRadiance += uPsrColor * smoothstep(.35, .95, vPsr) * uPsr * .32;`);
     }
   };
-  material.customProgramCacheKey = () => `lunar-lambert-2-${psr ? 'psr' : 'plain'}`;
+  material.customProgramCacheKey = () => `lunar-lambert-3-${psr ? 'psr' : 'plain'}-${hole ? 'hole' : 'whole'}`;
   return material;
 }
 
@@ -216,5 +223,33 @@ export function contextTerrainGeometry(terrain, { uvRepeat = 46 } = {}) {
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.computeBoundingSphere();
+  return geometry;
+}
+
+// The same LOLA relief seen from orbit, inside the globe of the mission scene: true heights out to
+// ~120 km from the site, eased down to the sphere by 150 km and faded out by 192 km (per-vertex alpha),
+// so the mesh meets the textured globe without a step.
+export function orbitalPatchGeometry(terrain) {
+  const wide = terrain.wide; if (!wide) return null;
+  const n = wide.size, extent = wide.extent, inner = terrain.extent / 2 - 1.2;
+  const positions = new Float32Array(n * n * 3), colors = new Float32Array(n * n * 4);
+  for (let row = 0; row < n; row++) for (let col = 0; col < n; col++) {
+    const i = row * n + col, x = (col / (n - 1) - 0.5) * extent, z = (row / (n - 1) - 0.5) * extent, d = Math.hypot(x, z);
+    const inside = Math.abs(x) < inner + 1.6 && Math.abs(z) < inner + 1.6, level = terrain.curvature(0.25, x, z);
+    const y = terrain.heightAt(x, z) - (inside ? 0.05 : 0), flat = smooth(118, 150, d);
+    positions.set([x, y + (level - y) * flat, z], i * 3); colors[i * 4 + 3] = 1 - smooth(156, 192, d);
+  }
+  const index = [];
+  for (let row = 0; row < n - 1; row++) for (let col = 0; col < n - 1; col++) {
+    const x0 = (col / (n - 1) - 0.5) * extent, x1 = ((col + 1) / (n - 1) - 0.5) * extent, z0 = (row / (n - 1) - 0.5) * extent, z1 = ((row + 1) / (n - 1) - 0.5) * extent;
+    if (Math.max(Math.abs(x0), Math.abs(x1)) < inner && Math.max(Math.abs(z0), Math.abs(z1)) < inner) continue;
+    if (Math.min(Math.hypot(x0, z0), Math.hypot(x1, z1), Math.hypot(x0, z1), Math.hypot(x1, z0)) > 194) continue;
+    const a = row * n + col, b = a + 1, c = a + n, e = c + 1; index.push(a, c, b, b, c, e);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3)); geometry.setIndex(index); geometry.computeVertexNormals();
+  const normal = geometry.attributes.normal;
+  for (let i = 0; i < n * n; i++) { const a = albedo(positions[i * 3], positions[i * 3 + 2], 1 - normal.getY(i)); colors.set([a, a * 0.985, a * 0.955], i * 4); }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4)); geometry.computeBoundingSphere();
   return geometry;
 }

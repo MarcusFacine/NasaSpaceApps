@@ -18,7 +18,7 @@ const degrees = n => `${number(n, 1)}°`;
 
 const state = { selected: ['shackleton', 'malapert'], primary: 'shackleton', view: 'terrain', heightM: 2, panel: 'tracking', date: new Date(), window: null, readingLight: false, psr: false };
 const terrains = new Map();
-let metadata = null, scene = null, ready = false, playing = null, timelineKey = '', stripKey = '', pathKey = '', searching = false, current = null, restored = false, ritual = null;
+let metadata = null, scene = null, ready = false, playing = null, stripKey = '', pathKey = '', searching = false, current = null, restored = false, ritual = null;
 const selectedSites = () => state.selected.map(id => sites.find(s => s.id === id));
 const primarySite = () => sites.find(s => s.id === state.primary);
 const windowKey = () => [state.date.toISOString(), state.selected.join(','), state.heightM].join('|');
@@ -124,7 +124,7 @@ function render() {
   $('.stage-meta').dataset.light = light;
   const paths = computePaths(site, terrain, d);
   if (scene) { scene.update(current, d, state.heightM, state.selected); scene.setTerrain(terrain); scene.setPaths(paths); }
-  renderHorizon(terrain, current, paths); renderStrip(site, terrain); renderTimeline();
+  renderHorizon(terrain, current, paths); renderTracks();
 }
 
 function renderHorizon(terrain, result, paths) {
@@ -151,38 +151,29 @@ function renderHorizon(terrain, result, paths) {
   $('#horizonChart').innerHTML = out;
 }
 
-// 24 cells under the time scrubber for the primary site: Sun on top, Earth below.
-function renderStrip(site, terrain) {
+// One track per compared site under the time scrubber, for the UTC day of the chosen date:
+// Sun on top, Earth below, hatched when behind the relief. On the right, the longest stretch with both.
+function renderTracks() {
   const base = new Date(state.date); base.setUTCHours(0, 0, 0, 0);
-  const key = [site.id, base.toISOString(), state.heightM].join('|'); if (key === stripKey) return; stripKey = key;
-  $('#dayStrip').innerHTML = Array.from({ length: 24 }, (_, h) => {
-    const m = evaluate(site, new Date(+base + h * 36e5), terrain, astronomy, state.heightM, state.panel);
-    return `<i class="${m.sun.available ? 's1' : 's0'} ${m.earth.available ? 'e1' : 'e0'}"></i>`;
-  }).join('');
-}
-
-function renderTimeline() {
-  // Each column is an hour starting at the selected UTC hour, not at midnight.
-  const base = new Date(state.date); base.setUTCMinutes(0, 0, 0);
-  const key = [base.toISOString(), state.selected.join(','), state.heightM, getLang()].join('|');
-  if (key === timelineKey || !state.selected.every(id => terrains.has(id))) return; timelineKey = key;
+  const shown = sites.filter(s => s.id === state.primary || state.selected.includes(s.id));
+  if (!shown.every(s => terrains.has(s.id))) return;
+  const key = [shown.map(s => s.id).join(','), state.primary, base.toISOString(), state.heightM, state.panel, getLang()].join('|');
+  if (key === stripKey) return; stripKey = key;
   const vectors = Array.from({ length: 24 }, (_, h) => ephemeris(new Date(+base + h * 36e5), astronomy));
-  $('#timeScale').innerHTML = [0, 6, 12, 18, 24].map(h => `<span>${String(new Date(+base + h * 36e5).getUTCHours()).padStart(2, '0')}h</span>`).join('');
-  let best = 0;
-  $('#timelineRows').innerHTML = selectedSites().map(s => {
+  const rows = shown.map(s => {
     const both = [];
     const cells = vectors.map((eph, h) => {
-      const date = new Date(+base + h * 36e5), m = evaluate(s, date, terrains.get(s.id), astronomy, state.heightM, state.panel, eph);
-      const sun = m.sun.available, earth = m.earth.available; both.push(sun && earth);
-      const label = t('timeline.cell', { site: siteName(s), date: utcDate(date), sun: t(sun ? 'sun.visible' : 'sun.blocked'), earth: t(earth ? 'earth.visible' : 'earth.blocked') });
-      return `<button type="button" class="hour ${sun ? 's1' : 's0'} ${earth ? 'e1' : 'e0'} ${h === 0 ? 'selected-hour' : ''}" data-hour="${date.toISOString()}" data-hour-site="${s.id}" title="${label}" aria-label="${label}"></button>`;
+      const m = evaluate(s, new Date(+base + h * 36e5), terrains.get(s.id), astronomy, state.heightM, state.panel, eph);
+      both.push(m.sun.available && m.earth.available);
+      return `<i class="${m.sun.available ? 's1' : 's0'} ${m.earth.available ? 'e1' : 'e0'}"></i>`;
     }).join('');
-    best = Math.max(best, longestRun(both).length);
-    return `<div class="timeline-row"><button type="button" class="timeline-name" data-timeline-site="${s.id}"><span class="n">${sites.indexOf(s) + 1}</span>${siteName(s)}</button><div class="timeline-track">${cells}</div></div>`;
-  }).join('');
-  $('#bestSpan').textContent = `${best}h`;
-  $$('[data-hour]').forEach(el => el.addEventListener('click', () => { state.primary = el.dataset.hourSite; renderSites(); stopPlayback(); setDate(new Date(el.dataset.hour)); }));
-  $$('[data-timeline-site]').forEach(el => el.addEventListener('click', () => focusSite(el.dataset.timelineSite)));
+    return { s, cells, best: longestRun(both).length, primary: s.id === state.primary };
+  });
+  $('#dayStrip').innerHTML = rows.map(r => `<div class="day-row${r.primary ? ' primary' : ''}">${r.cells}</div>`).join('');
+  $('#trackSites').innerHTML = rows.map(r => `<button type="button" data-track-site="${r.s.id}" class="${r.primary ? 'primary' : ''}" aria-pressed="${r.primary}" title="${siteName(r.s)}" aria-label="${t('sites.explore', { name: siteName(r.s) })}">${sites.indexOf(r.s) + 1}</button>`).join('');
+  $('#trackBest').innerHTML = rows.map(r => `<span class="${r.primary ? 'primary' : ''}" title="${t('strip.bestTitle', { site: siteName(r.s), h: r.best })}">${r.best} h</span>`).join('');
+  $('.scrub-grid').style.setProperty('--rows', rows.length);
+  $$('[data-track-site]').forEach(el => el.addEventListener('click', () => focusSite(el.dataset.trackSite)));
 }
 
 function stopPlayback() {
@@ -320,7 +311,7 @@ bindLanguageSwitch();
 // The scene tools sit right above the console, whatever its height.
 const consoleBox = $('.console');
 new ResizeObserver(() => $('#sceneViewport').style.setProperty('--console-h', `${consoleBox.offsetHeight}px`)).observe(consoleBox);
-onLangChange(() => { document.title = t('meta.appTitle'); timelineKey = ''; stripKey = ''; renderSites(); render(); mission.refreshLanguage(); if (!searching) $('#bestWindow').textContent = t('action.best'); });
+onLangChange(() => { document.title = t('meta.appTitle'); stripKey = ''; renderSites(); render(); mission.refreshLanguage(); if (!searching) $('#bestWindow').textContent = t('action.best'); });
 document.title = t('meta.appTitle');
 
 // WebMCP tools for agents in the browser.
@@ -356,7 +347,7 @@ async function init() {
     metadata = await response.json();
     await ensureTerrains([...new Set([state.primary, ...state.selected])]);
     ready = true; $('#missionButton').disabled = false;
-    try { scene = new LunarScene($('#sceneCanvas'), $('#sceneBox'), sites, text => message(text, true), { t }); }
+    try { scene = new LunarScene($('#sceneCanvas'), $('#sceneBox'), sites, text => message(text, true), { t, onSite: id => focusSite(id) }); }
     catch (error) { message(t('msg.webgl'), true); $('#sceneLoading').innerHTML = `<b>${t('loading.webglTitle')}</b><span>${t('loading.webglSub')}</span>`; console.warn(error); }
     scene?.setView(state.view);
     if (restored) render(); else await openingRitual();

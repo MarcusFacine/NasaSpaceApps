@@ -110,6 +110,10 @@ function rcsQuad(parent, m, position, yaw) {
   return g;
 }
 
+let glowTexture = null;
+function radialGlow() {
+  return glowTexture || (glowTexture = canvasTexture(128, 128, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.2, 'rgba(255,255,255,.55)'); g.addColorStop(0.5, 'rgba(255,255,255,.12)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }));
+}
 // Exhaust: bright for the first stage in air, faint for engines in vacuum.
 function plume(length, radius, color, opacity) {
   const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
@@ -118,6 +122,9 @@ function plume(length, radius, color, opacity) {
   const g = new THREE.Group(); g.add(outer);
   const core = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.45, length * 0.45, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff4dc, transparent: true, opacity: Math.min(1, opacity * 1.6), depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
   core.rotation.x = Math.PI; core.position.y = -length * 0.225; core.userData.base = core.material.opacity; g.add(core);
+  // Glow at the nozzle: what a camera sees of a burning engine.
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialGlow(), color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: Math.min(1, opacity * 2.4) }));
+  glow.scale.setScalar(radius * 7); glow.position.y = -radius * 0.6; glow.userData.base = glow.material.opacity; glow.userData.glow = true; g.add(glow);
   g.visible = false; return g;
 }
 
@@ -136,7 +143,7 @@ function buildCM(m, { shield = true, boostCover = false } = {}) {
   if (shield) { const cap = add(g, new THREE.SphereGeometry(4.69, 64, 8, 0, Math.PI * 2, Math.PI - 0.432, 0.432), m.heatShield, [0, 4.69 - 0.42, 0]); cap.userData.shield = true; }
   return g;
 }
-function buildSM(m) {
+export function buildSM(m) {
   const g = new THREE.Group(), r = 1.955, h = 4.1;
   add(g, cyl(r, r, h, 64), m.aluminium, [0, -h / 2, 0]);
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; add(g, new THREE.BoxGeometry(0.9, 2.6, 0.03), m.radiator, [Math.sin(a) * (r + 0.01), -2.4, Math.cos(a) * (r + 0.01)], [0, a, 0]); }
@@ -251,6 +258,18 @@ function buildSaturnV(m, { stage = 1 } = {}) {
   return g;
 }
 
+// Stages left behind: the same models, without what flies on.
+export function buildSpent(m, kind) {
+  if (kind === 'sm') { const g = buildSM(m); g.userData.plume.visible = false; return g; }
+  if (kind === 'asc') return buildAscentStage(m);
+  const stage = kind === 'sic' ? 1 : kind === 'sii' ? 2 : 3, top = kind === 'sic' ? 48 : kind === 'sii' ? 30.4 : 30.2;
+  const g = buildSaturnV(m, { stage });
+  for (const child of [...g.children]) if (child === g.userData.plume || child.position.y > top) g.remove(child);
+  const centre = top / 2; for (const child of g.children) child.position.y -= centre;
+  return g;
+}
+export function setLayer(object, layer) { object.traverse(o => o.layers.set(layer)); return object; }
+
 // ---- Entry and recovery ----
 function plasma() {
   const g = new THREE.Group();
@@ -314,7 +333,9 @@ export class Spacecraft {
   engine(level) {
     const p = this.configs[this.name].userData.plume; if (!p) return;
     p.visible = level > 0.01; p.children.forEach(c => { c.material.opacity = c.userData.base * level; });
-    p.scale.set(1, 0.85 + 0.3 * level, 1);
+    // A burning engine is never still: the plume length and glow flicker a little.
+    const time = performance.now() / 1000, flick = 1 + 0.05 * Math.sin(time * 41) + 0.035 * Math.sin(time * 97 + 1.3);
+    p.scale.set(1, (0.85 + 0.3 * level) * flick * (this.plumeLength ?? 1), 1);
   }
   plasma(level) {
     const g = this.configs.cm.userData.plasma; g.visible = level > 0.01;

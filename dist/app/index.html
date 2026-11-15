@@ -107,8 +107,15 @@
           <div class="console-time">
             <button type="button" id="playButton" class="play" aria-pressed="false" data-i18n-attr="aria-label:time.play"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
             <div class="scrub">
-              <div class="scrub-head"><label for="hourSlider" data-i18n="time.scrub">Hora do dia</label><output id="hourOutput" class="num">12:00 UTC</output></div>
-              <div class="scrub-track"><div id="dayStrip" class="day-strip" aria-hidden="true"></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div>
+              <div class="scrub-head"><label for="hourSlider" data-i18n="time.scrub">Hora do dia</label>
+                <span class="scrub-legend" aria-hidden="true"><span><i class="k-sun"></i><span data-i18n="sun">Sol</span></span><span><i class="k-earth"></i><span data-i18n="earth">Terra</span></span><span><i class="k-hatch"></i><span data-i18n="strip.behind">atrás do relevo</span></span></span>
+                <output id="hourOutput" class="num">12:00 UTC</output></div>
+              <div class="scrub-grid">
+                <div id="trackSites" class="track-sites"></div>
+                <div class="scrub-track"><div id="dayStrip" class="day-strip" aria-hidden="true"></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div>
+                <div id="trackBest" class="track-best num"></div>
+                <span></span><div class="scrub-scale num" aria-hidden="true"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div><span class="track-best-label" data-i18n="strip.both">juntos</span>
+              </div>
             </div>
             <div class="console-actions">
               <button type="button" id="bestWindow" class="btn btn-primary" data-i18n="action.best">Melhor janela</button>
@@ -135,12 +142,6 @@
 
     <section class="analysis">
       <div class="window-line"><span data-i18n="window.title">Janela da missão</span><b id="chosenWindow" class="num">—</b><small data-i18n="window.note"></small></div>
-      <article class="card timeline-card">
-        <header><h2 data-i18n="timeline.title">Próximas 24 horas</h2><p data-i18n="timeline.desc"></p></header>
-        <div class="timeline-scale"><span></span><div id="timeScale" class="num"></div></div>
-        <div id="timelineRows" class="timeline-rows"></div>
-        <p class="timeline-best"><b id="bestSpan" class="num">—</b> <span data-i18n="timeline.best">maior trecho com os dois</span></p>
-      </article>
       <article class="card settings-card">
         <label for="height" class="height-label"><span data-i18n="height.label">Altura do observador</span><output id="heightOutput" class="num">2 m</output></label>
         <input id="height" type="range" min="2" max="20" step="2" value="2">
@@ -191,7 +192,7 @@
           </div>
           <button type="button" id="missionReplay" class="icon-button" data-i18n-attr="aria-label:mp.replay|title:mp.replay"><svg><use href="#i-replay"/></svg></button>
           <label for="missionSpeed" class="sr-only" data-i18n="mp.speed">Velocidade</label>
-          <select id="missionSpeed" class="num"><option value="1">1× · 150 s</option><option value="2">2× · 75 s</option><option value="4">4× · 38 s</option></select>
+          <select id="missionSpeed" class="num"><option value="1">1× · 159 s</option><option value="2">2× · 80 s</option><option value="4">4× · 40 s</option></select>
         </div>
         <p id="missionOrbitStatus" class="mission-status" role="status">—</p>
         <p class="muted mission-note" data-i18n="mp.note"></p>

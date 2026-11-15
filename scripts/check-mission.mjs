@@ -29,7 +29,7 @@ assert.equal(+returned.date,plan.returnAt);assert.equal(returned.altitudeKm,0);a
 assert.ok(plan.entry.to.lon>=150||plan.entry.to.lon<=-120,'Splashdown in the Pacific recovery band');
 assert.equal(returned.phase,'splashdown');assert.equal(returned.config,'cmChutes');
 // Apollo profile: S-IVB to orbit, CSM+LM out, LM down, ascent stage up, CSM back, CM alone at entry.
-for(const [id,t,config] of [['launch',.1,'saturnV'],['launch',.5,'stage2'],['earthOrbit',.5,'sivb'],['outbound',.5,'stack'],['descent',.5,'lm'],['ascent',.5,'ascent'],['inbound',.5,'csm'],['arrival',.5,'cm']])assert.equal(sampleMission(plan,progressAt(id,t),Astronomy).config,config,`${id} config`);
+for(const [id,t,config] of [['liftoff',.5,'saturnV'],['launch',.1,'saturnV'],['launch',.5,'stage2'],['earthOrbit',.5,'sivb'],['outbound',.5,'stack'],['descent',.5,'lm'],['ascent',.5,'ascent'],['inbound',.5,'csm'],['arrival',.5,'cm']])assert.equal(sampleMission(plan,progressAt(id,t),Astronomy).config,config,`${id} config`);
 const entry=sampleMission(plan,progressAt('arrival',0),Astronomy);assert.ok(Math.abs(entry.altitudeKm-APOLLO.entryAltitudeKm)<.01,'Entry interface at 121.9 km');
 assert.ok(sampleMission(plan,progressAt('arrival',.5),Astronomy).plasma>.5,'Plasma sheath during entry');
 assert.throws(()=>buildMission({...plan,stayHours:151},Astronomy),/caber/);
@@ -116,4 +116,6 @@ for(const local of [false,true]){
 const climbSample=sampleMission(plan,progressAt('ascent',.85),Astronomy);
 scene.vehicle={group:{position:new THREE.Vector3(climbSample.position[0],climbSample.position[2],-climbSample.position[1]).multiplyScalar(.001)}};scene.mode='auto';scene.setCamera(climbSample,false);
 assert.ok(scene.controls.minDistance<scene.camera.position.distanceTo(scene.controls.target),'World controls must allow the close surface camera without forcing a zoom-out');
-console.log('PASS: 14 phases (Apollo 11 profile), preserved mission/window dates, continuous positions and attitudes, forward unpowered parking, Kepler periods/speeds, extended surface cutscenes, monotonic ascent/descent, eased presentation clock, camera-frame roundtrip and smooth camera interpolation, transfer clearance for five sites and 24/72/240 h. Transfers/burns remain illustrative.');
+const padStart=sampleMission(plan,0,Astronomy),padHold=sampleMission(plan,progressAt('liftoff',.1),Astronomy);
+assert.equal(padStart.pad,true);assert.equal(padHold.altitudeKm,0,'Hold-down during ignition');assert.ok(Math.abs(sampleMission(plan,progressAt('launch',0),Astronomy).altitudeKm-APOLLO.liftoffAltitudeKm)<1e-6);
+console.log('PASS: 15 phases (Apollo 11 profile), preserved mission/window dates, continuous positions and attitudes, forward unpowered parking, Kepler periods/speeds, extended surface cutscenes, monotonic ascent/descent, eased presentation clock, camera-frame roundtrip and smooth camera interpolation, transfer clearance for five sites and 24/72/240 h. Transfers/burns remain illustrative.');

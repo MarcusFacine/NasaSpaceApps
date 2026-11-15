@@ -25,6 +25,7 @@ Instale as versões fixadas com `pnpm install`.
 
   Antes de gravar, o script compara o recorte com os arquivos existentes e interrompe se a projeção não conferir. A comparação com o DEM SVS de 474 m usado antes deu diferença média de 7,6 a 8,6 m e correlação ≥ 0,99994 nos cinco locais (registrada em `dist/data/metadata.json`).
 - `node scripts/prepare-stars.mjs` gera `dist/data/stars.json` do catálogo HYG v4.1 (magnitude ≤ 6).
+- `node scripts/prepare-mission-assets.mjs` baixa e prepara as texturas de 4096 px usadas só na missão (Terra do three.js; cor LROC e mapa de normais calculado do LOLA `ldem_16`, do NASA SVS CGI Moon Kit). Precisa de rede e de `ffmpeg`.
 - `pnpm check` verifica a geometria, um caso de referência do JPL Horizons e a missão. `node scripts/tutorial-examples.mjs` recalcula os números do tutorial.
 
 ## Recursos

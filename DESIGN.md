@@ -145,8 +145,8 @@ Jost (linha do Futura, a família da placa da Apollo) em tudo o que é texto; Je
 ## Layout
 
 - Landing: coluna de até 1240 px, seções com 72–128 px de respiro, mosaico de 12 colunas, faixas arredondadas de borda a borda (recurso, link, chamada final). No celular, tudo vira uma coluna com margem de 16 px.
-- App: a cena ocupa a tela menos a barra de 64 px. Por cima: título e vistas (canto superior esquerdo), coluna da direita (330 px) com a resposta Sol/Terra e, logo abaixo, o gráfico "O que o relevo esconde" (para acompanhar o tempo passando), ferramentas numa fileira logo acima do console, console no rodapé terminando antes da coluna (tempo + ações na primeira linha, data + locais na segunda). Abaixo de 1180 px, resposta, gráfico e console descem para baixo da cena, nessa ordem.
-- Análise do app: 24 horas em largura total, depois altura e limite dos dados.
+- App: a cena ocupa a tela menos a barra de 64 px. Por cima: título e vistas (canto superior esquerdo), coluna da direita (330 px) com a resposta Sol/Terra e, logo abaixo, o gráfico "O que o relevo esconde" (para acompanhar o tempo passando), ferramentas numa fileira logo acima do console, console no rodapé terminando antes da coluna (tempo + ações na primeira linha, data + locais na segunda). A barra do tempo carrega uma trilha por local comparado (assinatura de dados), com o cursor cruzando todas. Os locais comparados aparecem na cena como pino + rótulo com a distância; fora do quadro, o rótulo encosta na borda livre com uma seta. Abaixo de 1180 px, resposta, gráfico e console descem para baixo da cena, nessa ordem.
+- Abaixo da cena ficam só a janela da missão, a altura do observador e o limite dos dados.
 
 ## Elevation & Depth
 
@@ -171,7 +171,7 @@ Landing: cartões de 28 px de raio com fundo de cor inteira (amarelo, ardósia, 
 Barra simples com o logotipo, links e o seletor PT/EN em pílula com contorno.
 
 ### Células de 24 horas (assinatura de dados)
-Cada hora é uma célula dividida: metade de cima amarela se o Sol está à vista, metade de baixo rosa se a Terra está à vista, hachura quando atrás do relevo. Aparece no console (local em exploração) e na análise (locais comparados).
+Cada hora é uma célula dividida: metade de cima amarela se o Sol está à vista, metade de baixo rosa se a Terra está à vista, hachura quando atrás do relevo. Aparece no console, numa trilha por local comparado (dia UTC escolhido), com o maior trecho de Sol e Terra juntos à direita.
 
 ### Cena 3D (assinatura)
 Relevo LOLA (40 m / 130 m / 1,56 km), regolito lunar-Lambert, sombras do Sol, estrelas HYG, raios até o Sol e a Terra com o ponto de bloqueio marcado, caminho de 24 h, linha do horizonte calculado na superfície, lente que mostra a Terra com fase real, camada violeta de sombra eterna. Abertura: a cena acende e o tempo corre até o Sol sair da borda no início da melhor janela.

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { siteBasis, unit } from './model.js';
+import { RADIUS_KM, siteBasis, unit } from './model.js';
 import { number } from './i18n.js';
 // Short distances read in metres: a ridge 250 m away is not "0 km".
 const distance = km => (km < 1 ? `${number(Math.round(km * 100) * 10)} m` : km < 10 ? `${number(km, 1)} km` : `${number(Math.round(km))} km`);
@@ -84,7 +84,7 @@ class SightRay {
 }
 
 export class LunarScene {
-  constructor(canvas, container, sites, onError, { t = (k) => k } = {}) {
+  constructor(canvas, container, sites, onError, { t = (k) => k, onSite = null } = {}) {
     this.container = container; this.sites = sites; this.t = t; this.view = 'terrain'; this.dirty = true; this.disposed = false;
     this.lowPower = lowPower(); this.readingLight = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
@@ -162,6 +162,17 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     this.siteLabels = sites.map((site, i) => {
       const el = document.createElement('div'); el.className = 'globe-site-label'; el.textContent = String(i + 1);
       el.setAttribute('aria-hidden', 'true'); container.append(el); return el;
+    });
+    // Compared sites, seen from the explored one: a pin on the relief, a label with the distance and a
+    // faint line along the ground. All five points lie within 190 km of each other.
+    this.onSite = onSite;
+    this.sitePins = sites.map((site, i) => {
+      const el = document.createElement('button'); el.type = 'button'; el.className = 'site-pin';
+      el.innerHTML = `<b>${i + 1}</b><span></span><i></i><em aria-hidden="true"></em>`; el.addEventListener('click', () => this.onSite?.(site.id)); container.append(el);
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+      const link = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, toneMapped: false }));
+      pin.visible = link.visible = false; this.overlay.add(pin, link);
+      return { site, el, pin, link, base: new THREE.Vector3(), top: new THREE.Vector3(), km: 0, shown: false };
     });
     this.blockLabels = ['sun', 'earth'].map(body => {
       const el = document.createElement('div'); el.className = `block-label block-${body}`; el.setAttribute('aria-hidden', 'true');
@@ -279,7 +290,25 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       this.rays.earth.update(origin, v3(result.earth.direction), this.terrain, h);
       this.updateHorizon(heightM);
     }
-    this.orientStars(); this.applyView(); this.invalidate();
+    this.placeSites(); this.orientStars(); this.applyView(); this.invalidate();
+  }
+
+  // Tangent-plane position of every other compared site, on the relief of the explored one.
+  placeSites() {
+    if (!this.terrain) return;
+    const here = siteBasis(this.terrain.site), dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const key = `${this.terrain.site.id}|${(this.selected || []).join(',')}|${this.t('site.shackleton')}`;
+    if (key === this.sitesKey) return; this.sitesKey = key;
+    for (const p of this.sitePins) {
+      p.shown = p.site.id !== this.terrain.site.id && (this.selected || []).includes(p.site.id);
+      if (!p.shown) continue;
+      const up = siteBasis(p.site).up, c = dot3(up, here.up), x = RADIUS_KM * dot3(up, here.east) / c, z = -RADIUS_KM * dot3(up, here.north) / c;
+      p.km = RADIUS_KM * Math.acos(Math.min(1, c)); p.base.set(x, this.terrain.heightAt(x, z), z);
+      const points = Array.from({ length: 65 }, (_, i) => { const k = i / 64; return new THREE.Vector3(x * k, this.terrain.heightAt(x * k, z * k) + 0.12, z * k); });
+      p.link.geometry.dispose(); p.link.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      p.el.children[1].textContent = this.t(`site.${p.site.id}`); p.el.children[2].textContent = `${number(Math.round(p.km))} km`;
+      p.el.setAttribute('aria-label', `${this.t(`site.${p.site.id}`)}, ${number(Math.round(p.km))} km`);
+    }
   }
 
   // Earth-fixed -> J2000 by Greenwich sidereal time (precession ignored, ~0.4° in 2026),
@@ -340,6 +369,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     this.observer.visible = this.view === 'terrain';
     this.horizonLine.visible = this.view === 'surface';
     this.paths.visible = local && !this.telephoto;
+    for (const p of this.sitePins) { p.pin.visible = local && p.shown && !this.telephoto; p.link.visible = this.view === 'terrain' && p.shown; }
     if (this.stars) this.stars.material.uniforms.uOpacity.value = this.view === 'terrain' ? 0.55 : 0.9;
   }
 
@@ -402,6 +432,12 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   }
 
   updateThickness() {
+    // Site pins keep a constant apparent size, whatever their distance.
+    if (this.view !== 'globe') for (const p of this.sitePins) {
+      if (!p.shown) continue;
+      const r = Math.max(0.006, this.camera.position.distanceTo(p.base) * 0.0016 * (this.camera.fov / 42)), h = r * 30;
+      p.pin.scale.set(r, h, r); p.pin.position.copy(p.base).setY(p.base.y + h / 2); p.top.copy(p.base).setY(p.base.y + h);
+    }
     if (this.view !== 'terrain') return;
     const r = Math.max(0.008, this.camera.position.distanceTo(new THREE.Vector3(0, 0, 0)) * 0.0021);
     this.rays.sun.thickness(r, this.camera); this.rays.earth.thickness(r, this.camera);
@@ -434,6 +470,27 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       el.textContent = this.t(`scene.blocked.${body}`, { d: distance(state.distance) });
       el.style.opacity = p.visible ? '1' : '0'; el.style.transform = `translate(${p.x + 12}px,${p.y + 10}px)`;
     });
+    // Site labels never leave the picture: outside the free area of the scene they stick to its edge
+    // and an arrow points the way.
+    if (local && !this.telephoto && this.sitePins.some(p => p.shown)) {
+      const box = this.container.getBoundingClientRect(), w = box.width, h = box.height;
+      const rect = sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.top < box.bottom && r.bottom > box.top && r.left < box.right ? r : null; };
+      const answer = rect('.answer'), deck = rect('.console'), title = rect('.stage-title');
+      const right = (answer ? answer.left - box.left : w) - 12, bottom = (deck ? deck.top - box.top - 62 : h) - 12;
+      for (const p of this.sitePins) {
+        if (!p.shown) { p.el.classList.remove('shown'); p.el.style.opacity = '0'; continue; }
+        const view = p.top.clone().applyMatrix4(this.camera.matrixWorldInverse), ndc = p.top.clone().project(this.camera);
+        let x = (ndc.x * 0.5 + 0.5) * w, y = (-ndc.y * 0.5 + 0.5) * h;
+        if (view.z > 0) { const k = 4 / Math.max(1e-6, Math.hypot(ndc.x, ndc.y)); x = (-ndc.x * k * 0.5 + 0.5) * w; y = (ndc.y * k * 0.5 + 0.5) * h; }
+        const ew = p.el.offsetWidth || 170, eh = 28;
+        let lx = Math.min(Math.max(x - 14, 12), right - ew), ly = Math.min(Math.max(y - 32, 12), bottom - eh);
+        if (title && lx < title.right - box.left + 8 && ly < title.bottom - box.top + 8) ly = Math.min(title.bottom - box.top + 8, bottom - eh);
+        const off = Math.abs(lx - (x - 14)) > 2 || Math.abs(ly - (y - 32)) > 2;
+        p.el.classList.toggle('off', off); p.el.classList.add('shown'); p.el.style.opacity = '1';
+        p.el.style.transform = `translate(${lx}px,${ly}px)`;
+        if (off) p.el.lastElementChild.style.transform = `rotate(${Math.atan2(y - (ly + eh / 2), x - (lx + ew / 2))}rad)`;
+      }
+    } else for (const p of this.sitePins) { p.el.classList.remove('shown'); p.el.style.opacity = '0'; }
     this.siteLabels.forEach((el, i) => {
       const marker = this.globeMarkers[i];
       if (local || !marker.visible) { el.style.opacity = '0'; return; }
@@ -446,6 +503,6 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   invalidate() { this.dirty = true; }
   dispose() {
     this.disposed = true; cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); this.controls.dispose(); this.renderer.dispose();
-    [...this.siteLabels, ...this.blockLabels].forEach(el => el.remove());
+    [...this.siteLabels, ...this.blockLabels, ...this.sitePins.map(p => p.el)].forEach(el => el.remove());
   }
 }
