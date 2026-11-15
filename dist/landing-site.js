@@ -12,7 +12,7 @@ import { lunarMaterial, regolithNormalMap, fbm, lunarSpace, craterField, craterL
 //  - Rocks: a steep power law of sizes; blocks gather on the rims and ejecta of fresh craters large
 //    enough to dig below the regolith (a few metres thick on the highlands), sparse cobbles elsewhere.
 //    Rocks are a little brighter than mature soil, partly buried, angular or rounded.
-// The pad stays flat, as on the Apollo sites. Scene units are km.
+// The pad stays flat, as on the Apollo sites (pad: false for ground with no lander, the explorer's walk). Scene units are km.
 // space: lunarSpace() of the local frame (siteSpace), so the craters match the other lunar meshes.
 // earthshine: earthshineUniforms() (night side). detail: false to skip the material's small craters.
 
@@ -24,7 +24,7 @@ function random(seed) { let s = (seed * 2654435761) % 2147483647 || 1; return ()
 const GEOMETRY_CRATERS = { coarseKm: 0.5, fineKm: 0.03125 };
 
 export class LandingSite {
-  constructor(terrain, { seed = 7, half = 0.4, step = 0.002, space = null, earthshine = null, detail = true } = {}) {
+  constructor(terrain, { seed = 7, half = 0.4, step = 0.002, space = null, earthshine = null, detail = true, pad = true } = {}) {
     this.terrain = terrain; this.half = half; this.step = step; this.space = space || lunarSpace();
     const n = this.n = Math.round(2 * half / step) + 1, rnd = random(seed + 101);
     const cell = step * 1000, halfM = half * 1000, base = new Float32Array(n * n);
@@ -44,7 +44,7 @@ export class LandingSite {
       const cl = Math.max(0, c - 1), cr = Math.min(n - 1, c + 1), rl = Math.max(0, r - 1), rr = Math.min(n - 1, r + 1);
       const gx = (base[r * n + cr] - base[r * n + cl]) / ((cr - cl) * step), gz = (base[rr * n + c] - base[rl * n + c]) / ((rr - rl) * step), gl = Math.hypot(gx, 1, gz);
       macro.set([-gx / gl, 1 / gl, -gz / gl], i * 3);
-      const keep = smooth(5, 16, Math.hypot(x, z)) * smooth(0, 60, edge);
+      const keep = (pad ? smooth(5, 16, Math.hypot(x, z)) : 1) * smooth(0, 60, edge);
       if (keep <= 0) { micro[i] = 0; continue; }
       const s = field(x / 1000, base[i], z / 1000, -gx / gl, 1 / gl, -gz / gl);
       micro[i] = (micro[i] + s.height * 1000) * keep; albedo[i] = s.bright * keep;

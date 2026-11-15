@@ -178,3 +178,21 @@ Pedido do Ricardo: quem entra pela primeira vez recebe um guia que ensina o que 
 
     O teste `check-model.mjs` cobre o caso de 2029. A luz vermelha refratada pela atmosfera da Terra não é modelada.
 - **Idioma inicial:** o site abre em inglês (decisão do Ricardo, 15/11). O HTML estático já vem em inglês. Quem escolhe PT no botão continua em PT, e `?lang=pt` também funciona.
+
+## Caminhada com capacete na vista Superfície (15/11/2026)
+
+Pedido do Ricardo: "na visão da superfície, como se fôssemos o astronauta, até com o capacete, 100% real... eu ando com o boneco em cima da superfície".
+
+- **Movimento.** Em primeira pessoa:
+  - W A S D ou setas andam (← → giram), Shift corre, arrastar olha em volta; no celular, um direcional na tela;
+  - 1,2 m/s andando e 2,5 m/s correndo; os olhos ficam na altura do observador, com um leve balanço da passada (desligado com "movimento reduzido").
+- **Chão.** É o de `landing-site.js` (800 × 800 m, malha de 2 m, crateras de 5 a 150 m em geometria e menores no material, pedras em lei de potência), sem a plataforma aplainada da missão (`pad: false`). O ladrilho de 40 m ganha um furo onde ele fica, e a caminhada não sai da área detalhada.
+- **Sombras.** Um corpo invisível de astronauta (pernas, tronco, mochila, braços e capacete, ~1,9 m) projeta a sombra. A luz principal mantém a sombra das cristas distantes (mapa de ±125 km), e um par de luzes na mesma direção dá as sombras próximas:
+  - uma tem caixa de sombra de ±120 m em volta de você e desenha só o chão, as pedras e o corpo;
+  - a outra é negativa e sem sombra.
+
+  As duas se anulam, exceto dentro das sombras próximas, onde tiram a luz direta. A sombra principal só é redesenhada quando a luz, o relevo ou a vista mudam.
+- **Composição.** A imagem usa uma lente deslocada (`setViewOffset`): o horizonte fica no meio da área que os painéis deixam livre.
+- **Capacete.** Borda desfocada do casco, anel do pescoço e peito embaixo (como na Apollo, onde mal se viam os pés), reflexos na bolha e clarão do Sol no visor. O visor solar dourado imita o filme de ouro.
+- **"Aqui".** Sol e Terra são testados contra o relevo a partir da posição do caminhante (centro do disco). Os números do painel continuam sendo os do ponto de referência; longe dele, os rótulos do Sol e da Terra na cena somem.
+- **Medido no notebook de desenvolvimento** (1536×864): ~43 quadros por segundo andando, sem erros no console. Também conferido no celular (390×820) e em inglês.
