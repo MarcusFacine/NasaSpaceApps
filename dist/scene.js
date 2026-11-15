@@ -128,8 +128,9 @@ export class LunarScene {
     // direct light away: the astronaut, the rocks and the small craters get centimetre shadows, while the main
     // light keeps the shadows of the far ridges.
     this.nearSun = new THREE.DirectionalLight(0xfff4e0, 0); this.nearSun.castShadow = !this.lowPower;
-    this.nearSun.shadow.mapSize.set(2048, 2048); this.nearSun.shadow.camera.layers.set(2); // only the ground at the feet, rocks and the walker (layer 2) Object.assign(this.nearSun.shadow.camera, { left: -.12, right: .12, top: .06, bottom: -.06, near: 0, far: 1.2 });
-    this.nearSun.shadow.normalBias = .00005; this.nearSun.shadow.bias = -.0002;
+    this.nearSun.shadow.mapSize.set(2048, 2048); this.nearSun.shadow.autoUpdate = false; Object.assign(this.nearSun.shadow.camera, { left: -.12, right: .12, top: .06, bottom: -.06, near: 0, far: 1.2 });
+    // Grazing light: a 12 cm normal offset is ~3.4 m along a 2° ray, enough to keep the ground from shading itself.
+    this.nearSun.shadow.normalBias = .00012; this.nearSun.shadow.bias = -.0003;
     this.nearAnti = new THREE.DirectionalLight(0xfff4e0, 0);
     this.scene.add(this.nearSun, this.nearSun.target, this.nearAnti, this.nearAnti.target);
     // Reading light (off by default): earthlight from Earth's direction plus a faint sky fill.
@@ -256,6 +257,11 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       if (this.view === 'surface' && this.walker.keys.size && !this.suspended) { this.walk(dt); this.dirty = true; }
       if (this.dirty && !this.suspended && !document.hidden && !this.contextLost) {
         this.frameView(); this.controls.update(); this.updateThickness();
+        // Shadow maps: the far one (whole tiles) only when the light, the relief or the view change; the near one every
+        // frame while walking, with the big tiles left out (the ground at the feet is the detailed patch).
+        const walking = this.view === 'surface' && Boolean(this.landing), far = this.sunlight.shadow.needsUpdate;
+        this.nearSun.shadow.needsUpdate = walking;
+        for (const mesh of [this.terrainMesh, this.innerMesh, this.contextMesh]) if (mesh) { mesh.userData.cast ??= mesh.castShadow; mesh.castShadow = mesh.userData.cast && (far || !walking); }
         this.sunView.value.copy(this.sunlight.position).normalize().transformDirection(this.camera.matrixWorldInverse);
         this.renderer.render(this.scene, this.camera); this.updateLabels(); this.dirty = false;
       }
@@ -585,7 +591,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       const terrain = this.terrain, space = siteSpace(siteBasis(terrain.site), RADIUS_KM + terrain.elevationKm - terrain.height(0, 0));
       this.landing = new LandingSite(terrain, { seed: [...terrain.site.id].reduce((s, c) => s + c.charCodeAt(0), 0), space, pad: false });
       this.landing.dust.visible = false;
-      this.landing.group.traverse(o => { if (o.isMesh || o.isInstancedMesh) { o.castShadow = true; o.receiveShadow = true; o.layers.enable(2); } });
+      this.landing.group.traverse(o => { if (o.isMesh || o.isInstancedMesh) { o.castShadow = true; o.receiveShadow = true; } });
       this.localGroup.add(this.landing.group);
       if (this.innerMesh) {
         const inner = innerTerrainGeometry(terrain, { stride: this.lowPower ? 2 : 1, hole: this.landing.half });
@@ -651,7 +657,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     // The walker's body: invisible, it only casts the shadow. Suited astronaut, about 1.9 m with the helmet and
     // the backpack; at the pole's grazing Sun its shadow runs tens of metres.
     const m = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), g = this.astronaut = new THREE.Group();
-    const part = (geometry, x, y, z) => { const mesh = new THREE.Mesh(geometry, m); mesh.position.set(x, y, z); mesh.castShadow = true; mesh.frustumCulled = false; mesh.layers.set(2); g.add(mesh); };
+    const part = (geometry, x, y, z) => { const mesh = new THREE.Mesh(geometry, m); mesh.position.set(x, y, z); mesh.castShadow = true; mesh.frustumCulled = false; g.add(mesh); };
     part(new THREE.CapsuleGeometry(.00023, .00086, 4, 10), 0, .00076, 0);
     part(new THREE.SphereGeometry(.00017, 14, 10), 0, .00172, 0);
     part(new THREE.BoxGeometry(.00052, .0007, .00026), 0, .00118, .00024);

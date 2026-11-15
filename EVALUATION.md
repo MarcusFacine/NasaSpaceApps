@@ -191,8 +191,8 @@ Pedido do Ricardo: "na visão da superfície, como se fôssemos o astronauta, at
   - uma tem caixa de sombra de ±120 m em volta de você e desenha só o chão, as pedras e o corpo;
   - a outra é negativa e sem sombra.
 
-  As duas se anulam, exceto dentro das sombras próximas, onde tiram a luz direta. A sombra principal só é redesenhada quando a luz, o relevo ou a vista mudam.
+  As duas se anulam, exceto dentro das sombras próximas, onde tiram a luz direta. A sombra principal só é redesenhada quando a luz, o relevo ou a vista mudam; nos outros quadros, os ladrilhos grandes ficam fora do mapa próximo (o three filtra camadas pela câmera principal, então isso é feito ligando e desligando `castShadow`). O deslocamento pela normal de 12 cm evita que o chão sombreie a si mesmo com o Sol a 2°.
 - **Composição.** A imagem usa uma lente deslocada (`setViewOffset`): o horizonte fica no meio da área que os painéis deixam livre.
 - **Capacete.** Borda desfocada do casco, anel do pescoço e peito embaixo (como na Apollo, onde mal se viam os pés), reflexos na bolha e clarão do Sol no visor. O visor solar dourado imita o filme de ouro.
 - **"Aqui".** Sol e Terra são testados contra o relevo a partir da posição do caminhante (centro do disco). Os números do painel continuam sendo os do ponto de referência; longe dele, os rótulos do Sol e da Terra na cena somem.
-- **Medido no notebook de desenvolvimento** (1536×864): ~43 quadros por segundo andando, sem erros no console. Também conferido no celular (390×820) e em inglês.
+- **Medido no notebook de desenvolvimento** (1536×864): ~48 quadros por segundo andando, sem erros no console. Também conferido no celular (390×820) e em inglês.
