@@ -13,10 +13,10 @@ A NASA Space Apps Challenge 2026 project for **Lunar Landing Site Navigator**, b
 | Website | [Open Horisite](https://187.77.229.205) |
 | Explorer | [Compare sites and dates](https://187.77.229.205/app/) |
 | Illustrated tutorial | [Follow the examples](https://187.77.229.205/tutorial.html) |
-| 30-second demo video | [Watch online](https://187.77.229.205/media/horisite-demo-30s.mp4) · [Repository copy](project-reports/horisite-demo-30s.mp4) · [Captions (SRT)](project-reports/horisite-demo-30s.srt) |
-| Seven-slide presentation | [View online](https://187.77.229.205/slides/) · [PDF online](https://187.77.229.205/slides/horisite-space-apps-2026.pdf) · [Repository copy](project-reports/) |
+| 30-second demo video (submission) | [Watch online](https://187.77.229.205/slides/) · [MP4](https://187.77.229.205/media/horisite-demo-30s.mp4) · [Repository copy](project-reports/horisite-demo-30s.mp4) · [Captions (SRT)](project-reports/horisite-demo-30s.srt) |
+| Slides (download) | [PDF online](https://187.77.229.205/slides/horisite-space-apps-2026.pdf) · [Repository copy](project-reports/) |
 
-The presentation and the video are published with the site (`dist/slides/`, `dist/media/`); the originals live in [project-reports/](project-reports/).
+The submission page shows the 30-second video only, with download links for the video and the slides PDF (`dist/slides/`, `dist/media/`); the originals live in [project-reports/](project-reports/).
 
 ## The challenge and the problem
 
