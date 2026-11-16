@@ -43,7 +43,7 @@ export function makeEnvironment(renderer, { sky = [0, 0, 0], ground = [0.34, 0.3
 
 // Crumpled Kapton/Mylar foil computed from the position on the vehicle (metres), not from texture coordinates:
 // NASA's mesh stretches its UVs, which drew the creases as streaks and made textured panels stand out as patches.
-// Flat facets with straight creases, as crumpled foil: 3D Voronoi cells (~9 cm at 11 per metre), each tilted at random,
+// Flat facets with straight creases: dominant-plane Voronoi cells (~9 cm at 11 per metre), each tilted at random,
 // plus two octaves of fine ridged wrinkles (|n − ½| folds, analytic gradients). The slope tilts the normal along the
 // surface; facets under ~3 pixels and wrinkles under ~2 fade out, so the foil does not sparkle from afar.
 const FOIL_VARYINGS = 'varying vec3 vFoilPos, vFoilN, vFoilX, vFoilY, vFoilZ;\n';
@@ -54,21 +54,24 @@ vec3 foilHash3(vec3 p) {
   return fract((p.xxy + p.yxx) * p.zyx);
 }
 float foilHash(vec3 p) { return foilHash3(p).x; }
-vec3 foilFacetSlope(vec3 x) {
-  vec3 cell = floor(x), local = fract(x), nearestCell = cell;
+vec3 foilFacetSlope(vec3 x, vec3 n) {
+  vec3 an = abs(n);
+  bool axisX = an.x >= an.y && an.x >= an.z, axisY = !axisX && an.y >= an.z;
+  vec2 p = axisX ? x.yz : (axisY ? x.xz : x.xy);
+  float axis = axisX ? 0. : (axisY ? 31. : 67.);
+  vec2 cell = floor(p), local = fract(p), nearestCell = cell;
   float nearestDistance = 1e10;
-  for (int z = -1; z <= 1; z++) {
-    for (int y = -1; y <= 1; y++) {
-      for (int ix = -1; ix <= 1; ix++) {
-        vec3 offset = vec3(float(ix), float(y), float(z)), candidate = cell + offset;
-        vec3 delta = offset + foilHash3(candidate) - local;
-        float distanceSquared = dot(delta, delta);
-        if (distanceSquared < nearestDistance) { nearestDistance = distanceSquared; nearestCell = candidate; }
-      }
+  for (int y = -1; y <= 1; y++) {
+    for (int ix = -1; ix <= 1; ix++) {
+      vec2 offset = vec2(float(ix), float(y)), candidate = cell + offset;
+      vec2 delta = offset + foilHash3(vec3(candidate, axis)).xy - local;
+      float distanceSquared = dot(delta, delta);
+      if (distanceSquared < nearestDistance) { nearestDistance = distanceSquared; nearestCell = candidate; }
     }
   }
-  vec3 slope = foilHash3(nearestCell + vec3(19.19, 47.77, 73.73)) * 2. - 1.;
-  return slope * inversesqrt(max(dot(slope, slope), 1e-8));
+  vec2 slope = foilHash3(vec3(nearestCell, axis) + vec3(19.19, 47.77, 73.73)).xy * 2. - 1.;
+  slope *= inversesqrt(max(dot(slope, slope), 1e-8));
+  return axisX ? vec3(0., slope) : (axisY ? vec3(slope.x, 0., slope.y) : vec3(slope, 0.));
 }
 vec4 foilNoise(vec3 x) {
   vec3 i = floor(x), w = fract(x), u = w * w * w * (w * (w * 6. - 15.) + 10.), du = 30. * w * w * (w * (w - 2.) + 1.);
@@ -83,7 +86,7 @@ const FOIL_APPLY = `{
   float foilPx = length(fwidth(vFoilPos)), foilF = uFoil.y;
   float foilFacetFade = 1. - smoothstep(1. / 5., 1. / 3., foilPx * foilF);
   vec3 foilG = vec3(0.);
-  if (foilFacetFade > 0.) foilG = uFoil.x * foilFacetFade * foilFacetSlope(vFoilPos * foilF);
+  if (foilFacetFade > 0.) foilG = uFoil.x * foilFacetFade * foilFacetSlope(vFoilPos * foilF, vFoilN);
   // The two wrinkle octaves share a total slope budget of 35% of the facet strength.
   float foilA = uFoil.x * (.35 / 1.5);
   foilF *= uFoil.z;
@@ -116,24 +119,122 @@ function crumple(material, strength, frequency, lacunarity = 2.13) {
   return material;
 }
 
+// Aluminium sheets and painted hardware: all distances are object-space metres, independent of UVs.
+// The sheet relief uses polynomial height gradients, no neighbour searches or extra noise octaves.
+const PANEL_NOISE = `uniform vec4 uPanel, uPanelRelief, uPanelFinish;
+float panelHash(vec2 p) {
+  vec3 h = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+  h += dot(h, h.yzx + 33.33);
+  return fract((h.x + h.y) * h.z);
+}
+float panelNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p), w = f * f * (3. - 2. * f);
+  return mix(mix(panelHash(i), panelHash(i + vec2(1., 0.)), w.x),
+    mix(panelHash(i + vec2(0., 1.)), panelHash(i + vec2(1.)), w.x), w.y);
+}
+vec2 panelDomeSlope(vec2 delta, float radius, float height) {
+  float r2 = max(radius * radius, 1e-10);
+  float cap = max(1. - dot(delta, delta) / r2, 0.);
+  return (-4. * height / r2) * cap * delta;
+}
+`;
+const PANEL_SURFACE = `
+  // Take derivatives before normal-dependent projection; branches contain no derivative operations.
+  float panelPx = max(max(length(dFdx(vFoilPos)), length(dFdy(vFoilPos))), 1e-7);
+  vec3 panelN = vFoilN * inversesqrt(max(dot(vFoilN, vFoilN), 1e-12));
+  vec3 panelAN = abs(panelN);
+  bool panelX = panelAN.x >= panelAN.y && panelAN.x >= panelAN.z;
+  bool panelY = !panelX && panelAN.y >= panelAN.z;
+  vec2 panelUV = panelX ? vFoilPos.yz : (panelY ? vFoilPos.xz : vFoilPos.xy);
+  float panelSize = max(uPanel.x, .1), panelPitch = max(uPanel.y, .01);
+  vec2 panelCell = floor(panelUV / panelSize), panelLocal = fract(panelUV / panelSize) * panelSize;
+  vec2 panelEdge = min(panelLocal, vec2(panelSize) - panelLocal);
+  float panelFade = 1. - smoothstep(.15, .4, panelPx / panelSize);
+  float panelBoundary = smoothstep(0., max(panelPx * 1.5, 1e-6), min(panelEdge.x, panelEdge.y));
+  float panelValue = (panelHash(panelCell + (panelX ? 17. : (panelY ? 43. : 79.))) * 2. - 1.)
+    * panelFade * panelBoundary * uPanelRelief.w;
+  // One elongated noise octave: broad handling marks with faint, lengthwise streaks.
+  float panelStreakFade = 1. - smoothstep(.15, .4, panelPx * 25.);
+  float panelStreak = (panelNoise(panelUV * vec2(25., .8)) * 2. - 1.) * panelStreakFade;
+  float panelTone = 1. + uPanelFinish.x * panelValue + uPanelFinish.z * panelStreak;
+  vec3 panelTint = mix(vec3(.95, .98, 1.03), vec3(1.05, .98, .93), clamp(.5 + .5 * panelStreak, 0., 1.));
+  diffuseColor.rgb = clamp(diffuseColor.rgb * max(panelTone, .1)
+    * mix(vec3(1.), panelTint, uPanelFinish.w * panelStreakFade), 0., 1.);
+`;
+const PANEL_ROUGHNESS = `
+  roughnessFactor = clamp(roughnessFactor + uPanelFinish.y * (panelValue + .3 * panelStreak), .04, 1.);
+`;
+const PANEL_APPLY = `{
+  vec2 panelSlope = vec2(0.);
+  if (uPanelRelief.w > .5) {
+    float seamWidth = max(uPanelRelief.y, .0002);
+    float seamFade = 1. - smoothstep(.4 * seamWidth, seamWidth, panelPx);
+    vec2 seamDelta = mix(panelLocal, panelLocal - vec2(panelSize), step(vec2(.5 * panelSize), panelLocal));
+    vec2 seamT = clamp(seamDelta / seamWidth, -1., 1.);
+    panelSlope = (4. * uPanelRelief.z / seamWidth) * seamT * (1. - seamT * seamT) * seamFade;
+    float rivetRadius = max(uPanel.w, .001);
+    float rivetFade = 1. - smoothstep(.4 * rivetRadius, rivetRadius, panelPx);
+    vec2 rivetCenters = clamp(floor((panelLocal - uPanel.z) / panelPitch + .5) * panelPitch + uPanel.z,
+      vec2(uPanel.z), vec2(panelSize - uPanel.z));
+    vec2 edgeSign = vec2(1.) - 2. * step(vec2(.5 * panelSize), panelLocal);
+    vec2 rowX = vec2((panelEdge.x - uPanel.z) * edgeSign.x, panelLocal.y - rivetCenters.y);
+    vec2 rowY = vec2(panelLocal.x - rivetCenters.x, (panelEdge.y - uPanel.z) * edgeSign.y);
+    // A corner belongs to both rows; the nearest dome avoids doubling its height.
+    vec2 rivetDelta = dot(rowX, rowX) <= dot(rowY, rowY) ? rowX : rowY;
+    panelSlope += panelDomeSlope(rivetDelta, rivetRadius, uPanelRelief.x) * rivetFade;
+  }
+  vec3 panelG = panelX ? vec3(0., panelSlope) : (panelY ? vec3(panelSlope.x, 0., panelSlope.y) : vec3(panelSlope, 0.));
+  panelG -= dot(panelG, panelN) * panelN;
+  mat3 panelM = mat3(vFoilX, vFoilY, vFoilZ);
+  vec3 panelTilt = normal - faceDirection * panelM * panelG / max(length(panelM * panelN), 1e-6);
+  normal = panelTilt * inversesqrt(max(dot(panelTilt, panelTilt), 1e-12));
+}
+`;
+// The ascent-stage skin: seams wide enough to read from a few metres, clear panel-to-panel tone changes.
+const LM_PANELS = { radius: .006, height: .0012, seamWidth: .004, seamDepth: .002, albedoVariation: .14, roughnessVariation: .1, smudge: .03 };
+function rivetPanel(material, opts = {}) {
+  const bounded = (key, fallback, lo, hi) => Number.isFinite(opts[key]) ? THREE.MathUtils.clamp(opts[key], lo, hi) : fallback;
+  const size = bounded('panelSize', .7, .5, .9), pitch = bounded('pitch', .07, .06, .08);
+  const panelled = opts.panelled !== false;
+  const inset = bounded('inset', .025, .015, .04), span = size - 2 * inset;
+  // Fit complete intervals between both corner rivets; retain 6–8 cm spacing at each end.
+  const intervals = THREE.MathUtils.clamp(Math.round(span / pitch), Math.ceil(span / .08), Math.floor(span / .06));
+  const surface = new THREE.Vector4(size, span / Math.max(intervals, 1), inset, bounded('radius', .004, .002, .008));
+  const relief = new THREE.Vector4(bounded('height', .0007, 0, .002), bounded('seamWidth', .0015, .0005, .005), bounded('seamDepth', .0006, 0, .003), panelled ? 1 : 0);
+  const finish = new THREE.Vector4(bounded('albedoVariation', .05, 0, .2), bounded('roughnessVariation', .035, 0, .12), bounded('smudge', .015, 0, .06), bounded('heatTint', 0, 0, 1));
+  const varyings = panelled ? FOIL_VARYINGS : 'varying vec3 vFoilPos, vFoilN;\n';
+  material.normalMap = null;
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uPanel = { value: surface }; shader.uniforms.uPanelRelief = { value: relief }; shader.uniforms.uPanelFinish = { value: finish };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + varyings)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFoilPos = position; vFoilN = objectNormal;' + (panelled ? ' vFoilX = normalMatrix[0]; vFoilY = normalMatrix[1]; vFoilZ = normalMatrix[2];' : ''));
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + varyings + PANEL_NOISE)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + PANEL_SURFACE)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + PANEL_ROUGHNESS);
+    if (panelled) shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + PANEL_APPLY);
+  };
+  material.customProgramCacheKey = () => panelled ? 'rivet-panel-1' : 'rivet-panel-1-finish';
+  return material;
+}
+
 export function createMaterials(envMap) {
   const std = (o) => new THREE.MeshStandardMaterial({ envMap, envMapIntensity: 1, ...o });
   const quadrants = canvasTexture(256, 64, (g, w, h) => { g.fillStyle = '#f1f0ea'; g.fillRect(0, 0, w, h); g.fillStyle = '#121214'; g.fillRect(0, 0, w / 4, h); g.fillRect(w / 2, 0, w / 4, h); });
   const gores = canvasTexture(512, 64, (g, w, h) => { const n = 24; for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#f3efe6' : '#e2672b'; g.fillRect(i * w / n, 0, w / n + 1, h); } g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, h * 0.82, w, h * 0.06); });
   const m = {
     mirror: std({ color: 0xe4e7ea, metalness: 1, roughness: 0.16 }),
-    aluminium: std({ color: 0xc8ccd0, metalness: 0.75, roughness: 0.36 }),
+    aluminium: rivetPanel(std({ color: 0xc8ccd0, metalness: 0.85, roughness: 0.4 }), { panelled: false }),
     radiator: std({ color: 0xe9ebec, metalness: 0.35, roughness: 0.42 }),
-    white: std({ color: 0xf0efe9, metalness: 0, roughness: 0.55 }),
-    black: std({ color: 0x141416, metalness: 0.1, roughness: 0.62 }),
+    white: rivetPanel(std({ color: 0xecebe5, metalness: 0, roughness: 0.72 }), { panelled: false, smudge: .012 }),
+    black: rivetPanel(std({ color: 0x141416, metalness: 0, roughness: 0.93 }), { panelled: false, smudge: .025 }),
     quadrants: std({ map: quadrants, metalness: 0, roughness: 0.55 }),
-    bell: std({ color: 0x3b3d42, metalness: 0.85, roughness: 0.42, side: THREE.DoubleSide }),
+    bell: rivetPanel(std({ color: 0x383734, metalness: 0.65, roughness: 0.58, side: THREE.DoubleSide }), { panelled: false, smudge: .025, heatTint: .8 }),
     bellBand: std({ color: 0x8d9095, metalness: 0.9, roughness: 0.3, side: THREE.DoubleSide }),
-    gold: crumple(std({ color: 0xd7a042, metalness: 1, roughness: 0.3 }), 0.3, 11),
-    amber: crumple(std({ color: 0xa8742a, metalness: 1, roughness: 0.38 }), 0.28, 11),
-    silverFoil: crumple(std({ color: 0xc9cacb, metalness: 1, roughness: 0.26 }), 0.28, 12),
-    charcoal: std({ color: 0x2b2b2d, metalness: 0.45, roughness: 0.5 }),
-    greyPanel: std({ color: 0x8f8f8b, metalness: 0.6, roughness: 0.42 }),
+    gold: crumple(std({ color: 0xd7a042, metalness: 1, roughness: 0.4 }), 0.17, 13),
+    amber: crumple(std({ color: 0xa8742a, metalness: 1, roughness: 0.46 }), 0.16, 13),
+    silverFoil: crumple(std({ color: 0xc9cacb, metalness: 1, roughness: 0.34 }), 0.18, 13),
+    charcoal: rivetPanel(std({ color: 0x292a2b, metalness: 0.35, roughness: 0.65 }), { panelled: false, smudge: .02, heatTint: .3 }),
+    greyPanel: rivetPanel(std({ color: 0x8f8f8b, metalness: 0.6, roughness: 0.48 }), LM_PANELS),
     glass: std({ color: 0x0b1216, metalness: 0.3, roughness: 0.04 }),
     heatShield: std({ color: 0x5e412a, metalness: 0.05, roughness: 0.85 }),
     red: std({ color: 0x8e2c20, metalness: 0.1, roughness: 0.6 }),
@@ -142,7 +243,7 @@ export function createMaterials(envMap) {
   };
   // NASA model materials: plain colours become the simulation's own materials (foil, paint, metal);
   // textured ones (skins, flags, decals) are kept, with the same reflections as the rest.
-  m.lmSkin = crumple(std({ color: 0xaaa9a4, metalness: 0.6, roughness: 0.48 }), 0.025, 1.6);
+  m.lmSkin = rivetPanel(std({ color: 0xaaa9a4, metalness: 0.65, roughness: 0.48 }), LM_PANELS);
   const plain = { blinn1SG: m.gold, blinn9SG: m.amber, blinn6SG: m.black, blinn2SG: m.charcoal, blinn4SG: m.aluminium, blinn3SG: m.lmSkin, initialShadingGr: m.greyPanel, blinn10SG: m.white, blinn13SG: m.bell, apollohorns_blin: m.bell, apollohorns_bli1: m.charcoal };
   const finish = { blinn14SG: [0.85, 0.24], blinn11SG: [0.4, 0.42] }, kept = new Map();
   // NASA's "UNITED STATES" placard and US flag become the NASA Space Apps Challenge logo and emblem (official artwork,
