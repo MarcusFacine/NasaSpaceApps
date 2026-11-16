@@ -1,18 +1,20 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en" translate="no">
 <head>
   <meta charset="utf-8">
+  <!-- The explorer has its own Portuguese and English: automatic page translation would fight the live numbers. -->
+  <meta name="google" content="notranslate">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#050505">
-  <title>Horisite · Explorador do polo sul lunar</title>
-  <meta name="description" content="Veja no relevo real do polo sul da Lua se há luz do Sol e a Terra no céu, e encontre a melhor janela entre cinco regiões.">
+  <title>Horisite · Lunar south pole explorer</title>
+  <meta name="description" content="See on the real relief of the Moon’s south pole whether the Sun and Earth are in view, and find the best window among five regions.">
   <link rel="icon" type="image/svg+xml" href="../brand/horisite-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../brand/brand.css">
   <link rel="stylesheet" href="app.css">
-  <script type="importmap">{"imports":{"three":"../vendor/three.module.js","three/addons/controls/OrbitControls.js":"../vendor/OrbitControls.js"}}</script>
+  <script type="importmap">{"imports":{"three":"../vendor/three.module.js","three/addons/controls/OrbitControls.js":"../vendor/OrbitControls.js","three/addons/":"../vendor/addons/"}}</script>
   <script src="../vendor/astronomy.browser.min.js"></script>
 </head>
 <body class="on-dark">
@@ -26,14 +28,18 @@
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7.5 5.5h3v13h-3zM13.5 5.5h3v13h-3z" fill="currentColor"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2 8.8-9.4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-replay" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   </svg>
 
   <header class="bar">
-    <a class="wordmark" href="../" data-i18n-attr="aria-label:nav.home" style="--wm-size:27px"><span aria-hidden="true">h</span><img src="../brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a>
+    <a class="logo" href="../" aria-label="Horisite"><img src="../brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a>
     <nav class="bar-nav">
+      <button id="guideButton" class="link-button bar-guide" type="button" data-i18n-attr="title:guide.replay"><svg aria-hidden="true"><use href="#i-replay"/></svg><span data-i18n="nav.guide">Guide</span></button>
       <a href="../tutorial.html" data-i18n="nav.tutorial">Tutorial</a>
-      <button id="helpButton" class="link-button" type="button" data-i18n="nav.method">Dados e método</button>
+      <button id="helpButton" class="link-button" type="button" data-i18n="nav.method">Data &amp; method</button>
       <div class="lang-switch" role="group" data-i18n-attr="aria-label:lang.label"><button type="button" data-lang-option="pt"><span>PT</span></button><button type="button" data-lang-option="en"><span>EN</span></button></div>
     </nav>
   </header>
@@ -43,50 +49,28 @@
       <div id="sceneViewport" class="viewport">
         <div id="sceneBox" class="scene-box">
         <canvas id="sceneCanvas" tabindex="0" aria-label="Lunar terrain"></canvas>
-        <div id="sceneLoading" class="loading"><span class="loader" aria-hidden="true"></span><b data-i18n="loading.title">Carregando o relevo do polo sul</b><span data-i18n="loading.sub"></span></div>
-        <div id="sunLabel" class="body-label sun-label" aria-hidden="true"><i></i><span data-i18n="sun">Sol</span><b class="num">—</b></div>
-        <div id="earthLabel" class="body-label earth-label" aria-hidden="true"><i></i><span data-i18n="earth">Terra</span><b class="num">—</b></div>
+        <div id="sceneLoading" class="loading"><span class="loader" aria-hidden="true"></span><b data-i18n="loading.title">Loading the south pole terrain</b><span data-i18n="loading.sub"></span></div>
+        <div id="sunLabel" class="body-label sun-label" aria-hidden="true"><i></i><span data-i18n="sun">Sun</span><b class="num">—</b></div>
+        <div id="earthLabel" class="body-label earth-label" aria-hidden="true"><i></i><span data-i18n="earth">Earth</span><b class="num">—</b></div>
 
         <div class="stage-title">
-          <h1 id="primarySiteName">Borda de Shackleton</h1>
-          <p class="stage-sub"><span id="sceneCoordinates" class="num">89,66° S · 129,20° W</span><span id="scaleLabel"></span></p>
+          <h1 id="primarySiteName">Shackleton rim</h1>
+          <p class="stage-sub"><span id="sceneCoordinates" class="num">89.66° S · 129.20° W</span><span id="scaleLabel"></span></p>
           <div class="view-tabs" role="group" data-i18n-attr="aria-label:view.group">
-            <button type="button" data-view="terrain" aria-pressed="true" data-i18n="view.terrain">Relevo 3D</button>
-            <button type="button" data-view="surface" aria-pressed="false" data-i18n="view.surface">Superfície</button>
-            <button type="button" data-view="globe" aria-pressed="false" data-i18n="view.globe">Globo</button>
+            <button type="button" data-view="terrain" aria-pressed="true" data-i18n="view.terrain">3D relief</button>
+            <button type="button" data-view="surface" aria-pressed="false" data-i18n="view.surface">Surface</button>
+            <button type="button" data-view="globe" aria-pressed="false" data-i18n="view.globe">Globe</button>
           </div>
-          <p class="stage-meta"><span id="lightingBadge"></span><span id="cameraHint"></span></p>
-        </div>
-
-        <aside class="answer" aria-live="polite">
-          <section class="answer-row" id="sunRow">
-            <header class="answer-head"><svg class="glyph"><use href="#i-sun"/></svg><span data-i18n="sun">Sol</span><b id="sunStatus" class="state">—</b></header>
-            <p id="sunMarginText" class="answer-margin">—</p>
-            <dl class="answer-facts">
-              <div><dt data-i18n="answer.elevation">Altura no céu</dt><dd id="sunElevation" class="num">—</dd></div>
-              <div><dt data-i18n="answer.azimuth">Direção</dt><dd id="sunAzimuth" class="num">—</dd></div>
-              <div><dt data-i18n="answer.horizon">Relevo nessa direção</dt><dd id="sunHorizon" class="num">—</dd></div>
-            </dl>
-            <div class="irradiance">
-              <div class="irradiance-head"><span data-i18n="answer.irradiance">Luz num painel</span><strong id="irradiance" class="num">—</strong></div>
-              <div class="meter" aria-hidden="true"><i id="solarMeter"></i></div>
-              <fieldset class="panel-orientation"><legend data-i18n="panel.legend">Painel</legend>
-                <label><input type="radio" name="panel" value="tracking" checked> <span data-i18n="panel.tracking">Segue o Sol</span></label>
-                <label><input type="radio" name="panel" value="horizontal"> <span data-i18n="panel.horizontal">Deitado</span></label>
-              </fieldset>
+          <div class="stage-controls">
+            <div class="observer" data-i18n-attr="title:height.note">
+              <label for="height" data-i18n="height.label">Observer</label>
+              <input id="height" type="range" min="2" max="20" step="2" value="2" aria-describedby="heightEffect">
+              <output id="heightOutput" for="height" class="num">2 m</output><span class="observer-unit" data-i18n="height.suffix">above ground</span>
             </div>
-          </section>
-          <section class="answer-row" id="earthRow">
-            <header class="answer-head"><svg class="glyph"><use href="#i-earth"/></svg><span data-i18n="earth">Terra</span><b id="earthStatus" class="state">—</b></header>
-            <p id="earthMarginText" class="answer-margin">—</p>
-            <dl class="answer-facts">
-              <div><dt data-i18n="answer.elevation">Altura no céu</dt><dd id="earthElevation" class="num">—</dd></div>
-              <div><dt data-i18n="answer.azimuth">Direção</dt><dd id="earthAzimuth" class="num">—</dd></div>
-              <div><dt data-i18n="answer.distance">Distância</dt><dd id="earthDistance" class="num">—</dd></div>
-            </dl>
-            <p class="answer-note" data-i18n="answer.earthNote"></p>
-          </section>
-        </aside>
+            <p class="color-key"><span><i class="key-sun"></i><span data-i18n="sun">Sun</span><em data-i18n="key.yellow">· yellow</em></span><span><i class="key-earth"></i><span data-i18n="earth">Earth</span><em data-i18n="key.pink">· pink</em></span></p>
+          </div>
+          <p class="stage-meta"><span id="lightingBadge"></span><span id="heightEffect"></span><span id="cameraHint"></span></p>
+        </div>
 
         <div class="stage-tools" role="toolbar">
           <button type="button" id="focusSun" data-i18n-attr="aria-label:tool.sun|title:tool.sun"><svg><use href="#i-sun"/></svg></button>
@@ -98,70 +82,107 @@
         </div>
         </div>
 
+        <aside class="answer">
+          <section class="answer-row" id="sunRow">
+            <header class="answer-head"><svg class="glyph"><use href="#i-sun"/></svg><span data-i18n="sun">Sun</span><b id="sunStatus" class="state" aria-live="polite">—</b><button type="button" class="fold" data-fold="sun" aria-expanded="true" aria-controls="sunBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="sunBody">
+              <p id="sunMarginText" class="answer-margin">—</p>
+              <p id="sunVerdict" class="answer-verdict" aria-live="polite"></p>
+              <dl class="answer-calc">
+                <div><dt data-i18n="answer.elevation">In the sky</dt><dd id="sunElevation" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">−</span>
+                <div><dt id="sunHorizonLabel">—</dt><dd id="sunHorizon" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">=</span>
+                <div><dt data-i18n="answer.margin">Margin</dt><dd id="sunMarginValue" class="num">—</dd></div>
+              </dl>
+              <div class="irradiance">
+                <div class="irradiance-head"><span data-i18n="answer.irradiance">Light on a panel</span><strong id="irradiance" class="num">—</strong></div>
+                <div class="meter" aria-hidden="true"><i id="solarMeter"></i></div>
+                <p id="irradianceNote" class="answer-note"></p>
+                <fieldset class="panel-orientation"><legend data-i18n="panel.legend">Panel</legend>
+                  <label><input type="radio" name="panel" value="tracking" checked> <span data-i18n="panel.tracking">Tracks the Sun</span></label>
+                  <label><input type="radio" name="panel" value="horizontal"> <span data-i18n="panel.horizontal">Horizontal</span></label>
+                </fieldset>
+              </div>
+            </div>
+          </section>
+          <section class="answer-row" id="earthRow">
+            <header class="answer-head"><svg class="glyph"><use href="#i-earth"/></svg><span data-i18n="earth">Earth</span><b id="earthStatus" class="state" aria-live="polite">—</b><button type="button" class="fold" data-fold="earth" aria-expanded="true" aria-controls="earthBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="earthBody">
+              <p id="earthMarginText" class="answer-margin">—</p>
+              <p id="earthVerdict" class="answer-verdict" aria-live="polite"></p>
+              <dl class="answer-calc">
+                <div><dt data-i18n="answer.elevation">In the sky</dt><dd id="earthElevation" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">−</span>
+                <div><dt id="earthHorizonLabel">—</dt><dd id="earthHorizon" class="num">—</dd></div>
+                <span class="op" aria-hidden="true">=</span>
+                <div><dt data-i18n="answer.margin">Margin</dt><dd id="earthMarginValue" class="num">—</dd></div>
+              </dl>
+              <p id="earthNote" class="answer-note"></p>
+            </div>
+          </section>
+          <section class="answer-row answer-horizon" id="chartRow">
+            <header class="horizon-head"><h2 data-i18n="horizon.title">What the relief hides</h2><button type="button" class="fold" data-fold="chart" aria-expanded="true" aria-controls="chartBody"><svg><use href="#i-chevron"/></svg></button></header>
+            <div class="row-body" id="chartBody">
+              <svg id="horizonChart" viewBox="0 0 300 120" role="img" aria-labelledby="horizonTitle horizonDesc"><title id="horizonTitle">Horizon</title><desc id="horizonDesc"></desc></svg>
+              <p class="chart-read" data-i18n="horizon.read">Below the relief: hidden. Tick: the margin.</p>
+            </div>
+          </section>
+        </aside>
+
         <div class="console">
+          <button type="button" class="console-fold" data-fold="console" aria-expanded="true" aria-controls="consoleMore"><svg><use href="#i-chevron"/></svg></button>
           <div class="console-time">
             <button type="button" id="playButton" class="play" aria-pressed="false" data-i18n-attr="aria-label:time.play"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
             <div class="scrub">
-              <div class="scrub-head"><label for="hourSlider" data-i18n="time.scrub">Hora do dia</label><output id="hourOutput" class="num">12:00 UTC</output></div>
-              <div class="scrub-track"><div id="dayStrip" class="day-strip" aria-hidden="true"></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div>
+              <div class="scrub-head"><label for="hourSlider" data-i18n="time.scrub">Time of day</label>
+                <span class="scrub-legend" aria-hidden="true"><span><i class="k-cell"><b class="k-sun"></b><b class="k-hatch"></b></i><span data-i18n="strip.sunTop">Sun on top</span></span><span><i class="k-cell"><b class="k-hatch"></b><b class="k-earth"></b></i><span data-i18n="strip.earthBottom">Earth below</span></span><span><i class="k-hatch"></i><span data-i18n="strip.behind">behind the relief</span></span></span>
+                <output id="hourOutput" class="num">12:00 UTC</output></div>
+              <div class="scrub-grid">
+                <span></span><span></span><span class="track-best-head" data-i18n="strip.both">Sun+Earth</span>
+                <div id="trackSites" class="track-sites"></div>
+                <div class="scrub-track"><div id="dayStrip" class="day-strip" aria-hidden="true"></div><input id="hourSlider" type="range" min="0" max="1430" step="10" value="720"></div>
+                <div id="trackBest" class="track-best num"></div>
+                <span></span><div class="scrub-scale num" aria-hidden="true"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div><span class="track-best-label" data-i18n="strip.inDay">that day</span>
+              </div>
             </div>
             <div class="console-actions">
-              <button type="button" id="bestWindow" class="btn btn-primary" data-i18n="action.best">Melhor janela</button>
-              <button type="button" id="missionButton" class="btn btn-ghost" disabled data-i18n="action.mission">Simular missão</button>
+              <button type="button" id="bestWindow" class="btn btn-primary" data-i18n="action.best">Best window</button>
+              <button type="button" id="missionButton" class="btn btn-ghost" disabled data-i18n="action.mission" data-i18n-attr="title:window.note">Simulate mission</button>
+              <button type="button" id="bestDates" class="best-dates" hidden><b id="bestHours" class="num">—</b><span class="best-text"><span id="bestWhat"></span><small id="bestDatesRange" class="num"></small></span></button>
             </div>
           </div>
-          <div class="console-row">
+          <div class="console-row" id="consoleMore">
             <div class="console-date">
-              <label for="dateTime" data-i18n="time.label">Data e hora (UTC)</label>
+              <label for="dateTime" data-i18n="time.label">Date and time (UTC)</label>
               <div class="date-line">
                 <input id="dateTime" type="datetime-local" class="num" min="2000-01-01T00:00" max="2050-12-31T23:59" value="2026-10-02T12:00">
-                <div class="shift"><button type="button" id="nowButton" data-i18n="time.now">Agora</button><button type="button" data-shift="-24" data-i18n="time.minus1">−1 dia</button><button type="button" data-shift="24" data-i18n="time.plus1">+1 dia</button><button type="button" data-shift="168" data-i18n="time.plus7">+7 dias</button></div>
+                <div class="shift"><button type="button" id="nowButton" data-i18n="time.now">Now</button><button type="button" data-shift="-24" data-i18n="time.minus1">−1 day</button><button type="button" data-shift="24" data-i18n="time.plus1">+1 day</button><button type="button" data-shift="168" data-i18n="time.plus7">+7 days</button></div>
               </div>
             </div>
             <div class="console-sites">
-              <span class="console-label" data-i18n="sites.label">Locais</span>
+              <span class="console-label"><span data-i18n="sites.label">Reference sites</span> <small data-i18n="sites.hintShort">click a name to explore · + to compare</small></span>
               <div id="siteList" class="site-chips"></div>
             </div>
           </div>
         </div>
       </div>
+      <div id="siteTip" class="site-tip" role="tooltip" hidden></div>
       <div id="appMessage" class="message" role="status" aria-live="polite"><span id="appMessageText"></span><button type="button" id="appMessageClose" data-i18n-attr="aria-label:msg.dismiss"><svg><use href="#i-close"/></svg></button></div>
     </section>
 
-    <section class="analysis">
-      <div class="window-line"><span data-i18n="window.title">Janela da missão</span><b id="chosenWindow" class="num">—</b><small data-i18n="window.note"></small></div>
-      <article class="card horizon-card">
-        <header><h2 data-i18n="horizon.title">O que o relevo esconde</h2><p data-i18n="horizon.desc"></p></header>
-        <svg id="horizonChart" viewBox="0 0 960 280" role="img" aria-labelledby="horizonTitle"><title id="horizonTitle">Horizon</title></svg>
-        <footer class="chart-foot"><span class="legend"><i class="lg-relief"></i><span data-i18n="legend.relief">Relevo</span></span><span class="legend"><i class="lg-sun"></i><span data-i18n="legend.sunPath">Caminho do Sol</span></span><span class="legend"><i class="lg-earth"></i><span data-i18n="legend.earthPath">Caminho da Terra</span></span><span class="chart-axis"><span data-i18n="horizon.axis"></span> · <span data-i18n="horizon.note"></span></span></footer>
-      </article>
-      <article class="card timeline-card">
-        <header><h2 data-i18n="timeline.title">Próximas 24 horas</h2><p data-i18n="timeline.desc"></p></header>
-        <div class="timeline-scale"><span></span><div id="timeScale" class="num"></div></div>
-        <div id="timelineRows" class="timeline-rows"></div>
-        <p class="timeline-best"><b id="bestSpan" class="num">—</b> <span data-i18n="timeline.best">maior trecho com os dois</span></p>
-      </article>
-      <article class="card settings-card">
-        <label for="height" class="height-label"><span data-i18n="height.label">Altura do observador</span><output id="heightOutput" class="num">2 m</output></label>
-        <input id="height" type="range" min="2" max="20" step="2" value="2">
-        <p class="muted" data-i18n="height.note"></p>
-        <h2 data-i18n="data.title">De onde vêm os números</h2>
-        <p data-i18n="data.text"></p>
-        <p class="muted" data-i18n="data.limit"></p>
-      </article>
-    </section>
   </main>
 
   <footer class="foot">
-    <div class="foot-brand"><a class="wordmark" href="../" style="--wm-size:34px" data-i18n-attr="aria-label:nav.home"><span aria-hidden="true">h</span><img src="../brand/horisite-o.svg" alt=""><span aria-hidden="true">r</span><span aria-hidden="true">i</span><span aria-hidden="true">s</span><span aria-hidden="true">i</span><span aria-hidden="true">t</span><span aria-hidden="true">e</span></a><span class="tagline" data-i18n="brand.tagline">lunar landing site navigator</span></div>
+    <div class="foot-brand"><a class="logo" href="../" aria-label="Horisite"><img src="../brand/horisite-logo-white.png" alt="Horisite" width="720" height="236"></a><span class="tagline" data-i18n="brand.tagline">lunar landing site navigator</span></div>
     <p data-i18n="footer.made"></p>
-    <p class="muted" data-i18n="footer.data"></p>
-    <button type="button" id="footerMethod" class="link-button" data-i18n="nav.method">Dados e método</button>
+    <p data-i18n="data.limit"></p>
+    <button type="button" id="footerMethod" class="link-button" data-i18n="nav.method">Data &amp; method</button>
   </footer>
 
   <dialog id="missionDialog" class="mission" aria-labelledby="missionTitle">
     <header class="mission-head">
-      <h2 id="missionTitle" data-i18n="mission.title">Sua janela, uma missão.</h2>
+      <h2 id="missionTitle" data-i18n="mission.title">Your window, one mission.</h2>
       <button type="button" id="closeMission" class="icon-button" data-i18n-attr="aria-label:mission.close"><svg><use href="#i-close"/></svg></button>
     </header>
     <div class="mission-body">
@@ -169,63 +190,63 @@
         <div id="missionViewport" class="mission-viewport">
           <canvas id="missionCanvas" tabindex="0" aria-label="Mission"></canvas>
           <div class="mission-hud"><span id="missionPhase">—</span><time id="missionClock" class="num">—</time></div>
-          <div id="missionEarthLabel" class="mission-body-label" data-i18n="body.earth">Terra</div><div id="missionMoonLabel" class="mission-body-label" data-i18n="body.moon">Lua</div>
+          <div id="missionEarthLabel" class="mission-body-label" data-i18n="body.earth">Earth</div><div id="missionMoonLabel" class="mission-body-label" data-i18n="body.moon">Moon</div>
           <div id="missionSceneMessage" class="mission-scene-message" role="status"></div>
           <div class="mission-camera">
-            <label for="missionCamera" data-i18n="mc.camera">Câmera</label>
-            <select id="missionCamera"><option value="auto" data-i18n="mc.auto">Automática</option><option value="overview" data-i18n="mc.overview">Trajetória inteira</option><option value="follow" data-i18n="mc.follow">Seguir o veículo</option></select>
+            <label for="missionCamera" data-i18n="mc.camera">Camera</label>
+            <select id="missionCamera"><option value="auto" data-i18n="mc.auto">Automatic</option><option value="overview" data-i18n="mc.overview">Whole trajectory</option><option value="follow" data-i18n="mc.follow">Follow the vehicle</option></select>
             <button type="button" id="missionResetCamera" class="icon-button" data-i18n-attr="aria-label:mc.reset|title:mc.reset"><svg><use href="#i-center"/></svg></button>
             <button type="button" id="missionFullscreen" class="icon-button" data-i18n-attr="aria-label:mc.fullscreen|title:mc.fullscreen"><svg><use href="#i-full"/></svg></button>
           </div>
           <span id="missionScale" class="mission-scale"></span>
         </div>
         <div class="mission-telemetry">
-          <div><span data-i18n="mt.elapsed">Tempo de missão</span><b id="missionElapsed" class="num">—</b></div>
-          <div><span data-i18n="mt.distance">Distância Terra–Lua</span><b id="missionDistance" class="num">—</b></div>
+          <div><span data-i18n="mt.elapsed">Mission time</span><b id="missionElapsed" class="num">—</b></div>
+          <div><span data-i18n="mt.distance">Earth–Moon distance</span><b id="missionDistance" class="num">—</b></div>
           <div><span data-i18n="mt.altitude">Altitude</span><b id="missionAltitude" class="num">—</b></div>
-          <div><span data-i18n="mt.conditions">No destino</span><b id="missionConditions">—</b></div>
+          <div><span data-i18n="mt.conditions">At the destination</span><b id="missionConditions">—</b></div>
         </div>
         <div class="mission-playback">
           <button type="button" id="missionPlay" class="play" aria-pressed="false" data-i18n-attr="aria-label:mp.play"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
           <div class="mission-track">
             <div id="missionPhases" class="mission-phases" role="group" data-i18n-attr="aria-label:mp.phases"></div>
-            <label for="missionProgress" class="sr-only" data-i18n="mp.progress">Percorrer a missão</label>
+            <label for="missionProgress" class="sr-only" data-i18n="mp.progress">Scrub the mission</label>
             <input id="missionProgress" type="range" min="0" max="1000" step="1" value="0">
           </div>
           <button type="button" id="missionReplay" class="icon-button" data-i18n-attr="aria-label:mp.replay|title:mp.replay"><svg><use href="#i-replay"/></svg></button>
-          <label for="missionSpeed" class="sr-only" data-i18n="mp.speed">Velocidade</label>
-          <select id="missionSpeed" class="num"><option value="1">1× · 140 s</option><option value="2">2× · 70 s</option><option value="4">4× · 35 s</option></select>
+          <label for="missionSpeed" class="sr-only" data-i18n="mp.speed">Speed</label>
+          <select id="missionSpeed" class="num"><option value="1">1× · 159 s</option><option value="2">2× · 80 s</option><option value="4">4× · 40 s</option></select>
         </div>
         <p id="missionOrbitStatus" class="mission-status" role="status">—</p>
         <p class="muted mission-note" data-i18n="mp.note"></p>
       </section>
       <aside class="mission-plan">
         <dl class="mission-where">
-          <div><dt data-i18n="mission.destination">Destino</dt><dd><b id="missionSite">—</b><span id="missionCoordinates" class="num">—</span></dd></div>
-          <div><dt id="missionWindowSource">—</dt><dd class="num"><span id="missionWindowStart">—</span><span id="missionWindowEnd">—</span></dd></div>
+          <div><dt data-i18n="mission.destination">Destination</dt><dd><b id="missionSite">—</b><span id="missionCoordinates" class="num">—</span></dd></div>
+          <div><dt id="missionWindowSource">—</dt><dd class="num"><span id="missionWindowStart">—</span><span id="missionWindowEnd">—</span><small class="muted window-note" data-i18n="window.note"></small></dd></div>
         </dl>
         <div id="missionAssessment" class="mission-assessment" role="status"></div>
         <form id="missionForm">
-          <label for="missionWindowHours"><span data-i18n="mission.windowHours">Janela manual</span><small data-i18n="unit.hours">horas</small></label><input id="missionWindowHours" class="num" type="number" min="1" max="720" step="1" value="24">
-          <label for="missionOutbound"><span data-i18n="mission.outbound">Viagem de ida</span><small data-i18n="unit.hours">horas</small></label><input id="missionOutbound" class="num" type="number" min="24" max="240" step="1" value="72">
-          <label for="missionStay"><span data-i18n="mission.stay">Permanência no solo</span><small data-i18n="unit.hours">horas</small></label><input id="missionStay" class="num" type="number" min="0.5" max="720" step="0.5" value="24">
-          <label for="missionInbound"><span data-i18n="mission.inbound">Viagem de volta</span><small data-i18n="unit.hours">horas</small></label><input id="missionInbound" class="num" type="number" min="24" max="240" step="1" value="72">
-          <button type="submit" class="btn btn-ghost" data-i18n="mission.apply">Aplicar durações</button>
+          <label for="missionWindowHours"><span data-i18n="mission.windowHours">Manual window</span><small data-i18n="unit.hours">hours</small></label><input id="missionWindowHours" class="num" type="number" min="1" max="720" step="1" value="24">
+          <label for="missionOutbound"><span data-i18n="mission.outbound">Outbound trip</span><small data-i18n="unit.hours">hours</small></label><input id="missionOutbound" class="num" type="number" min="24" max="240" step="1" value="103">
+          <label for="missionStay"><span data-i18n="mission.stay">Time on the surface</span><small data-i18n="unit.hours">hours</small></label><input id="missionStay" class="num" type="number" min="0.5" max="720" step="0.5" value="22">
+          <label for="missionInbound"><span data-i18n="mission.inbound">Return trip</span><small data-i18n="unit.hours">hours</small></label><input id="missionInbound" class="num" type="number" min="24" max="240" step="1" value="71">
+          <button type="submit" class="btn btn-ghost" data-i18n="mission.apply">Apply durations</button>
         </form>
         <p id="missionError" role="alert" class="mission-error"></p>
-        <h3 data-i18n="mission.events">Cronograma</h3>
+        <h3 data-i18n="mission.events">Timeline</h3>
         <dl id="missionEvents" class="mission-events"></dl>
-        <h3 data-i18n="mission.orbits">Órbitas de estacionamento</h3>
+        <h3 data-i18n="mission.orbits">Parking orbits</h3>
         <div id="missionOrbitSummary" class="mission-orbits"></div>
         <p class="muted" data-i18n="mission.orbitsNote"></p>
-        <details class="mission-method"><summary data-i18n="mission.methodTitle">O que é real e o que é ilustrativo</summary><p data-i18n="mission.method"></p></details>
+        <details class="mission-method"><summary data-i18n="mission.methodTitle">What is real and what is illustrative</summary><p data-i18n="mission.method"></p></details>
       </aside>
     </div>
   </dialog>
 
   <dialog id="aboutDialog" class="about" aria-labelledby="aboutTitle">
     <button type="button" class="icon-button dialog-close" data-i18n-attr="aria-label:about.close"><svg><use href="#i-close"/></svg></button>
-    <h2 id="aboutTitle" data-i18n="about.title">O relevo e o céu usam a mesma geometria.</h2>
+    <h2 id="aboutTitle" data-i18n="about.title">Relief and sky share one geometry.</h2>
     <p class="about-lead" data-i18n="about.lead"></p>
     <dl class="method-list">
       <div><dt data-i18n="about.terrain.t"></dt><dd data-i18n="about.terrain.d"></dd></div>
@@ -233,6 +254,8 @@
       <div><dt data-i18n="about.visibility.t"></dt><dd data-i18n="about.visibility.d"></dd></div>
       <div><dt data-i18n="about.energy.t"></dt><dd data-i18n="about.energy.d"></dd></div>
       <div><dt data-i18n="about.render.t"></dt><dd data-i18n="about.render.d"></dd></div>
+      <div><dt data-i18n="about.mission.t"></dt><dd data-i18n="about.mission.d"></dd></div>
+      <div><dt data-i18n="about.walk.t">Walking</dt><dd data-i18n="about.walk.d"></dd></div>
       <div><dt data-i18n="about.windows.t"></dt><dd data-i18n="about.windows.d"></dd></div>
     </dl>
     <p class="muted" data-i18n="about.limits"></p>
@@ -240,6 +263,8 @@
       <a href="https://pgda.gsfc.nasa.gov/products/90" target="_blank" rel="noopener">NASA PGDA · LOLA south pole</a>
       <a href="https://doi.org/10.3847/PSJ/acf3e1" target="_blank" rel="noopener">Barker et al. 2023</a>
       <a href="https://svs.gsfc.nasa.gov/4720/" target="_blank" rel="noopener">NASA SVS CGI Moon Kit</a>
+      <a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" rel="noopener">NASA 3D Resources</a>
+      <a href="https://svs.gsfc.nasa.gov/4851/" target="_blank" rel="noopener">NASA SVS Deep Star Maps</a>
       <a href="https://ssd.jpl.nasa.gov/horizons/" target="_blank" rel="noopener">JPL Horizons</a>
       <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a>
       <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener">HYG Database</a>

@@ -21,10 +21,23 @@ for(const iso of ['2000-01-01T12:00:00Z','2026-10-02T12:00:00Z','2030-06-15T00:0
     assert.ok(Math.abs(m.sun.elevation)<10,'Polar solar altitude outside plausible bounds');
     assert.ok(m.irradiance>=0&&m.irradiance<1500);assert.ok(flat.irradiance<=m.irradiance);
     assert.ok(m.earth.distanceKm>320000&&m.earth.distanceKm<420000);
-    assert.equal(m.sun.available,m.sun.margin>0);assert.equal(m.earth.available,m.earth.margin>0);
+    assert.equal(m.sun.available,m.sun.margin>0&&m.sun.eclipse<1);assert.equal(m.earth.available,m.earth.margin>0);
   }
 }
 assert.deepEqual(longestRun([true,false,true,true,true,false,true,true]),{start:2,length:3});
+// Eclipses: the Earth covering the Sun, seen from the site. Total lunar eclipse of 26 June 2029 (Astronomy Engine):
+// at the peak the south pole sits in the umbra (no direct light); the site's totality starts after the Moon's limb
+// enters the umbra and before the whole Moon is inside it; outside the penumbral window there is no eclipse.
+{
+  const site=sites.find(s=>s.id==='malapert'),bytes=await readFile('dist/data/malapert.bin'),terrain=new Terrain(site,new Float32Array(bytes.buffer,bytes.byteOffset,bytes.byteLength/4),metadata);
+  const e=Astronomy.SearchLunarEclipse(new Date('2029-06-01T00:00:00Z')),peak=+e.peak.date,at=min=>evaluate(site,new Date(peak+min*60000),terrain,Astronomy,2,'tracking');
+  assert.equal(e.kind,'total');
+  const mid=at(0);assert.equal(mid.sun.eclipse,1);assert.equal(mid.sun.available,false);assert.equal(mid.irradiance,0);assert.ok(mid.sun.margin>0,'Sun above the relief: only the Earth hides it');
+  let totalIn=null;for(let m=-e.sd_partial;m<=0;m++)if(at(m).sun.eclipse>=1){totalIn=m;break;}
+  assert.ok(totalIn>-e.sd_partial&&totalIn<-e.sd_total,'Site totality must begin between umbral contact and full immersion');
+  const partial=at(totalIn-10);assert.ok(partial.sun.eclipse>0&&partial.sun.eclipse<1&&partial.irradiance>0&&partial.irradiance<mid.irradiance+1361);
+  assert.equal(at(-e.sd_penum-5).sun.eclipse,0);assert.equal(at(e.sd_penum+5).sun.eclipse,0);
+}
 assert.deepEqual(longestRun([false,false]),{start:0,length:0});
 // Independent JPL Horizons reference: coord@301, airless, Oct 2 2026 12:00 UT.
 // Elevation 0.754492 km; current IAU_MOON approximation is tested to 0.01 degree.

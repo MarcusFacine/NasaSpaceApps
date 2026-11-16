@@ -5,6 +5,7 @@ html[lang^="pt"] .lang-en, html[lang="en"] .lang-pt { display: none !important; 
 .skip-link { position: absolute; left: -9999px; top: 8px; background: var(--ink); color: var(--white); padding: 10px 14px; border-radius: 10px; z-index: 30; }
 .skip-link:focus { left: 12px; }
 .guide-header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 20px; height: 70px; padding: 0 clamp(16px, 4vw, 40px); background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid #deddd6; }
+.guide-header .logo img { height: 32px; }
 .guide-header nav { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .guide-header .btn { min-height: 40px; font-size: 15px; }
 .guide-layout { display: grid; grid-template-columns: 240px minmax(0, 760px); gap: clamp(32px, 6vw, 88px); justify-content: center; padding: 48px clamp(16px, 4vw, 40px) 96px; }

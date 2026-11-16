@@ -77,3 +77,153 @@ Os resultados mudam onde o relevo fino importa. Em Shackleton, 2026-10-02 12:00 
 Visual (sem efeito nos cálculos): sombreamento de regolito lunar-Lambert, sombras do Sol até ~125 km em computadores com GPU capaz, micro-relevo sintético abaixo da malha, céu do catálogo HYG v4.1, Terra orientada pelo tempo sideral de Greenwich (precessão ignorada, ~0,4°) com fase real, nuvens e luzes noturnas, e a camada de sombra eterna do mapa `LPSR_80S_20MPP_ADJ` (fração por célula da versão de 80 m).
 
 Verificações: `check-model` e `check-mission` passam com os recortes novos; o app foi exercitado no navegador em 1440 × 900 e 390 × 844 sem erros de execução.
+
+## Revisão da missão: perfil Apollo (15/11/2026)
+
+Pedido da equipe: a decolagem e a volta não correspondiam a nenhuma missão real, e a nave e o solo pareciam artificiais. A missão passou a seguir o perfil das Apollo que pousaram na Lua, com os números da Apollo 11 (NASA, Apollo 11 Mission Report, MSC-00171):
+
+- Lançamento do Kennedy (LC-39A) a 72° de azimute, em curva de gravidade, com os estágios do Saturn V soltos em 2 min 41 s e 9 min 9 s; órbita de espera de 185 km (88,2 min), 1,5 volta; injeção translunar.
+- Nave-mãe e módulo lunar acoplados até a Lua; órbita lunar de 110 km (118,8 min), 13 voltas antes do pouso e 5 depois da decolagem (menos quando a viagem escolhida é mais curta). Ida padrão 103 h, solo 22 h, volta 71 h; os trechos de cruzeiro ficam em ~74 h e ~60 h, como na Apollo 11.
+- Descida freando com o motor à frente e pouso vertical; na decolagem só o estágio de subida sobe, e o de descida fica no solo.
+- Reentrada só da cápsula, a 121,9 km e −6,5°, com a bola de plasma; paraquedas de arrasto a 7,3 km e os três principais a 3,2 km; amerissagem no Pacífico (faixa de 150° L a 120° O, na latitude do resgate da Apollo 11), num ponto com o Sol a pelo menos 15°. Se todo o Pacífico estiver no escuro, a volta é ajustada pelo menor tempo possível (até ±10 h) e o painel avisa.
+- Antes, a volta terminava com o veículo descendo na vertical sobre o Cabo Canaveral e o arco de volta mergulhava reto na Terra.
+
+Visual: naves com proporções publicadas (Saturn V, CSM, LM com folha dourada, cápsula com escudo e paraquedas de 25 m); local de pouso de 800 × 800 m em malha de 2 m sobre o LOLA, com crateras pequenas, ondulação e pedras ilustrativas (o LOLA não resolve nada menor que ~40 m); poeira soprada pelo motor; sombras longas do Sol rasante; cena do oceano com o Sol real no ponto e na hora da amerissagem; a Terra com nuvens (a máscara das nuvens é o canal alfa da imagem; antes era lido o canal verde, e a camada saía branca com furos). Ao abrir a simulação com a hora escolhida sem Sol e Terra no destino, a missão usa a próxima janela com os dois.
+
+Continua ilustrativo: as transferências (curvas, não Lambert nem três corpos), as queimas, a subida, a descida e a reentrada, sem delta-v nem combustível. `check-mission` verifica o perfil (configuração de cada etapa, períodos, voltas, cruzeiros, altitude de reentrada, plasma, ponto no Pacífico) além das verificações anteriores.
+
+## Gráfico do relevo junto da resposta (15/11/2026)
+
+"O que o relevo esconde" saiu da análise, no pé da página, e foi para o painel do Sol e da Terra, ao lado da cena: com o tempo correndo, dá para acompanhar o Sol e a Terra passando atrás do relevo. O console termina antes do painel, as ferramentas da cena ficam numa fileira logo acima do console, e no tablet e no celular o painel (que antes ficava escondido atrás da cena) aparece entre a cena e o console.
+
+## Trilhas no console, locais na cena e missão ao lado da nave (15/11/2026, segunda rodada)
+
+Pedidos da equipe: as 24 horas também precisavam subir; os locais selecionados deviam aparecer na cena para comparar distâncias; e a missão ainda parecia um esquema.
+
+- **Trilhas na barra do tempo.** O cartão "Próximas 24 horas" saiu do pé da página. A barra do tempo passou a ter uma trilha por local comparado, para o dia UTC escolhido, com o cursor cruzando todas, o número do local à esquerda (clicável) e, à direita, o maior trecho do dia com Sol e Terra juntos.
+- **Locais na cena.** Os cinco pontos ficam a 37–186 km uns dos outros (grande círculo), dentro do relevo de contexto de 400 km. Cada local comparado tem um pino no relevo (projeção de plano tangente, a mesma do terreno), uma linha fina no chão até o local em exploração e um rótulo com nome e distância; fora do quadro, o rótulo encosta na borda livre da cena e uma seta aponta a direção. Clicar no rótulo explora o local.
+- **Missão.** Etapa nova de decolagem na plataforma 39A (ignição e os primeiros 3,4 km, 50 s), com o Saturn V em tamanho real, torre umbilical de 116 m, chama, fumaça e o Sol real do Kennedy naquela hora. A câmera automática voa ao lado da nave em escala real, com a Terra ou a Lua ao fundo (duas passadas de desenho: os astros primeiro, a nave depois com a própria faixa de profundidade); o meio das viagens mostra a trajetória inteira. Estágios descartados aparecem ficando para trás (S-IC, S-II, S-IVB, estágio de subida, módulo de serviço). Terra em 4096 px com brilho do Sol no oceano e nuvens com estrutura fina; Lua em 4096 px com mapa de normais calculado do LOLA `ldem_16` em escala vertical real; no destino, um recorte do globo dá lugar ao relevo LOLA do app (real até ~120 km do local, nivelado até 150 km e esmaecido até 192 km), de modo que a órbita e a aproximação passam sobre o relevo medido. Luz devolvida pelo solo iluminado (Terra ou Lua) chega à nave.
+- Continua ilustrativo o que já era (transferências, queimas, plumas, poeira, fumaça, arredores da plataforma). `check-mission` cobre a etapa nova.
+
+## Missão: correções e render de cinema (15/11/2026, terceira rodada)
+
+Problemas apontados pela equipe: a nave "girava sem parar" e a saída da Lua devia ser uma volta só.
+
+- **Causa.** As órbitas lunares da Apollo 11 (13 voltas antes do pouso, 5 depois) cabiam em 10–12 s de animação: mais de uma volta por segundo, com a nave também rodando sobre o próprio eixo, porque a orientação era tirada só do vetor de velocidade.
+- **Correção.** Cada órbita lunar é desenhada como uma única volta, contínua nas duas pontas, enquanto o relógio UTC e o contador percorrem as voltas reais (o painel avisa "a cena mostra uma volta").
+- **Ajuste seguinte (pedido da equipe).** Na chegada, a cena vai direto ao ponto: a inserção lunar termina um quarto de volta antes da descida e só esse arco final é desenhado (5 s). O relógio e o contador continuam correndo as 13 voltas da Apollo 11; o painel avisa "a cena vai direto ao ponto de descida". A saída da Lua continua com uma volta. A rolagem da nave fica presa à vertical local do astro mais próximo.
+
+Recursos novos, todos de fontes oficiais ou do próprio Three.js:
+
+- **Modelos 3D da NASA** (`nasa/NASA-3D-Resources`, GLB): Módulo Lunar, separado nos dois estágios pela altura de cada peça, e a nave Apollo recortada do conjunto Apollo-Soyuz. As cores lisas viram os materiais da simulação (folha dourada amassada, alumínio, preto); as texturas da NASA (bandeira, letreiros, revestimento) são mantidas. O Saturn V continua sendo o modelo próprio: o GLB da NASA tem uma faixa azul que não existe no foguete real.
+- **Render HDR.** A cena é desenhada em ponto flutuante com MSAA 4×; as fontes mais claras que o branco (chamas, Sol, plasma) passam por bloom; a saída usa ACES; por último, um passe de lente (franja cromática nos cantos, vinheta) e grão de filme.
+- **Luz real na nave.** Sombras próprias da nave no espaço; dentro da sombra da Terra ou da Lua ela não recebe Sol (umbra, sem modelo de penumbra) e fica só com uma luz mínima; a luz devolvida pelo solo iluminado continua.
+- **Reflexos reais.** A cada ~40 quadros a cena em volta da nave (Terra, Lua, Sol, estrelas) é capturada num cubo e filtrada (PMREM) para os reflexos do metal.
+- **Céu.** Via Láctea do NASA SVS Deep Star Maps 2020, em coordenadas celestes, atrás das estrelas do catálogo HYG.
+- A câmera treme com a queima do primeiro estágio na plataforma.
+
+Medição no notebook de desenvolvimento (GPU integrada, Direct3D 11): 60 quadros por segundo nas etapas no espaço e 42 na descida.
+
+## Missão: Terra, Lua, Sol e motores fisicamente baseados (15/11/2026, quinta rodada)
+
+Pedido do Ricardo: "o realismo da Terra, da Lua, do Sol e da visão da missão ainda não está como queremos". Cada parte virou um módulo próprio, conferido contra fotos da NASA:
+
+- **Terra e atmosfera** (`earth-render.js`): espalhamento de Hillaire (2020), com tabelas de transmitância, espalhamento múltiplo e irradiância calculadas na GPU. Mar com reflexo do Sol (Cox-Munk), terminador avermelhado, nuvens com sombra, luzes das cidades só depois do anoitecer, luar e airglow.
+- **Texturas 8k da NASA**: Blue Marble NG (setembro de 2004, variante base), Black Marble 2016 em cinza, nuvens do Blue Marble 2002, máscara de água MODIS MOD44W (GIBS) e mosaico LROC WAC da Lua (SVS 4720). Elas entram depois que a cena já está na tela, só em telas com 8 GB de memória ou mais e ponteiro fino (não em celular). O envio para a GPU acontece com a missão pausada ou num corte de câmera.
+- **Câmera e Sol** (`camera-fx.js`): disco solar com escurecimento de borda, reflexo de lente contido, exposição automática na GPU (no máximo 3 pontos de abertura nas vistas de perto), Via Láctea e estrelas HYG no brilho real.
+- **Lua** (`lunar-surface.js`, `landing-site.js`): crateras procedurais num espaço comum da órbita ao solo, pedras em lei de potência e luz da Terra no lado escuro.
+- **Motores e reentrada** (`spacecraft.js`):
+  - F-1 com a forma que muda com a altitude (coluna no nível do mar, bulbo a 40–65 km);
+  - J-2, SPS, DPS e APS quase invisíveis no vácuo;
+  - detritos na decolagem lunar;
+  - plasma da reentrada rosa-violeta no alto, que some abaixo de ~45 km.
+- **Mar** (`ocean.js`): ondas por FFT (espectro de Elfouhaily), céu do mesmo modelo da atmosfera, cúmulos de alísio, borrifo na amerissagem e a cápsula balançando na água.
+
+Licenças artísticas, declaradas também em "Dados e método":
+- luzes noturnas, airglow e luar da Terra ampliados para aparecer;
+- luz da Terra no lado escuro da Lua 400× no espaço (física no solo);
+- chamas e plasma mais fracos que o real;
+- nos diagramas da trajetória, céu como numa exposição longa (~20 pontos).
+
+O que foi corrigido na integração:
+- **Nave rosada na sombra:** a captura em cubo não limpava as faces e acumulava imagens antigas.
+- **Trilha da decolagem com "bolinhas":** a luz da chama agora só alcança as nuvens perto do chão.
+- **Risco de NaN:** três `pow()` podiam receber base negativa (com bloom, um NaN apaga a tela).
+- **Reflexo:** a captura do reflexo da nave deixa de fora as licenças noturnas.
+
+Medição no notebook de desenvolvimento (Intel integrada, Direct3D 11, 1600×900), com a GPU livre:
+- **Velocidade:** 56–60 quadros por segundo no espaço e no mar; 30–32 na descida e no solo (eram ~42; as crateras finas custam ~5 ms).
+- **Abertura:** a cena é montada em etapas, com o andamento na tela ("Preparando a cena 3D… n%"). Em seguida, um aquecimento desenha cada cenário uma vez, para que a reprodução não trave nas trocas de cena; sobram ~0,6 s num corte de câmera.
+- **Custo da primeira abertura:** ~15–20 s neste iGPU, quase tudo compilação de shaders no primeiro quadro do espaço. Na segunda abertura o Chrome já guardou os programas e o tempo cai muito.
+- **Memória:** abrir e fechar a missão três vezes não fez a memória crescer.
+
+O que fica aquém:
+- o anel do eclipse visto de longe é fraco (sem refração nem aerossóis estratosféricos);
+- as nuvens são uma camada 2D;
+- o relevo da Lua vista da órbita continua limitado pelo mapa de normais de 4096 px;
+- a compilação inicial é lenta em Direct3D 11.
+
+## Guia da primeira visita (15/11/2026)
+
+Pedido do Ricardo: quem entra pela primeira vez recebe um guia que ensina o que cada coisa faz, sem aparecer toda hora. São nove passos sobre os controles reais (locais, o dia hora a hora, reprodução, vistas e observador, a resposta, o gráfico do relevo, a melhor janela, a missão e onde rever). O guia começa só depois do ritual de abertura, não trava a página (o escurecido deixa clicar), fecha com Esc, anda com as setas quando o foco está no cartão e grava a marca ao concluir ou pular; sem armazenamento, aparece uma vez por sessão. Conferido em 1536×864, 1366×768 (inglês), 900×1000 e 390×820, sem erros nem avisos no console; nenhum cartão cobre o próprio alvo.
+
+## Eclipses e idioma inicial (15/11/2026)
+
+- **Eclipses.** O Ricardo notou que em Malapert, às 03:20 UTC de 26/06/2029, a Terra aparecia exatamente na frente do Sol e o painel ainda marcava 1311 W/m². Nessa hora há um eclipse total da Lua visto da Terra; visto da Lua, a Terra cobre o Sol.
+  - **Cálculo:** o modelo passou a calcular a fração do disco do Sol coberta pelo disco da Terra, vistos do local (área de interseção de dois círculos, com o raio da Terra alargado em 1/85 pela atmosfera, regra de Danjon).
+  - **Efeito:** essa fração reduz a luz no painel, e o eclipse total tira o Sol das horas "com Sol" (trilhas, melhor janela e missão). O painel mostra "Eclipse total" ou "eclipse parcial", e a cena 3D escurece na mesma proporção.
+  - **Conferido com o Astronomy Engine (`SearchLunarEclipse`):**
+    - em 26/06/2029, o local entra na sombra total 71 min antes do pico e sai 79 min depois, dentro dos contatos da umbra (±110 min) e da totalidade geocêntrica (±51 min);
+    - no eclipse parcial de 12/01/2028, só a borda sul da Lua entra na umbra, e o polo sul fica no escuro por ~48 min.
+
+    O teste `check-model.mjs` cobre o caso de 2029. A luz vermelha refratada pela atmosfera da Terra não é modelada.
+- **Idioma inicial:** o site abre em inglês (decisão do Ricardo, 15/11). O HTML estático já vem em inglês. Quem escolhe PT no botão continua em PT, e `?lang=pt` também funciona.
+
+## Caminhada com capacete na vista Superfície (15/11/2026)
+
+Pedido do Ricardo: "na visão da superfície, como se fôssemos o astronauta, até com o capacete, 100% real... eu ando com o boneco em cima da superfície".
+
+- **Movimento.** Em primeira pessoa:
+  - W A S D ou setas andam (← → giram), Shift corre, arrastar olha em volta; no celular, um direcional na tela;
+  - 1,2 m/s andando e 2,5 m/s correndo; os olhos ficam na altura do observador, com um leve balanço da passada (desligado com "movimento reduzido").
+- **Chão.** É o de `landing-site.js` (800 × 800 m, malha de 2 m, crateras de 5 a 150 m em geometria e menores no material, pedras em lei de potência), sem a plataforma aplainada da missão (`pad: false`). O ladrilho de 40 m ganha um furo onde ele fica, e a caminhada não sai da área detalhada.
+- **Sombras.** Um corpo invisível de astronauta (pernas, tronco, mochila, braços e capacete, ~1,9 m) projeta a sombra. A luz principal mantém a sombra das cristas distantes (mapa de ±125 km), e um par de luzes na mesma direção dá as sombras próximas:
+  - uma tem caixa de sombra de ±120 m em volta de você e desenha só o chão, as pedras e o corpo;
+  - a outra é negativa e sem sombra.
+
+  As duas se anulam, exceto dentro das sombras próximas, onde tiram a luz direta. A sombra principal só é redesenhada quando a luz, o relevo ou a vista mudam; nos outros quadros, os ladrilhos grandes ficam fora do mapa próximo (o three filtra camadas pela câmera principal, então isso é feito ligando e desligando `castShadow`). O deslocamento pela normal de 12 cm evita que o chão sombreie a si mesmo com o Sol a 2°.
+- **Composição.** A imagem usa uma lente deslocada (`setViewOffset`): o horizonte fica no meio da área que os painéis deixam livre.
+- **Capacete.** Borda desfocada do casco, anel do pescoço e peito embaixo (como na Apollo, onde mal se viam os pés), reflexos na bolha e clarão do Sol no visor. O visor solar dourado imita o filme de ouro.
+- **"Aqui".** Sol e Terra são testados contra o relevo a partir da posição do caminhante (centro do disco). Os números do painel continuam sendo os do ponto de referência; longe dele, os rótulos do Sol e da Terra na cena somem.
+- **Medido no notebook de desenvolvimento** (1536×864): ~48 quadros por segundo andando, sem erros no console. Também conferido no celular (390×820) e em inglês.
+
+## Módulo lunar na superfície e inglês para quem já tinha escolhido PT (15/11/2026)
+
+- **Módulo lunar.** A vista Superfície ganhou o módulo lunar da Apollo: o modelo 3D oficial da NASA (`lunar-module.glb`, NASA 3D Resources, o mesmo da missão), com os materiais da missão (folha dourada e âmbar, alumínio, preto) e reflexos de um ambiente de regolito.
+  - Fica a ~30 m do ponto, logo à direita da primeira vista (que olha para o Sol), no lugar mais plano entre 33 candidatos, inclinado conforme o chão e com os pés afundados 3 cm no regolito.
+  - Projeta sombra (no Sol rasante, centenas de metros) e não pode ser atravessado (círculo de 4,8 m em volta das pernas).
+  - Na sombra dele, o painel da caminhada diz "na sombra do módulo lunar" (raio até o Sol contra um cilindro de 2,3 × 7 m).
+  - Liga e desliga no botão "Módulo lunar".
+- **Defeito encontrado:** com a sombra próxima redesenhada só durante a caminhada, o mapa dela não existia ao abrir o app, e o WebGL descartava desenhos (`GL_INVALID_OPERATION: Mismatch between texture format and sampler type`). Agora o mapa é criado no primeiro quadro.
+- **Idioma.** A escolha salva passou para a chave `horisite-lang-v2`. Quem tinha clicado em PT antes da mudança (a equipe, por exemplo) agora também abre em inglês, e uma escolha nova continua sendo lembrada. Uma varredura do texto visível em inglês (landing, tutorial, app, guia, "Dados e método" e missão) não achou português.
+
+## Saltos, nave e idiomas (15/11/2026, rodada 2)
+
+Pedidos do Ricardo: "a nave tem que ser profissional e real", "saltos por causa da gravidade da Lua", "o símbolo da NASA Space Apps e não dos Estados Unidos na nave", "várias coisas ficam mudando conforme mexo" (texto alternando inglês/português), e o retorno de teste num Galaxy S23: "os botões estão mudando de lugar quando são pressionados".
+
+- **Saltos.** Gravidade lunar de 1,62 m/s². Espaço (ou o botão Saltar) dá 1,17 m/s de impulso: ~42 cm e ~1,45 s no ar, como o salto de John Young na Apollo 16. A velocidade horizontal da decolagem se mantém no ar, sem controle até o pouso. Correr é o trote dos astronautas: pulinhos de ~6 cm encadeados. A câmera e a sombra do corpo acompanham a altura do salto. Trocar de vista, de local ou voltar ao ponto encerra um salto em andamento.
+- **Nave.** Continua o modelo oficial da NASA, com duas mudanças:
+  - **Manta de Kapton:** gerada no shader a partir da posição em metros na nave, e não das coordenadas de textura (o modelo da NASA as estica, o que desenhava a manta em listras e fazia os painéis com textura parecerem remendos). O amassado combina facetas planas de ~9 cm (Voronoi 3D com inclinação aleatória por célula) e um enrugado fino, e some quando fica menor que ~3 pixels, para não cintilar de longe. O casco do estágio de subida ficou alumínio fosco em vez de espelho. Desempenho medido: 43 quadros/s andando e 60 parado, como antes.
+  - **Logos:** a bandeira dos EUA e a placa "UNITED STATES" foram trocadas pelo logo oficial do NASA Space Apps Challenge (pacote de marca de spaceappschallenge.org, sem distorcer nem girar): placa branca com o logo completo à esquerda e disco branco com o símbolo à direita, nos mesmos retângulos das texturas originais.
+- **Idiomas.** O texto que "ia e voltava" era o tradutor automático do Chrome traduzindo a página em inglês enquanto o app reescrevia os números. As três páginas agora têm `translate="no"` e `<meta name="google" content="notranslate">`.
+  - Uma varredura automática (o app inteiro nos dois idiomas, trocando de idioma no meio) não encontrou texto no idioma errado. Também não há texto mudando sozinho com o app parado.
+  - Corrigido: as mensagens de erro da missão saíam sempre em português e agora têm código traduzido.
+  - Corrigido: os avisos do app e o rótulo do botão reproduzir não acompanhavam a troca de idioma.
+- **Celular.** Ao tocar numa seta, o código marcava a tecla como pressionada com a classe `down`, que também é a classe da seta para trás. A seta tocada pulava para o lugar da de trás e girava, e a de trás, ao ser solta, ia para o canto de cima apontando para cima. O estado pressionado agora é `held`.
+  - Durante a caminhada no celular, a legenda Sol/Terra e o selo de luz se recolhem: a linha "Aqui:" e o painel abaixo dizem o mesmo.
+  - Conferido num S23 emulado (360×780 e 780×360, toque): nenhum controle muda de lugar e nada se sobrepõe.
+- **Revisão independente (Codex).** Achou e foram corrigidos:
+  - tecla presa ao soltar fora da vista Superfície;
+  - salto antigo retomado ao voltar à Superfície;
+  - nave sem redesenho quando os logos terminam de carregar;
+  - avisos e rótulo do botão reproduzir presos no idioma anterior.
