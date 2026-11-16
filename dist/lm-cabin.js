@@ -79,11 +79,63 @@ function makeAtlas() {
   return texture;
 }
 
+// The cabin's skin: painted aluminium panels (the LM interior was a medium grey-green), seams, rivet rows, a few
+// stencilled placards and the wear of a working cabin. Applied by position in metres (one tile = 0.9 m), so boxes
+// of any size share it without stretching.
+function makeSkin() {
+  const n = 1024, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d');
+  let seed = 9; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#6f756f'; g.fillRect(0, 0, n, n);
+  for (let i = 0; i < 1400; i++) { const x = rnd() * n, y = rnd() * n, r = 8 + rnd() * 90; g.fillStyle = `rgba(${rnd() < .55 ? '48,52,50' : '140,146,140'},${.03 + rnd() * .06})`; g.beginPath(); g.ellipse(x, y, r, r * (.4 + rnd() * .6), rnd() * 3, 0, 7); g.fill(); }
+  // Access panels of varied sizes, a shade darker or lighter, then the main panels 512 px (45 cm) with their seams.
+  for (let i = 0; i < 7; i++) { const w = 80 + rnd() * 260, h = 60 + rnd() * 200, x = rnd() * (n - w), y = rnd() * (n - h); g.fillStyle = `rgba(${rnd() < .5 ? '40,44,42,.22' : '170,176,170,.14'})`; g.fillRect(x, y, w, h); g.strokeStyle = 'rgba(25,28,27,.5)'; g.lineWidth = 2; g.strokeRect(x, y, w, h); }
+  for (let k = 0; k <= 2; k++) for (const vertical of [true, false]) {
+    const p = k * 512; g.fillStyle = 'rgba(25,28,27,.55)'; vertical ? g.fillRect(p - 2, 0, 3, n) : g.fillRect(0, p - 2, n, 3);
+    g.fillStyle = 'rgba(210,214,208,.25)'; vertical ? g.fillRect(p + 1, 0, 1, n) : g.fillRect(0, p + 1, n, 1);
+    for (let t = 10; t < n; t += 34) for (const o of [-14, 14]) {
+      const x = vertical ? p + o : t, y = vertical ? t : p + o;
+      g.fillStyle = 'rgba(40,43,41,.6)'; g.beginPath(); g.arc(x, y, 2.6, 0, 7); g.fill(); g.fillStyle = 'rgba(205,208,200,.5)'; g.beginPath(); g.arc(x - .7, y - .7, 1.2, 0, 7); g.fill();
+    }
+  }
+  const placards = ['STOWAGE', 'O2', 'H2O', 'LiOH', 'CAUTION', 'DO NOT STEP', 'PRESS TO OPEN', 'ECS', 'UTILITY LIGHT', 'FIRE EXT'];
+  g.font = 'bold 15px monospace'; g.textAlign = 'center';
+  for (let i = 0; i < 4; i++) { const x = 40 + rnd() * (n - 80), y = 30 + rnd() * (n - 60), s = placards[i % placards.length], w = s.length * 10 + 16;
+    g.fillStyle = 'rgba(232,230,214,.85)'; g.fillRect(x - w / 2, y - 12, w, 20); g.strokeStyle = 'rgba(30,30,30,.7)'; g.strokeRect(x - w / 2, y - 12, w, 20); g.fillStyle = '#1d1d1b'; g.fillText(s, x, y + 3); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
+// Floor: dark grey with the square Velcro pads the crew's boots held on to.
+function makeFloor() {
+  const n = 512, c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d');
+  g.fillStyle = '#3b3e3c'; g.fillRect(0, 0, n, n);
+  for (let y = 16; y < n; y += 128) for (let x = 16; x < n; x += 128) { g.fillStyle = '#26282a'; g.fillRect(x, y, 96, 96); for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(80,82,84,${Math.random() * .3})`; g.fillRect(x + Math.random() * 96, y + Math.random() * 96, 1, 1); } }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
+// Projects a map by the dominant axis of the object-space normal (geometry is baked in cabin metres).
+function boxMapped(material, texture, tile) {
+  material.map = texture;
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCabP;\nvarying vec3 vCabN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCabP = position; vCabN = normal;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCabP;\nvarying vec3 vCabN;')
+      .replace('#include <map_fragment>', `vec3 cabA = abs(vCabN); vec2 cabUv = cabA.x > cabA.y && cabA.x > cabA.z ? vCabP.zy : cabA.y > cabA.z ? vCabP.xz : vCabP.xy;
+diffuseColor *= texture2D(map, cabUv / ${tile.toFixed(3)});`);
+  };
+  material.customProgramCacheKey = () => `cabin-box-${tile}`;
+  return material;
+}
+// A soft grey surround as the cabin's ambient: the floods bouncing off the light walls (no black corners).
+function cabinAmbient() {
+  const faces = [];
+  for (let f = 0; f < 6; f++) { const c = document.createElement('canvas'); c.width = c.height = 4; const g = c.getContext('2d'); g.fillStyle = f === 2 ? '#8a8e8a' : f === 3 ? '#3e403f' : '#6b6f6c'; g.fillRect(0, 0, 4, 4); faces.push(c); }
+  const t = new THREE.CubeTexture(faces); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t;
+}
+
 export function buildLMCabin({ exterior = null, worldScale = 1, lights = true } = {}) {
   const group = new THREE.Group(); group.name = 'LM crew cabin';
-  const texture = makeAtlas(), materials = [], geometries = [], buckets = new Map(), instances = new Map();
+  const texture = makeAtlas(), skin = makeSkin(), floorMap = makeFloor(), ambient = cabinAmbient(), materials = [], geometries = [], buckets = new Map(), instances = new Map();
   const mat = (color, roughness = .72, metalness = .1, extra = {}) => { const m = new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra }); materials.push(m); return m; };
-  const wall = mat(0x757b78), trim = mat(0x242b29), metal = mat(0xa8aaa1, .43, .6), black = mat(0x131917), white = mat(0xc9c9b5), red = mat(0x923728), fabric = mat(0x646a61, .97, 0);
+  const wall = boxMapped(mat(0xffffff, .78, .12), skin, .9), trim = mat(0x242b29, .6, .25), metal = mat(0xa8aaa1, .43, .6), black = mat(0x131917), white = mat(0xc9c9b5), red = mat(0x923728), fabric = mat(0xd9d3c4, .97, 0);
+  const floor = boxMapped(mat(0xffffff, .9, .05), floorMap, .55), beta = mat(0xe6e0d0, .96, 0), hose = mat(0x2b4f8c, .6, 0), hoseRed = mat(0x8c2b2b, .6, 0), cableW = mat(0xb8b4a6, .7, 0);
   const face = mat(0xffffff, .78, .06, { map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: .09 });
   const display = mat(0xffffff, .76, 0, { map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: .38 });
   const matrix = (position = [0, 0, 0], rotation = [0, 0, 0], scale = [1, 1, 1]) => new THREE.Matrix4().compose(V(...position), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), V(...scale));
@@ -102,8 +154,7 @@ export function buildLMCabin({ exterior = null, worldScale = 1, lights = true } 
   const at = (base, p, r = [0, 0, 0], s = [1, 1, 1]) => base.clone().multiply(matrix(p, r, s));
 
   // LM forward pressure cabin: approximately 2.3 m usable width. Descent deck remains outside.
-  box([2.38, .065, 3.4], [.04, 3.16, .93], metal);
-  for (let i = 0; i < 22; i++) box([2.26, .009, .014], [.04, 3.20, -.68 + i * .09], trim);
+  box([2.38, .065, 3.4], [.04, 3.16, .93], floor);
   box([.065, 2.2, 3.4], [1.265, 4.26, .93]); box([.065, 2.2, 3.4], [-1.185, 4.26, .93]);
   box([2.38, 2.22, .055], [.04, 4.28, -.80]);
   box([.42, .052, 1.7], [-.94, 5.34, .12]); box([.95, .052, 1.7], [.755, 5.34, .12]);
@@ -229,8 +280,49 @@ export function buildLMCabin({ exterior = null, worldScale = 1, lights = true } 
     beam([right, 3.93, .82], [right, 4.11, .84], .025, black); box([.048, .13, .065], [right, 4.16, .83], black, [.26, 0, 0]); box([.018, .025, .012], [right, 4.20, .79], red);
     beam([left, 3.93, .82], [left, 4.08, .86], .018); beam([left - .07, 4.10, .86], [left + .07, 4.10, .86], .018, black);
   }
+  // --- Working-cabin detail (LM-10 Operations Handbook crew-station drawings) ---------------------------------------
+  // Structural frames on the side walls and the ceiling every 32 cm.
+  for (let z = -.62; z <= 1.0; z += .32) for (const x of [1.225, -1.145]) box([.035, 2.05, .05], [x, 4.22, z], trim);
+  for (let z = -.62; z <= .9; z += .32) box([2.3, .04, .05], [.04, 5.30, z], trim);
+  // Cable bundles along the upper side walls, sleeved and clamped; ECS hoses (suit loop blue, return red) to the stations.
+  for (const [x, side] of [[1.18, 1], [-1.1, -1]]) {
+    for (const [dy, m, rad] of [[0, black, .016], [.05, cableW, .011], [-.045, black, .012]]) {
+      const curve = new THREE.CatmullRomCurve3([V(x, 5.05 + dy, -.7), V(x - side * .02, 5.0 + dy, -.1), V(x, 5.08 + dy, .5), V(x - side * .03, 4.95 + dy, 1.05)]);
+      batch(new THREE.TubeGeometry(curve, 24, rad, 6, false), m);
+    }
+    for (let z = -.6; z <= 1.0; z += .26) box([.03, .13, .025], [x - side * .012, 5.03, z], metal);
+    for (const [m, dz] of [[hose, 0], [hoseRed, .09]]) {
+      const curve = new THREE.CatmullRomCurve3([V(x - side * .05, 4.1, -.55 + dz), V(x - side * .25, 3.75, -.1 + dz), V(x - side * .45, 3.9, .35 + dz), V(x - side * .55, 4.25, .55 + dz)]);
+      batch(new THREE.TubeGeometry(curve, 20, .028, 8, false), m);
+    }
+  }
+  // Alignment Optical Telescope (AOT): the barrel down from the cabin roof between the crew, its eyepiece and knobs.
+  beam([.04, 5.32, 1.22], [.04, 4.98, 1.08], .085, trim); beam([.04, 5.0, 1.09], [.04, 4.9, 1.02], .055, black);
+  box([.16, .1, .12], [.04, 4.88, .98], black, [-.4, 0, 0]);
+  for (const dx of [-.11, .11]) { const g = new THREE.CylinderGeometry(.026, .026, .03, 12).rotateZ(Math.PI / 2); batch(g, metal, matrix([.04 + dx, 5.06, 1.12])); }
+  // Overhead (docking) hatch in the ceiling aft: 81 cm, its rim, the dished cover and the handle.
+  { const ring = new THREE.TorusGeometry(.42, .035, 8, 40).rotateX(Math.PI / 2); batch(ring, metal, matrix([.04, 5.31, -.3]));
+    const lid = new THREE.CylinderGeometry(.4, .4, .03, 40); batch(lid, wall, matrix([.04, 5.33, -.3]));
+    beam([-.18, 5.27, -.3], [.26, 5.27, -.3], .016, black); box([.05, .06, .05], [-.18, 5.29, -.3], black); box([.05, .06, .05], [.26, 5.29, -.3], black); }
+  // Beta-cloth stowage: soft off-white bags on the aft bulkhead and the side walls, with their snaps and straps.
+  const bag = (size, position, rotation = [0, 0, 0]) => {
+    const g = new THREE.BoxGeometry(...size, 4, 4, 4), q = g.attributes.position, v = V(0, 0, 0);
+    for (let i = 0; i < q.count; i++) { v.fromBufferAttribute(q, i); const k = 1 + .06 * Math.sin(v.x * 23 + v.y * 17) * Math.cos(v.z * 19); v.x *= k; v.y *= 1 - .04 * Math.abs(Math.sin(v.x * 13)); q.setXYZ(i, v.x, v.y, v.z); }
+    g.computeVertexNormals(); batch(g, beta, matrix(position, rotation));
+    box([size[0] * 1.02, .025, size[2] * 1.04], [position[0], position[1] + size[1] * .22, position[2]], black, rotation);
+  };
+  bag([.55, .42, .2], [.6, 4.55, -.68]); bag([.5, .36, .2], [-.5, 4.6, -.68]); bag([.42, .3, .18], [.6, 4.12, -.68]);
+  bag([.2, .34, .44], [1.12, 3.75, -.35]); bag([.2, .3, .4], [-1.04, 3.8, -.35]);
+  // Window panes: a faint reflection on the inner glass (the LM's windows were triple-paned with a heater film).
+  const glass = mat(0x9aa8b4, .05, 0, { transparent: true, opacity: .07, depthWrite: false });
+  for (const key of ['cdr', 'lmp']) {
+    const c = windowCorners[key], g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...c[0].toArray(), ...c[1].toArray(), ...c[2].toArray()], 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2)); g.setIndex([0, 1, 2]); g.computeVertexNormals();
+    const pane = new THREE.Mesh(g, glass); pane.renderOrder = 3; pane.name = 'Window pane'; group.add(pane); geometries.push(g);
+  }
   // Small handrails and aft stowage soften the otherwise flat pressure vessel.
   for (const x of [-.95, 1.03]) { beam([x, 4.63, -.67], [x, 5.02, -.67], .016); box([.30, .56, .13], [x * .76, 4.04, -.66], fabric); }
+  for (const m of materials) if (m.isMeshStandardMaterial && m !== glass) { m.envMap = ambient; m.envMapIntensity = .55; }
   for (const [material, parts] of buckets) {
     const geometry = mergeGeometries(parts, false); parts.forEach(g => g.dispose());
     const mesh = new THREE.Mesh(geometry, material); mesh.name = 'Cabin structure'; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh); geometries.push(geometry);
@@ -265,5 +357,5 @@ export function buildLMCabin({ exterior = null, worldScale = 1, lights = true } 
   const eyes = { cdr: V(.62, 4.84, .84), lmp: V(-.54, 4.84, .84) }, lookDir = V(0, -.30, 1).normalize();
   group.userData.frame = { units: 'metres', forward: '+Z', up: '+Y', cdrSide: '+X', eyeHeight: 4.87 };
   group.userData.windowCorners = windowCorners;
-  return { group, eyes, lookDir, hideForInterior, setInterior, dispose() { setInterior(false); group.removeFromParent(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); texture.dispose(); } };
+  return { group, eyes, lookDir, hideForInterior, setInterior, dispose() { setInterior(false); group.removeFromParent(); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); texture.dispose(); skin.dispose(); floorMap.dispose(); ambient.dispose(); } };
 }

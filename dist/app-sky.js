@@ -103,6 +103,7 @@ export class AppSky {
     } else {
       this.sun = createSun({ logarithmicDepthBuffer: log });
     }
+    this.fx?.setFixedExposure(1.3);   // starts in the terrain view (see setView)
     this.earth.visible = this.sun.visible = false;
     // Initial maps are modest; decode asynchronously, then upload at most one image per still frame.
     this.ready = Promise.all([this._load('earth-day.jpg', true), this._load('earth-night.jpg', true), this._load('earth-brc.jpg')])
@@ -198,10 +199,13 @@ export class AppSky {
     for (const a of arrays) for (const x of a) { if (!(Math.abs(this._pose[i] - x) < 1e-9)) changed = true; if (save) this._pose[i] = x; i++; }
     return changed;
   }
-  setView(view) { if (view === this.view) return; this.view = view; if (view === 'globe') this._loadMoon(); this._touch(); }
+  // The 3D relief view is a diagram: its rays, pins and paths are interface colours, so the camera keeps the old fixed
+  // exposure there (x1.3); the surface view is a photograph and meters itself.
+  setView(view) { if (view === this.view) return; this.view = view; this.fx?.setFixedExposure(view === 'terrain' ? 1.3 : null); if (view === 'globe') this._loadMoon(); this._touch(); }
   resize(w, h, pixelRatio = this.renderer.getPixelRatio()) {
     // Canvas can retain native DPI; HDR is capped at one pixel per CSS pixel by default (~1080p on the notebook).
-    this.composer?.setSize(Math.max(1, Math.round(w * Math.min(pixelRatio, this.maxPixelRatio))), Math.max(1, Math.round(h * Math.min(pixelRatio, this.maxPixelRatio))));
+    // scale: the adaptive resolution of the scene (1 = full).
+    const r = Math.min(pixelRatio, this.maxPixelRatio * (this.scale || 1)); this.composer?.setSize(Math.max(1, Math.round(w * r)), Math.max(1, Math.round(h * r)));
     this._touch();
   }
   needsFrames() { return !this.disposed && (this._dirty || this._cameraChanged() || this._pending > 0 || this._uploads.length > 0 || (this.view !== 'globe' && Boolean(this.fx?.settling()))); }

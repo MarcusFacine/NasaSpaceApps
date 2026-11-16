@@ -9,9 +9,11 @@ import * as THREE from 'three';
 // Heights include the curvature drop of the Moon (terrain.heightAt), so the test is a ray against the real
 // surface in the site frame: no local-vertical correction is needed. Units: km.
 export const TERRAIN_LIGHT = {
-  heightSize: 1024, landingHeightSize: 512, lowHeightSize: 512,
-  // Visibility texels: landing 1.6 m, inner 20 m, tile 200 m, context 780 m (low power: half).
-  visibility: [512, 1024, 512, 512], lowVisibility: [256, 512, 256, 256],
+  heightSize: 512, landingHeightSize: 512, lowHeightSize: 384,   // the DEMs hold <= 769 samples a side; 512 keeps a site change fast
+  // Visibility texels: landing 1.6 m, inner 39 m (the DEM's own 40 m), tile 390 m, context 1.6 km (low power: half).
+  visibility: [512, 512, 256, 256], lowVisibility: [256, 256, 128, 128],
+  // While the Sun moves (time playback) the bake runs only after a 0.03 deg step or 250 ms, one grid per frame.
+  minStepRad: 5e-4, minIntervalMs: 250,
   raySteps: 448, stepGrowth: .028,           // a step is max(0.6 texel, 2.8 % of the distance): ~300 steps to 200 km
   solarRadius: 0.2665 * Math.PI / 180, surfaceBiasKm: 0.00012, seamTexels: 3,
 };
@@ -109,10 +111,10 @@ export class TerrainLight {
     this.zero = new THREE.DataTexture(new Float32Array([0]), 1, 1, THREE.RedFormat, THREE.FloatType); this.zero.needsUpdate = true;
     this.uniforms = { terrainHalves: { value: new THREE.Vector4() }, terrainBlend: { value: new THREE.Vector4(1, 1, 1, 1) }, terrainSunView: { value: new THREE.Vector3(0, 1, 0) } };
     for (let i = 0; i < 4; i++) this.uniforms[`terrainVisibility${i}`] = { value: this.fallback };
-    this.sun = new THREE.Vector3(0, 1, 0);
+    this.sun = new THREE.Vector3(0, 1, 0); this.bakedSun = null; this.queue = []; this.force = true; this.lastBake = -1e9;
     this.bake = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: VERTEX, fragmentShader: FRAGMENT, depthTest: false, depthWrite: false, toneMapped: false,
       uniforms: { height0: { value: this.zero }, height1: { value: this.zero }, height2: { value: this.zero }, height3: { value: this.zero },
-        halves: this.uniforms.terrainHalves, sizes: { value: new THREE.Vector4(1, 1, 1, 1) }, sun: { value: this.sun }, outputHalf: { value: 1 },
+        halves: this.uniforms.terrainHalves, sizes: { value: new THREE.Vector4(1, 1, 1, 1) }, sun: { value: new THREE.Vector3(0, 1, 0) }, outputHalf: { value: 1 },
         solarRadius: { value: TERRAIN_LIGHT.solarRadius }, surfaceBias: { value: TERRAIN_LIGHT.surfaceBiasKm }, topKm: { value: 0 } } });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.bake); this.quad.frustumCulled = false;
     this.bakeScene = new THREE.Scene(); this.bakeScene.add(this.quad); this.bakeCamera = new THREE.Camera();
@@ -130,7 +132,7 @@ export class TerrainLight {
       this.bake.uniforms.sizes.value.setComponent(i, size); this.bake.uniforms[`height${i}`].value = height;
     }
     this.bake.uniforms.topKm.value = Math.max(-1e3, ...this.grids.filter(Boolean).map(g => g.height.userData.top));
-    this.dirty = true;
+    this.dirty = this.force = true;
   }
   setTerrain(terrain) {
     const n = this.lowPower ? TERRAIN_LIGHT.lowHeightSize : TERRAIN_LIGHT.heightSize, h = (x, z) => terrain.heightAt(x, z);
@@ -168,19 +170,31 @@ terrainPosition=(modelMatrix*terrainWorld).xz;`);
     material.customProgramCacheKey = () => `${key()}|terrain-horizon-2`; material.needsUpdate = true;
     return material;
   }
+  // true while a bake is still due (the caller keeps drawing frames until then).
+  pending() { return this.dirty || this.queue.length > 0; }
   update(camera) {
     if (camera) { camera.updateMatrixWorld(); this.uniforms.terrainSunView.value.copy(this.sun).transformDirection(camera.matrixWorldInverse); }
-    if (!this.dirty || !this.grids[3]) return false;
+    if (!this.grids[3]) return false;
+    const now = performance.now();
+    if (this.dirty) {
+      const step = this.bakedSun ? this.bakedSun.angleTo(this.sun) : Infinity;
+      if (this.force || step > TERRAIN_LIGHT.minStepRad || now - this.lastBake > TERRAIN_LIGHT.minIntervalMs) {
+        // A new relief bakes every grid at once; a moving Sun re-bakes one grid per frame, the finest (nearest) first.
+        this.queue = [3, 2, 1, 0].filter(i => this.grids[i]); this.bakedSun = this.sun.clone(); this.lastBake = now;
+        this.dirty = false; this.all = this.force; this.force = false;
+      }
+    }
+    if (!this.queue.length) return false;
     const r = this.renderer, target = r.getRenderTarget(), face = r.getActiveCubeFace(), mip = r.getActiveMipmapLevel();
     const autoClear = r.autoClear, xr = r.xr.enabled, shadows = r.shadowMap.enabled, test = r.getScissorTest();
     try {
       r.xr.enabled = false; r.shadowMap.enabled = false; r.autoClear = true; r.setScissorTest(false);
-      for (let i = 3; i >= 0; i--) {
-        const grid = this.grids[i]; if (!grid) continue;
+      do {
+        const i = this.queue.pop(), grid = this.grids[i]; if (!grid) continue;
+        this.bake.uniforms.sun.value.copy(this.bakedSun);
         this.bake.uniforms.outputHalf.value = grid.half; r.setRenderTarget(grid.target); r.render(this.bakeScene, this.bakeCamera);
         this.uniforms[`terrainVisibility${i}`].value = grid.target.texture;
-      }
-      this.dirty = false;
+      } while (this.all && this.queue.length);
     } finally {
       r.setRenderTarget(target, face, mip); r.setScissorTest(test);
       r.autoClear = autoClear; r.xr.enabled = xr; r.shadowMap.enabled = shadows;

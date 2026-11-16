@@ -103,7 +103,8 @@ export class LunarScene {
     this.container = container; this.sites = sites; this.t = t; this.view = 'terrain'; this.dirty = true; this.disposed = false;
     this.lowPower = lowPower(); this.readingLight = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.lowPower ? 1.5 : 2));
+    this.basePixelRatio = Math.min(window.devicePixelRatio, this.lowPower ? 1.5 : 2); this.resScale = 1; this.frameStats = { ema: 0, slow: 0, fast: 0, last: 0 };
+    this.renderer.setPixelRatio(this.basePixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -236,6 +237,7 @@ export class LunarScene {
       const now = performance.now(), dt = Math.min(.1, (now - this.walker.last) / 1000); this.walker.last = now;
       if (this.view === 'surface' && !this.walker.cabin && (this.walker.keys.size || this.walker.air) && !this.suspended) { this.walk(dt); this.dirty = true; }
       if (this.dirty && !this.suspended && !document.hidden && !this.contextLost) {
+        if (this.cabinEntry) this.updateCabinEntry(now);
         this.frameView(); this.controls.update(); this.updateThickness();
         // Cached horizon pass only on Sun/relief changes; walking redraws only the small-object map.
         const walking = this.view === 'surface' && Boolean(this.landing);
@@ -251,7 +253,8 @@ export class LunarScene {
         // A sampled near map must be allocated on its first shadow-enabled frame.
         if (this.sunlight.castShadow && !this.sunlight.shadow.map) this.sunlight.shadow.needsUpdate = true;
         if (this.view !== 'globe') this.groundLight.update(this.camera);
-        this.sky.render(dt); this.updateLabels(); this.dirty = this.sky.needsFrames();
+        this.sky.render(dt); this.updateLabels(); this.dirty = this.sky.needsFrames() || Boolean(this.cabinEntry) || (this.view !== 'globe' && this.groundLight.pending());
+        this.adaptResolution(now);
       }
       this.frame = requestAnimationFrame(this.render);
     };
@@ -305,6 +308,19 @@ export class LunarScene {
     this.resetCamera(); this.invalidate();
   }
 
+  // Adaptive resolution: the time between frames drawn back to back. Slower than ~32 fps for 2.5 s: render 25 % fewer
+  // pixels per side (down to 56 %); faster than ~48 fps for 8 s: back up. A change reallocates the render targets
+  // (~0.2 s on an iGPU), so it happens rarely and in large steps.
+  adaptResolution(now) {
+    const s = this.frameStats, ft = now - s.last; s.last = now; if (ft > 120) return;
+    s.ema = s.ema ? s.ema * .9 + ft * .1 : ft;
+    s.slow = s.ema > 31 ? s.slow + ft : 0; s.fast = s.ema < 21 ? s.fast + ft : 0;
+    if (s.slow > 2500 && this.resScale > .57) { this.setResolutionScale(Math.max(.56, this.resScale * .75)); s.slow = 0; s.ema = 0; }
+    else if (s.fast > 8000 && this.resScale < 1) { this.setResolutionScale(Math.min(1, this.resScale / .75)); s.fast = 0; s.ema = 0; }
+  }
+  setResolutionScale(k) {
+    this.resScale = k; this.renderer.setPixelRatio(this.basePixelRatio * k); this.sky.scale = k; this.resize();
+  }
   setReadingLight(on) { this.readingLight = on; if (this.result) this.applyLights(); this.invalidate(); }
   setPsr(on) { this.psrUniform.value = on ? 1 : 0; this.invalidate(); }
   applyLights() {
@@ -668,24 +684,45 @@ export class LunarScene {
   // 'Enter the lander': the camera at the Commander's eye, 1.5 m above the ascent-stage floor, looking out of the
   // left triangular window (Apollo crews flew the descent standing, in restraints). The exterior shell of the ascent
   // stage hides; the cabin's walls, its floodlights and the sunlight through the windows take over. Drag looks around.
-  setCabin(on, reset = true) {
+  setCabin(on, reset = true, animate = true) {
     const w = this.walker; if (on && (!this.cabin || !this.lander || this.view !== 'surface')) return;
-    w.cabin = Boolean(on); w.keys.clear(); this.landWalker();
-    if (this.cabin) {
-      this.cabin.group.visible = w.cabin; this.cabin.setInterior(w.cabin);
-      for (const [light, intensity] of this.cabin.lights) light.intensity = w.cabin ? intensity : 0;
-    }
+    w.cabin = Boolean(on); w.keys.clear(); this.landWalker(); this.cabinEntry = null;
     this.camera.near = w.cabin ? .00002 : .0005;
     if (w.cabin) {
       this.lander.updateMatrixWorld(true);
-      const eye = this.cabin.group.localToWorld(this.cabin.eyes.cdr.clone()), ahead = this.cabin.group.localToWorld(this.cabin.eyes.cdr.clone().add(this.cabin.lookDir)).sub(eye).normalize();
+      const L = p => this.cabin.group.localToWorld(new THREE.Vector3(...p));
+      // In through the front: to the porch at the top of the ladder, through the forward hatch (the exterior shell gives
+      // way to the cabin there), up to the Commander's station, then the turn to his window.
+      const path = [this.camera.position.clone(), L([.04, 3.9, 6.2]), L([.04, 3.72, 3.6]), L([.04, 3.66, 2.25]), L([.04, 3.8, 1.3]), L([.42, 4.5, .95]), L(this.cabin.eyes.cdr.toArray())];
+      const eye = path[path.length - 1], ahead = L(this.cabin.eyes.cdr.clone().add(this.cabin.lookDir).toArray()).sub(eye).normalize();
+      if (animate && !reducedMotion()) {
+        this.cabinEntry = { t0: performance.now(), duration: 3400, curve: new THREE.CatmullRomCurve3(path, false, 'centripetal'), ahead, inside: false };
+        this.setInteriorView(false);
+      } else this.setInteriorView(true);
       this.controls.target.copy(eye); this.camera.position.copy(eye).addScaledVector(ahead, -.00008);
       this.setFov(70);
-    }
+      if (this.cabinEntry) this.updateCabinEntry(performance.now());
+    } else this.setInteriorView(false);
     this.placeNearLights(); this.sunlight.shadow.needsUpdate = true;
     this.applyView(); this.walkTexts();
     if (!w.cabin && reset) { this.resetCamera(); this.placeWalker(); this.checkHere(true); }
     this.camera.updateProjectionMatrix(); this.controls.update(); this.invalidate();
+  }
+  // Cabin shown and exterior shell hidden (inside), or the other way round.
+  setInteriorView(inside) {
+    if (!this.cabin) return;
+    this.cabin.group.visible = inside; this.cabin.setInterior(inside);
+    for (const [light, intensity] of this.cabin.lights) light.intensity = inside ? intensity : 0;
+  }
+  // One step of the walk-in: position along the path, the look along it, then toward the window; done after 2.6 s.
+  updateCabinEntry(now) {
+    const e = this.cabinEntry; if (!e) return;
+    const k = Math.min(1, (now - e.t0) / e.duration), u = k * k * (3 - 2 * k), p = e.curve.getPointAt(u);
+    if (!e.inside && u > .55) { e.inside = true; this.setInteriorView(true); }
+    const along = e.curve.getTangentAt(Math.min(u, .999)), look = along.lerp(e.ahead, THREE.MathUtils.smoothstep(u, .7, 1)).normalize();
+    this.controls.target.copy(p); this.camera.position.copy(p).addScaledVector(look, -.00008); this.controls.update();
+    if (k >= 1) { this.cabinEntry = null; this.setInteriorView(true); }
+    this.invalidate();
   }
   // Back on the ground at once, with no speed left (a new start, or leaving the surface view).
   landWalker() { Object.assign(this.walker, { air: false, vy: 0, yoff: 0, vx: 0, vz: 0 }); }
