@@ -5,6 +5,7 @@ Explorador do polo sul lunar, em português e inglês. Site estático com Three.
 - `dist/index.html`: apresentação (landing), com a Lua ao vivo iluminada pela posição real do Sol.
 - `dist/app/`: o explorador.
 - `dist/tutorial.html`: guia ilustrado com exemplos que dá para repetir.
+- `deck/`: apresentação do hackathon, 7 slides em inglês. Abra `deck/index.html` no navegador ou use o PDF ao lado (`horisite-space-apps-2026.pdf`). Ela fica fora do `dist`, então não é publicada com o site.
 
 ## Executar
 
