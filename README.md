@@ -1,50 +1,210 @@
-# Horisite · lunar landing site navigator
+# Horisite · Lunar Landing Site Navigator
 
-Explorador do polo sul lunar, em português e inglês. Site estático com Three.js 0.186.1, efemérides do Astronomy Engine 2.1.19 e relevo real do LRO/LOLA, sem chamadas de API para os cálculos. Antes se chamava Lunar Horizon 3D.
+![Horisite logo](brand/horisite-logo-black.png)
 
-- `dist/index.html`: apresentação (landing), com a Lua ao vivo iluminada pela posição real do Sol.
-- `dist/app/`: o explorador.
-- `dist/tutorial.html`: guia ilustrado com exemplos que dá para repetir.
-- `deck/`: apresentação do hackathon, 7 slides em inglês. Abra `deck/index.html` no navegador ou use o PDF ao lado (`horisite-space-apps-2026.pdf`). Ela fica fora do `dist`, então não é publicada com o site.
+**Land where the light lasts.** Explore the Moon's south pole to compare sunlight and Earth visibility over real terrain, by site and date.
 
-## Executar
+A NASA Space Apps Challenge 2026 project for **Lunar Landing Site Navigator**, by **Team Counter Force**, Ribeirão Preto, Brazil.
 
-No Windows, dê dois cliques em **Iniciar Lunar Horizon.cmd** ou rode `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1`. Abra `http://localhost:4173/` (apresentação) ou `http://localhost:4173/app/` (explorador). O inicializador serve só em `127.0.0.1` e `::1`, não cria serviço nem tarefa agendada e registra em `artifacts/localhost-server.log`.
+## Live links and presentation
 
-Em um terminal que ficará aberto: `npm start` (Node.js) ou `python -m http.server 4173 --bind 127.0.0.1 --directory dist`. Tudo o que o site usa já está em `dist`: não é preciso instalar dependências para rodar.
+| Resource | Link |
+| --- | --- |
+| Website | [Open Horisite](https://187.77.229.205) |
+| Explorer | [Compare sites and dates](https://187.77.229.205/app/) |
+| Illustrated tutorial | [Follow the examples](https://187.77.229.205/tutorial.html) |
+| 30-second demo video | [Watch online](https://187.77.229.205/media/horisite-demo-30s.mp4) · [Repository copy](project-reports/horisite-demo-30s.mp4) · [Captions (SRT)](project-reports/horisite-demo-30s.srt) |
+| Seven-slide presentation | [View online](https://187.77.229.205/slides/) · [PDF online](https://187.77.229.205/slides/horisite-space-apps-2026.pdf) · [Repository copy](project-reports/) |
 
-## Dados e regeneração
+The presentation and the video are published with the site (`dist/slides/`, `dist/media/`); the originals live in [project-reports/](project-reports/).
 
-Instale as versões fixadas com `pnpm install`.
+## The challenge and the problem
 
-- `node scripts/prepare-data.mjs` copia as bibliotecas, baixa as texturas e chama `prepare-terrain.mjs`.
-- `node scripts/prepare-terrain.mjs` lê, por HTTP Range, só as janelas de cada local nos DEMs LOLA do polo sul do NASA GSFC PGDA ([produto 90](https://pgda.gsfc.nasa.gov/products/90), Cloud-Optimized GeoTIFF). Grava, por local:
-  - `<local>.bin`: 100 × 100 km, 769 × 769 pontos (~130 m), da versão de 80 m do `LDEM_80S_20MPP_ADJ`;
-  - `<local>-inner.bin`: 20 × 20 km no centro, 513 × 513 pontos (~39 m), da versão de 40 m;
-  - `<local>-wide.bin`: 400 × 400 km, 257 × 257 pontos (~1,56 km), do `LDEM_60S_240MPP_ADJ`, para o horizonte distante;
-  - `<local>-psr.bin`: fração de sombra eterna (0–255) do mapa `LPSR_80S_20MPP_ADJ`.
+The challenge asks for an intuitive way to compare lunar landing sites and dates through the positions of the Sun and Earth on the horizon. At the south pole, terrain can change both the available sunlight and the line of sight to Earth.
 
-  Antes de gravar, o script compara o recorte com os arquivos existentes e interrompe se a projeção não conferir. A comparação com o DEM SVS de 474 m usado antes deu diferença média de 7,6 a 8,6 m e correlação ≥ 0,99994 nos cinco locais (registrada em `dist/data/metadata.json`).
-- `node scripts/prepare-stars.mjs` gera `dist/data/stars.json` do catálogo HYG v4.1 (magnitude ≤ 6).
-- `node scripts/prepare-mission-assets.mjs` baixa e prepara as texturas de 4096 px usadas só na missão (Terra do three.js; cor LROC e mapa de normais calculado do LOLA `ldem_16`, do NASA SVS CGI Moon Kit). Precisa de rede e de `ffmpeg`.
-- Os modelos das naves em `dist/assets/mission/models/` são os GLB oficiais do repositório `nasa/NASA-3D-Resources` ("Apollo Lunar Module" e "Apollo Soyuz", do qual só a nave Apollo é usada), copiados como publicados. Os carregadores e o pós-processamento do Three.js ficam em `dist/vendor/addons/` (copiados por `prepare-data.mjs`).
-- `pnpm check` verifica a geometria, um caso de referência do JPL Horizons e a missão. `node scripts/tutorial-examples.mjs` recalcula os números do tutorial.
+- **Power:** the Sun skims the horizon; a distant ridge can block light reaching a solar panel.
+- **Contact:** Earth sits low in the sky, where relief can hide it.
+- **No quick answer:** ephemerides, terrain maps and time windows are spread across separate, complex tools.
 
-## Recursos
+Slide 2 of the [presentation](project-reports/index.html) uses the **IM-2 Athena lander in March 2025** as an example: approximately **250 m off target**, inside a cold, shadowed crater, with solar panels unable to recharge its batteries. It reports a planned **10-day** surface mission that lasted **under 13 hours**. The slide's source line is **“Astronomy magazine; Intuitive Machines.”**
 
-- Relevo 3D em três camadas reais (40 m no centro, ~130 m em 100 km, ~1,56 km em 400 km), sombreamento de regolito (lunar-Lambert), sombras do Sol, céu com as estrelas do HYG e a Terra orientada pelo tempo sideral, com fase real, nuvens e luzes noturnas.
-- Raios do observador até o Sol e até a Terra, com o ponto onde o relevo bloqueia; caminho do Sol e da Terra nas próximas 24 horas; linha do horizonte calculado na vista de superfície; lente (teleobjetiva) para olhar a Terra.
-- Camada de sombra eterna (regiões permanentemente sombreadas, PGDA).
-- Comparação de até três locais, gráfico do horizonte em 360°, células de 24 horas (Sol em cima, Terra embaixo, hachura quando atrás do relevo) e busca da maior janela comum em 30 dias.
-- Simulação Terra–Lua–Terra em 13 etapas, com órbitas de estacionamento circulares (μ do JPL DE440) e transferências ilustrativas.
-- Ferramentas WebMCP: `configure_lunar_comparison` e `read_lunar_visibility`.
+## What Horisite does
 
-## Dados e limitações
+| Feature | What to look for |
+| --- | --- |
+| A verdict for each body | Sun and Earth visibility, explained as **in the sky − relief = margin** in degrees. |
+| **Light on a panel** | Incident sunlight in W/m², with **Tracks the Sun** and **Horizontal** panel orientations. |
+| **What the relief hides** | A 360° horizon chart with the Sun, Earth and their paths over the next 24 hours. |
+| Sun+Earth bars per site | Hourly visibility over 24 hours: Sun on top, Earth below, with hatching when hidden behind relief. |
+| **Best window** | The longest common interval with Sun and Earth in view across the compared sites, searched over the next 30 days. |
+| Site comparison | Compare up to **3 of 5** regions: Shackleton rim, Malapert massif, de Gerlache region, Nobile rim and Haworth region. |
+| **3D relief** | LOLA terrain at true vertical scale, Sun shadows, and rays showing where relief blocks the Sun or Earth. |
+| **Surface** | Walk and jump with lunar gravity beside the NASA lunar module model; use keyboard or on-screen controls. |
+| **Globe** | View the whole Moon and its illumination. |
+| Permanent shadow | Toggle the PGDA map of permanently shadowed regions. |
+| Solar eclipses by Earth | Partial and total occultation of the Sun, with the resulting reduction in direct sunlight. |
+| **Simulate mission** | An Earth–Moon–Earth mission using an Apollo 11 profile and a landing inside the selected visibility window. |
+| Language and devices | English and Portuguese, responsive layouts and touch controls for phones. |
 
-O horizonte é amostrado a cada 0,5° de direção, com o relevo até ~195 km (detalhado até 50 km). A Lua não tem atmosfera, então não há refração. Visibilidade da Terra é linha de visada para o centro dela, não um enlace. A irradiância é a luz incidente (1361 W/m² a 1 UA vezes a fração do disco solar à vista); não é potência elétrica.
+The explorer also provides observer-height controls, a telephoto view of Earth and a first-visit guide. Where the browser supports WebMCP, it registers `configure_lunar_comparison` and `read_lunar_visibility` for configuring comparisons and reading model results.
 
-O micro-relevo abaixo da malha e as variações de brilho do solo são sintéticos e só visuais; a luz de leitura é opcional e não física. Os pontos são referências regionais, não locais de pouso certificados. Uso educativo e exploratório.
+## How to use it
 
-Créditos: relevo e sombra eterna NASA GSFC PGDA (Barker et al. 2023, *Planetary Science Journal* 4:183); textura da Lua NASA SVS/LROC; estrelas HYG v4.1 (CC BY-SA 4.0); texturas da Terra dos exemplos do Three.js; bibliotecas MIT, licenças em `dist/vendor`.
+The six steps from the presentation:
 
-Veja [EVALUATION.md](EVALUATION.md) para as avaliações, mudanças e limites medidos.
+1. **Pick your sites.** Select a name to explore a region; use **+** to compare up to three sites.
+2. **Set the moment.** Choose a date and UTC time. Jump a day or a week to test a delay.
+3. **Read the answer.** Check each body's verdict, the sky − relief = margin calculation, and the light in W/m².
+4. **Check what blocks them.** Follow the rays over the terrain and inspect the horizon profile.
+5. **Play the day.** Read the Sun+Earth bars to see, hour by hour, when each site sees both.
+6. **Find the window, then fly it.** Use **Best window** for its duration and dates, then **Simulate mission** to visit it.
+
+## Data and methods
+
+### Terrain and permanent shadow
+
+[NASA GSFC PGDA product 90](https://pgda.gsfc.nasa.gov/products/90) supplies the LRO/LOLA south-pole DEMs and permanent-shadow map. [prepare-terrain.mjs](scripts/prepare-terrain.mjs) reads site windows from Cloud-Optimized GeoTIFFs using HTTP Range requests, rather than downloading the complete DEMs.
+
+Each site has four layers in [dist/data/](dist/data/):
+
+| File pattern | Extent | Grid and output spacing | Source |
+| --- | --- | --- | --- |
+| `<site>.bin` | 100 × 100 km | 769 × 769 points, approximately 130 m | 80 m overview of `LDEM_80S_20MPP_ADJ` (20 m native DEM). |
+| `<site>-inner.bin` | 20 × 20 km, centred on the site | 513 × 513 points, approximately 39 m | 40 m overview of `LDEM_80S_20MPP_ADJ`. |
+| `<site>-wide.bin` | 400 × 400 km | 257 × 257 points, approximately 1.56 km | `LDEM_60S_240MPP_ADJ`, read at its 480 m overview, for the distant horizon. |
+| `<site>-psr.bin` | 100 × 100 km | 769 × 769 points, approximately 130 m | `LPSR_80S_20MPP_ADJ`; permanent-shadow fraction encoded as 0–255, with 255 representing permanent shadow. |
+
+When legacy SVS terrain tiles are available, the preparation script compares the new crop with them; otherwise, it retains the recorded validation. It stops before writing if the validation indicates a projection or orientation mismatch. The recorded comparison with the earlier **474 m SVS DEM** gave **7.6–8.6 m mean absolute differences** across the five sites and correlations of **approximately 0.99994 or higher**. The minimum stored correlation is `0.999939609066943`; the full results are in [metadata.json](dist/data/metadata.json).
+
+The geometry includes lunar curvature. The horizon is sampled every **0.5°** of azimuth, using detailed terrain out to **50 km** and wider context out to approximately **195 km**. The Moon has no atmosphere, so the lunar horizon calculation applies no atmospheric refraction.
+
+### Sky, light and rendering
+
+- **Ephemerides:** Astronomy Engine **2.1.19** calculates positions locally, without runtime ephemeris API requests, using geometric J2000 vectors, approximate IAU lunar orientation and observer parallax. Sun and Earth positions are checked against a JPL Horizons reference case.
+- **Panel light:** incident irradiance starts at **1361 W/m² at 1 AU**, scales with Sun distance, and accounts for the visible solar-disc fraction, eclipses and panel orientation. This is incident light, before electrical efficiency, losses, temperature or battery storage.
+- **Stars:** HYG **v4.1**, down to visual magnitude **6**, at J2000 positions without proper motion.
+- **Rendering:** Three.js **0.186.1**, lunar-Lambert regolith shading and Sun shadows. Earth is oriented by sidereal time, with its phase, clouds and night lights. NASA SVS supplies lunar imagery and the Milky Way background.
+- **Spacecraft:** official NASA 3D Resources **Apollo Lunar Module** and **Apollo Soyuz** assets; only the Apollo spacecraft from the latter is used. The Surface view adapts the lunar module's markings to NASA Space Apps Challenge branding.
+- **Mission imagery:** NASA SVS/LROC lunar colour maps and LOLA-derived normals; NASA Blue Marble, Black Marble and MODIS imagery for Earth, alongside the Three.js Earth textures.
+
+### Interpretation and limits
+
+Earth visibility is a line of sight to its centre, not a validated communication link. Site coordinates are regional reference points, not certified landing ellipses. The best-window search samples hourly; events between samples are not resolved.
+
+Surface micro-relief, small craters, rocks and ground-brightness variations below the terrain mesh are synthetic visual details. The optional reading light is not physical. While walking, visibility is also evaluated from the current position; the answer panel retains the reference site's numbers.
+
+The mission uses circular parking orbits with JPL DE440 gravitational parameters. Transfers, burns, ascent, descent and re-entry are illustrative, without a Lambert solution, three-body integration, fuel or delta-v modelling. A sunlight-and-visibility window is not an orbital launch window. Horisite is for exploration and education.
+
+## Accuracy and verification
+
+With the project dependencies installed, run:
+
+```sh
+npm run check
+```
+
+This runs [check-model.mjs](scripts/check-model.mjs) and [check-mission.mjs](scripts/check-mission.mjs) locally, without network requests:
+
+- Lunar-frame geometry and libration, terrain curvature, observer height, irradiance, visibility, eclipses and continuous-interval selection.
+- Sun and Earth azimuth/elevation against a stored JPL Horizons case at Shackleton on **2026-10-02 at 12:00 UTC**, with a **0.01°** tolerance.
+- Mission dates and window constraints, position and attitude continuity, Kepler orbit periods and speeds, transfer clearance across the five sites, and camera transitions.
+
+For a fresh external ephemeris comparison:
+
+```sh
+node scripts/validate-horizons.mjs
+```
+
+This requires network access and installed dependencies. It queries JPL Horizons sequentially for the Sun and Earth at the reference date and prints the JPL and local values for comparison; it does not enforce a numerical tolerance. [tutorial-examples.mjs](scripts/tutorial-examples.mjs) recalculates the illustrated tutorial's examples.
+
+## Repository map
+
+| Location | Contents |
+| --- | --- |
+| [dist/](dist/) | The complete static site, served as-is. **No build step.** |
+| [dist/index.html](dist/index.html), `landing.css`, `landing.js`, `landing-site.js` | Landing page and its illuminated Moon. |
+| [dist/app/](dist/app/), [app.js](dist/app.js) | Explorer page, styles and application controls. |
+| [dist/model.js](dist/model.js), [sites.js](dist/sites.js), [i18n.js](dist/i18n.js) | Geometry, visibility and irradiance calculations; regional reference sites; English/Portuguese interface text. |
+| [dist/scene.js](dist/scene.js), [lunar-surface.js](dist/lunar-surface.js), [mission-model.js](dist/mission-model.js), [mission-scene.js](dist/mission-scene.js) | Terrain and Surface rendering, mission model and mission rendering. |
+| [dist/tutorial.html](dist/tutorial.html), [dist/tutorial/](dist/tutorial/) | Illustrated guide and English/Portuguese screenshots. |
+| [dist/data/](dist/data/) | Terrain and permanent-shadow binaries, `metadata.json`, and `stars.json`. |
+| [dist/assets/](dist/assets/), [dist/brand/](dist/brand/), [dist/vendor/](dist/vendor/) | Textures, spacecraft models, site branding and vendored libraries/add-ons. |
+| [scripts/](scripts/) | Local server and launcher, data preparation, model/mission checks, Horizons comparison and tutorial examples. |
+| [project-reports/](project-reports/) | Hackathon presentation (`index.html`, `img/`, PDF) and the 30-second demo video with its captions. Published copies: `dist/slides/` and `dist/media/`. |
+| [docs/](docs/) | Internal **Portuguese** notes, retained in their original language: [product](docs/PRODUCT.md), [design](docs/DESIGN.md) and [evaluation](docs/EVALUATION.md). |
+| [brand/](brand/) | Original black and white Horisite logo PNGs. |
+| Root files | [README.md](README.md), [package.json](package.json), [pnpm-lock.yaml](pnpm-lock.yaml), [start-horisite.cmd](start-horisite.cmd) and [.gitignore](.gitignore). |
+| `.openai/` | Original author's hosting configuration. |
+
+## Run locally
+
+Everything needed to serve the site is already in `dist/`. **No dependency installation or build is required to run it.** Use Node.js:
+
+```sh
+npm start
+```
+
+Open [http://localhost:4173](http://localhost:4173) for the landing page or [http://localhost:4173/app/](http://localhost:4173/app/) for the explorer. Keep the terminal open when using `npm start`.
+
+On Windows, double-click [start-horisite.cmd](start-horisite.cmd), or run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+```
+
+The Windows launcher leaves the local server running after the command closes. The Node server listens only on `127.0.0.1` and `::1`, writes logs to `artifacts/localhost-server.log`, and does not create a service or scheduled task.
+
+Alternatively, with Python:
+
+```sh
+python -m http.server 4173 --bind 127.0.0.1 --directory dist
+```
+
+### Regenerate data and assets
+
+For development and regeneration, install the pinned dependencies:
+
+```sh
+pnpm install
+```
+
+These commands regenerate files under `dist/`; downloads require network access.
+
+| Command | Result |
+| --- | --- |
+| `node scripts/prepare-data.mjs` | Copies the vendored libraries and Three.js add-ons, downloads base textures, then calls terrain preparation. |
+| `node scripts/prepare-terrain.mjs` | Regenerates the four PGDA terrain/permanent-shadow layers per site and metadata. |
+| `node scripts/prepare-stars.mjs` | Regenerates `stars.json` from HYG v4.1. |
+| `node scripts/prepare-mission-assets.mjs` | Downloads and prepares the mission texture sets, including 4096 px and 8192 px assets. Requires `ffmpeg` and `ffprobe`. |
+| `node scripts/tutorial-examples.mjs` | Recalculates tutorial examples. |
+
+The NASA spacecraft GLBs are included in [dist/assets/mission/models/](dist/assets/mission/models/). The preparation scripts copy Three.js loaders and post-processing code to `dist/vendor/addons/`.
+
+## Credits and data sources
+
+| Source | Use and credit |
+| --- | --- |
+| [NASA GSFC PGDA / LRO LOLA](https://pgda.gsfc.nasa.gov/products/90) | South-pole terrain and permanent shadow; Barker et al. (2023), *The Planetary Science Journal*, **4:183** ([paper](https://doi.org/10.3847/PSJ/acf3e1)). |
+| [NASA SVS CGI Moon Kit](https://svs.gsfc.nasa.gov/4720/) | LROC lunar colour imagery and LOLA elevation data; NASA/GSFC/Arizona State University. |
+| [NASA SVS Deep Star Maps](https://svs.gsfc.nasa.gov/4851/) | Milky Way background. |
+| [NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources) | Apollo Lunar Module and Apollo Soyuz models. |
+| [NASA Blue Marble](https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/september/world.200409.3x21600x10800.jpg), [Black Marble](https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144897/BlackMarble_2016_3km_gray.jpg), [Blue Marble clouds](https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif), [NASA GIBS](https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi) | Mission Earth day, night-light, cloud and MODIS water-mask imagery; source URLs and processing are recorded in [prepare-mission-assets.mjs](scripts/prepare-mission-assets.mjs). |
+| [Astronomy Engine](https://github.com/cosinekitty/astronomy) | Ephemerides; MIT license included in the [vendored bundle header](dist/vendor/astronomy.browser.min.js). |
+| [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/), [JPL DE440 parameters](https://ssd.jpl.nasa.gov/astro_par.html) | Ephemeris reference and orbital gravitational parameters. |
+| [HYG Database](https://github.com/astronexus/HYG-Database) | v4.1 star catalogue, CC BY-SA 4.0. |
+| [Three.js](https://threejs.org/) | Rendering, add-ons and example Earth textures; [MIT license](dist/vendor/THREE-LICENSE.txt). |
+
+## Team
+
+**Counter Force — Ribeirão Preto, Brazil**
+
+- Marcus Fabio Galvão Facine
+- Victor Arantes Lino
+- Ricardo Coradini de Marco Moretti
+- Haroldo Curti e Silva
+- Ariane Praxedes Silva
+- Carla Giovana Lopez Tarqui
+
+## Use of AI
+
+Development was assisted by AI coding tools: Claude Code by Anthropic and Codex by OpenAI. The demo video's narration uses a synthetic neural voice.

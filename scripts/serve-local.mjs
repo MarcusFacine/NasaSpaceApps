@@ -31,7 +31,7 @@ async function respond(request, response) {
     if (pathname === '/__local_health') {
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(request.method === 'HEAD' ? undefined : JSON.stringify({
-        app: 'lunar-horizon-local', pid: process.pid, root, hosts: ['127.0.0.1', '::1'], port: 4173
+        app: 'horisite-local', pid: process.pid, root, hosts: ['127.0.0.1', '::1'], port: 4173
       }));
       return;
     }
