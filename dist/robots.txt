@@ -1,0 +1,5 @@
+# Horisite: please do not crawl, copy or use this site for AI training.
+# The live site is for people: https://187.77.229.205
+
+User-agent: *
+Disallow: /
