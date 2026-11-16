@@ -7,12 +7,12 @@ $existingListeners = @(Get-NetTCPConnection -LocalPort 4173 -State Listen -Error
 if ($existingListeners.Count -gt 0) {
     try { $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 3 } catch { $health = $null }
     $owner = if ($health) { Get-CimInstance Win32_Process -Filter "ProcessId=$($health.pid)" } else { $null }
-    $owned = $health -and $health.app -eq 'lunar-horizon-local' -and
+    $owned = $health -and $health.app -eq 'horisite-local' -and
         $health.root -eq (Join-Path $projectPath 'dist') -and $owner -and
         $owner.CommandLine.Contains('"' + $serverPath + '"') -and
         (@($existingListeners | Where-Object { $_.OwningProcess -ne $health.pid }).Count -eq 0)
     if ($owned) {
-        Write-Output "Lunar Horizon já está ativo: http://localhost:4173/ (PID $($health.pid))"
+        Write-Output "Horisite já está ativo: http://localhost:4173/ (PID $($health.pid))"
         exit 0
     }
     throw 'A porta 4173 está ocupada por outro processo. Nenhum processo foi encerrado.'
@@ -39,8 +39,8 @@ if ($result.ReturnValue -ne 0) { throw "Não foi possível iniciar o servidor (W
 for ($attempt = 0; $attempt -lt 20; $attempt++) {
     try {
         $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 1
-        if ($health.app -eq 'lunar-horizon-local' -and $health.pid -eq $result.ProcessId) {
-            Write-Output "Lunar Horizon ativo: http://localhost:4173/ (PID $($result.ProcessId))"
+        if ($health.app -eq 'horisite-local' -and $health.pid -eq $result.ProcessId) {
+            Write-Output "Horisite ativo: http://localhost:4173/ (PID $($result.ProcessId))"
             Write-Output 'Servidor restrito a 127.0.0.1 e ::1. Continua ativo após fechar este comando.'
             exit 0
         }
