@@ -28,12 +28,12 @@ const PHASE_TABLE = [
   ['liftoff','Decolagem',9],['launch','Subida à órbita',10],['earthOrbit','Órbita terrestre',14],['tli','Injeção translunar',4],
   ['outbound','Ida à Lua',12],['loi','Inserção lunar',4],['lunarOrbit','Órbita lunar',5],
   ['descent','Pouso lunar',20],['surface','No solo',8],['ascent','Decolagem lunar',20],
-  ['lunarReturnOrbit','Órbita lunar / volta',12],['tei','Injeção à Terra',4],['inbound','Volta à Terra',16],
+  ['lunarReturnOrbit','Órbita lunar / volta',20],['tei','Injeção à Terra',4],['inbound','Volta à Terra',16],
   ['arrival','Reentrada',8],['splashdown','Paraquedas e amerissagem',8]
 ];
 export const ANIMATION_SECONDS=PHASE_TABLE.reduce((sum,p)=>sum+p[2],0);
 export const PHASES = PHASE_TABLE.map(([id,label,seconds],i,all)=>{const before=all.slice(0,i).reduce((sum,p)=>sum+p[2],0);return {id,label,seconds,start:before/ANIMATION_SECONDS,end:(before+seconds)/ANIMATION_SECONDS};});
-export const LOCAL_DESCENT_START=.25,LOCAL_ASCENT_END=.70;
+export const LOCAL_DESCENT_START=.25,LOCAL_ASCENT_END=.70,DOCK_END=.4;
 const TAU = 2*Math.PI;
 const add = (a,b) => a.map((v,i)=>v+b[i]);
 const subtract = (a,b) => a.map((v,i)=>v-b[i]);
@@ -277,7 +277,7 @@ export function buildMission({site,windowStart,windowEnd,outboundHours=APOLLO.ou
 export function sampleMission(plan,progress,astronomy){
   const p=clamp(progress,0,1),phase=PHASES.find(s=>p<s.end)||PHASES.at(-1),t=presentationTime(clamp((p-phase.start)/(phase.end-phase.start),0,1)),u=smooth(t);
   const [begin,end]=plan.times[phase.id],ms=mix(begin,end,t),date=new Date(ms),moon=moonPosition(date,astronomy),frame=lunarFrame(date,astronomy);
-  let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false,pad=false,ignition=1;
+  let position,direction,attitude=null,altitudeKm=0,local=false,engine=false,throttle=0,orbit=null,arc=null,altitudeReference='Terra',config='csm',plasma=0,chutes=null,ocean=false,pad=false,ignition=1,dock=null;
   // The clock runs through every lunar orbit (13 before the landing, 5 after the liftoff on Apollo 11); the
   // picture shows only the final arc into the descent on arrival, and one lap on the way out.
   let orbitFrom=null,orbitAt=null;
@@ -301,7 +301,10 @@ export function sampleMission(plan,progress,astronomy){
     case 'tli':around(plan.earthParking,plan.earthParking.radiusKm+80*u);engine=true;throttle=1;config='sivb';break;
     case 'loi':around(plan.lunarParking,plan.lunarParking.radiusKm+200*(1-u),ms-plan.arrivalShift);engine=true;throttle=1;config='stack';break;
     case 'lunarOrbit':{orbit=plan.lunarParking;const arc=plan.arrivalShift;orbitFrom=orbit.end-arc;orbitAt=orbitFrom+arc*t;around(orbit,undefined,orbitAt);config='stack';break;}
-    case 'lunarReturnOrbit':{orbit=plan.lunarReturnParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.start;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);config=t<.36?'csmAscent':'csm';break;}
+    case 'lunarReturnOrbit':{orbit=plan.lunarReturnParking;const lap=orbit.periodSeconds*1000;orbitFrom=orbit.start;orbitAt=orbitFrom+lap*t;around(orbit,undefined,orbitAt);
+      // Rendezvous and docking (Apollo 11: liftoff 17:54, docking 21:35 UTC): the first fifth of the stage shows the
+      // ascent stage's final approach to the CSM and the docking; then the docked stack, and the ascent stage cut loose.
+      config=t<DOCK_END?'rendezvous':t<.56?'csmAscent':'csm';if(config==='rendezvous')dock=t/DOCK_END;break;}
     case 'tei':around(plan.lunarReturnParking,plan.lunarReturnParking.radiusKm+200*u);engine=true;throttle=1;config='csm';break;
     case 'descent':case 'ascent':{
       arc=lunarArc(plan,ms,t,phase.id==='ascent',astronomy);position=add(moon,arc.relative);altitudeKm=Math.max(0,arc.altitudeKm);
@@ -349,7 +352,7 @@ export function sampleMission(plan,progress,astronomy){
     localDirection=[dot(bodyDirection,basis.east),dot(bodyDirection,basis.up),-dot(bodyDirection,basis.north)];
   }
   if(ocean||pad){localPosition=[0,altitudeKm,0];localDirection=[0,1,0];}
-  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,plasma,chutes,ocean,pad,ignition,orbit,orbitFrom,orbitAt,
+  return {phase:phase.id,label:phase.label,t,date,position,direction,attitude,moon,frame,local,localPosition,localDirection,engine,throttle,config,dock,plasma,chutes,ocean,pad,ignition,orbit,orbitFrom,orbitAt,
     orbitTurns:orbit?clamp((ms-orbit.start)/(orbit.periodSeconds*1000),0,orbit.turns):null,
     altitudeKm:Math.max(0,altitudeKm),altitudeReference,elapsedHours:(ms-plan.launch)/HOUR,distanceKm:norm(moon)};
 }

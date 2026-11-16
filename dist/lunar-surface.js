@@ -1,16 +1,98 @@
 import * as THREE from 'three';
 
-// Regolith photometry. Lambert alone makes the Moon look like clay: brightness falls to the
-// terminator. The lunar-Lambert model (McEwen 1991) blends Lambert with Lommel-Seeliger,
-// 2·cos(i)/(cos(i)+cos(e)), with a weight that drops as the phase angle grows; a small
-// opposition surge brightens the surface when the Sun is behind the viewer.
-// Display only: no calculation in the app depends on it.
-const LUNAR_DIFFUSE = `float lunarMu=saturate(dot(geometryNormal,geometryViewDir));
-	float lunarPhase=acos(clamp(dot(directLight.direction,geometryViewDir),-1.,1.));
-	float lunarL=clamp(1.-.45*lunarPhase,.2,1.);
-	float lunarK=mix(1.,2./max(dotNL+lunarMu,.08),lunarL);
-	float lunarSurge=1.+.3*exp(-lunarPhase/.06);
-	reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*BRDF_Lambert( material.diffuseColor );`;
+// Display photometry: Hapke-style unresolved facet shadowing (23 degree mean slope), shadow hiding
+// and coherent backscatter. McEwen's lunar-Lambert term retains the existing flat-ground exposure.
+// Roughness masks opposite-facing grazing facets; shared shadow paths cancel near opposition.
+// Approximation, not a fitted Hapke inversion: Chang'e-3 PCAM (doi:10.1051/0004-6361/202143012)
+// resolves separate shadow-hiding / coherent-backscatter peaks; the latter must remain narrower.
+export const REGOLITH_ROUGHNESS_DEG = 23, REGOLITH_SHOE_WIDTH = 0.06, REGOLITH_SHOE_STRENGTH = 0.65;
+export const REGOLITH_CBOE_WIDTH = 0.004, REGOLITH_CBOE_STRENGTH = 0.18;
+export const CRATER_FRESH_FRACTION = 0.022, CRATER_DEGRADED_START = 0.008, CRATER_DEGRADED_END = 0.075;
+const PHOTOMETRY_GLSL = `
+float lunarPhotometry(vec3 n,vec3 l,vec3 v){
+  float ni=clamp(dot(n,l),0.,1.),ne=clamp(dot(n,v),.001,1.);
+  float phase=acos(clamp(dot(l,v),-1.,1.)),halfPhase=tan(min(phase*.5,1.55));
+  float k=mix(1.,2./max(ni+ne,.08),clamp(1.-.45*phase,.2,1.));
+  vec3 li=l-n*ni,ve=v-n*ne;
+  float si=sqrt(max(1.-ni*ni,0.)),se=sqrt(max(1.-ne*ne,0.));
+  float az=clamp(dot(li,ve)/max(si*se,1e-5),-1.,1.);
+  float facets=${Math.tan(REGOLITH_ROUGHNESS_DEG * Math.PI / 180).toFixed(8)}*min(si/max(ni,.018),se/max(ne,.018));
+  float rough=1./(1.+.28*facets*(1.-az));
+  float shoe=${REGOLITH_SHOE_STRENGTH.toFixed(4)}/(1.+halfPhase/${REGOLITH_SHOE_WIDTH.toFixed(4)});
+  float cb=halfPhase/${REGOLITH_CBOE_WIDTH.toFixed(4)};
+  float surge=1.+shoe+${REGOLITH_CBOE_STRENGTH.toFixed(4)}/((1.+cb)*(1.+cb));
+  return min(k,3.2)*rough*surge;
+}
+#ifndef REGOLITH
+float regolithSunCast(vec3 l){return 1.;}
+#endif`;
+const LUNAR_DIFFUSE = `reflectedLight.directDiffuse += irradiance*regolithSunCast(directLight.direction)*lunarPhotometry(geometryNormal,directLight.direction,geometryViewDir)*BRDF_Lambert( material.diffuseColor );`;
+
+// Regolith detail: one periodic tile (dist/assets/regolith/regolith.webp, made by scripts/make-regolith.py) of surface
+// slopes (RG) and height (B): self-affine relief, small degraded craters, clods and pebbles. The ground reads it at
+// four scales, each turned by its own angle so the repeats never line up: 2.5 m (pebbles 0.4-5 cm), 18 m, 130 m and
+// 950 m. Hardware mipmaps average the slopes away with distance, so nothing sparkles; the Hapke roughness of
+// lunarPhotometry carries what the pixel no longer resolves. On the ground the two finest scales also cast their own
+// shadows: a short march toward the Sun over the height channel (a 1 cm clod throws a 20 cm shadow at a 3° Sun),
+// softened by the 0.53° solar disc. Rocks use the same tile on their own faces, without shadows.
+export const REGOLITH = Object.freeze({
+  slopeRange: 3, heightRange: 0.0306,           // tile units, from make-regolith.py
+  groundTilesKm: [0.0025, 0.0183, 0.134, 0.95], groundGain: [.85, .6, .4, .25], groundAngles: [0, 1.13, 2.41, 3.67],
+  rockTiles: [1.3, 7.1], rockGain: [.7, .45], rockAngles: [.4, 1.9],
+  albedo: .13, shadowSteps: [.004, .01, .02, .036, .06, .1],
+});
+const placeholder = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1); placeholder.needsUpdate = true;
+export const REGOLITH_UNIFORMS = { uRegolith: { value: placeholder }, uRegolithSun: { value: new THREE.Vector3(0, 1, 0) } };
+const regolithWaiting = new Set();
+let regolithRequested = false;
+// The tile loads once, on first use; materials draw flat until then. onLoad: called when it arrives (redraw).
+export function loadRegolith(onLoad = null, anisotropy = 8) {
+  if (REGOLITH_UNIFORMS.uRegolith.value !== placeholder) return;
+  if (onLoad) regolithWaiting.add(onLoad);
+  if (regolithRequested) return; regolithRequested = true;
+  new THREE.TextureLoader().load(new URL('./assets/regolith/regolith.webp', import.meta.url).href, texture => {
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.anisotropy = anisotropy; texture.colorSpace = THREE.NoColorSpace;
+    texture.minFilter = THREE.LinearMipmapLinearFilter; texture.needsUpdate = true;
+    REGOLITH_UNIFORMS.uRegolith.value = texture; for (const fn of regolithWaiting) fn(); regolithWaiting.clear();
+  });
+}
+const f4 = v => v.toFixed(5);
+// GLSL for one mode: 'ground' (local frame in km, Sun shadows) or 'rock' (unit rock geometry).
+function regolithGLSL(mode) {
+  const ground = mode === 'ground', tiles = ground ? REGOLITH.groundTilesKm : REGOLITH.rockTiles, gains = ground ? REGOLITH.groundGain : REGOLITH.rockGain, angles = ground ? REGOLITH.groundAngles : REGOLITH.rockAngles;
+  const layer = (i) => {
+    const c = Math.cos(angles[i]), sn = Math.sin(angles[i]), shadow = ground && i < 2;
+    return `{
+    mat2 R=mat2(${f4(c)},${f4(sn)},${f4(-sn)},${f4(c)});vec2 uv=R*gp/${f4(tiles[i])}+vec2(${f4(i * .37)},${f4(i * .71)});
+    vec4 t=texture2D(uRegolith,uv);vec2 g=(t.rg*(255./127.)-128./127.)*${f4(REGOLITH.slopeRange)};
+    slope+=${f4(gains[i])}*(transpose(R)*g);rel+=${f4(gains[i])}*(t.b-.5);
+    ${shadow ? `// The pixel footprint in texels fades the layer's shadows once its pebbles fall below a pixel.
+    float fade=1.-smoothstep(.6,2.,fp/${f4(tiles[i] / 1024)});
+    if(fade>0.&&sunUp){
+      vec2 sd=R*sunDir;float vis=1.;
+      ${REGOLITH.shadowSteps.map(d => `{float over=(texture2D(uRegolith,uv+sd*${f4(d)}).b-t.b)*${f4(REGOLITH.heightRange * gains[i])}-${f4(d)}*tanE;float pen=${f4(d * .0093 + .0004)};vis=min(vis,1.-smoothstep(-pen,pen,over));}`).join('\n      ')}
+      shade*=mix(1.,vis,fade);
+    }` : ''}
+  }`;
+  };
+  return `{
+  vec2 gp=vRegolithPos.xz,slope=vec2(0.);float rel=0.,shade=1.;
+  float fp=max(max(length(dFdx(gp)),length(dFdy(gp))),1e-9);
+  ${ground ? `vec3 sunL=normalize(uRegolithSun);float sunFlat=length(sunL.xz);vec2 sunDir=sunL.xz/max(sunFlat,1e-6);
+  float tanE=sunL.y/max(sunFlat,1e-4);bool sunUp=sunL.y>-.01;` : ''}
+  ${tiles.map((_, i) => layer(i)).join('\n  ')}
+  vec3 gn=normalMatrix*vec3(slope.x,0.,slope.y);gn/=max(length(normalMatrix[0]),1e-10);
+  gn-=normal*dot(gn,normal);vec3 dn=normal-gn;normal=dn*inversesqrt(max(dot(dn,dn),1e-12));
+  diffuseColor.rgb*=clamp(1.+${f4(REGOLITH.albedo)}*rel*2.,.75,1.25);
+  ${ground ? 'regolithShadow=shade;' : ''}
+}`;
+}
+const REGOLITH_COMMON = `uniform sampler2D uRegolith;
+uniform vec3 uRegolithSun;
+varying vec3 vRegolithPos;
+float regolithShadow=1.;
+// Only the Sun (the light along uRegolithSun) is shaded by the clods.
+float regolithSunCast(vec3 l){return dot(l,normalize((viewMatrix*vec4(uRegolithSun,0.)).xyz))>.9999?regolithShadow:1.;}`;
 
 // ---------------------------------------------------------------------------------------------------
 // Opt-in additions for the mission (all off by default: the explorer's Moon is unchanged).
@@ -113,7 +195,7 @@ const detailVector = ({ strength = 1, albedo = 1, shadows = 1, baseKm = 0 } = {}
 const TABLE = 512, mod512 = x => x - TABLE * Math.floor(x / TABLE);
 // Smoothstep of its own, independent of the helpers further down.
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const crispness = age => sstep(0.02, 0.15, age), reachOf = (r, age) => r * (2.3 - 0.4 * crispness(age));
+const crispness = age => sstep(CRATER_DEGRADED_START, CRATER_DEGRADED_END, age), reachOf = (r, age) => r * (2.3 - 0.4 * crispness(age)) * 1.12;
 // Built on first use only (the explorer, which uses none of this, never pays for it).
 let TABLE_DATA = null;
 const tableData = () => TABLE_DATA || (TABLE_DATA = (() => {
@@ -146,6 +228,10 @@ const tableOffset = (L, face, negative) => [mod512((L + 20) * 97 + face * 211 + 
 // rho ≈ 1.29. wa (0 fresh .. 1 degraded) blends them; both taper to zero over [re − 0.8, re].
 const CRATER_GLSL = `
 vec2 lunarPlane(vec3 p,int f){return f==0?p.yz:f==1?p.xz:p.xy;}
+// Irregular second/third harmonics vary the rim without drawing repeated perfect ellipses.
+float lunarContour(vec2 q,float r2,float seed){
+  return max(0.,r2+.12*sin(seed*7.17)*(q.x*q.x-q.y*q.y)+.08*cos(seed*11.19)*q.x*(q.x*q.x-3.*q.y*q.y)/max(sqrt(max(r2,0.)),.02));
+}
 // p2 = rho². Returns the height h and g = (dh/drho)/rho (no square root on the common, degraded path).
 void lunarCrater(float p2,float wa,float deep,float re,out float h,out float g){
   float ts=re-.8,k=1./(re*re-ts*ts),u=clamp((p2-ts*ts)*k,0.,1.),t=1.-u*u*(3.-2.*u),gt=-12.*u*(1.-u)*k;
@@ -164,7 +250,10 @@ function lunarCrater(rho, wa, deep, re) {
   const ho = deep * (p2 - 1) * Math.exp(-1.5 * p2) * t;
   return hf + (ho - hf) * wa;
 }
-const freshness = age => 1 - smooth(0, 0.06, age);
+function lunarContour(x, y, r2, seed) {
+  return Math.max(0, r2 + .12 * Math.sin(seed * 7.17) * (x * x - y * y) + .08 * Math.cos(seed * 11.19) * x * (x * x - 3 * y * y) / Math.max(Math.sqrt(Math.max(r2, 0)), .02));
+}
+const freshness = age => 1 - smooth(0, CRATER_FRESH_FRACTION, age);
 
 // Fragment code of the crater field. Needs lunarSpace uniforms/varyings, normalMatrix and uCraterTable.
 const DETAIL_GLSL = (hi, count, geo, lattices) => `{
@@ -208,30 +297,37 @@ const DETAIL_GLSL = (hi, count, geo, lattices) => `{
       // Offset from the crater centre, lifted from the face plane onto the tangent plane (km).
       vec2 qp=(g-cl-c.xy)*cell;
       vec3 t=face==0?vec3(dot(K,qp),qp):face==1?vec3(qp.x,dot(K,qp),qp.y):vec3(qp,dot(K,qp));
-      float age=fract(c.w),wa=smoothstep(.02,.15,age),re=2.3-.4*wa,irk=1./(c.z*cell),p2=dot(t,t)*irk*irk;
+      float age=fract(c.w),wa=smoothstep(${CRATER_DEGRADED_START.toFixed(4)},${CRATER_DEGRADED_END.toFixed(4)},age),re=2.3-.4*wa,irk=1./(c.z*cell),p20=dot(t,t)*irk*irk;
+      vec2 contour=qp*irk;float p2=lunarContour(contour,p20,c.w);
       if(p2>re*re)continue;
       if(band){vec3 A=abs(T-t);if((A.x>=A.y&&A.x>=A.z?0:A.y>=A.z?1:2)!=face)continue;}
-      float k=floor(c.w),deep=.01+.00128889*k*k,ch,cg;
+      float k=floor(c.w),deep=.012+.00065*k*k,ch,cg;
       lunarCrater(p2,wa,deep,re,ch,cg);
       bool geo=L>${geo};   // crater already in the mesh: shadow only
       if(!geo)grad+=(w*cg*irk)*t;
       // Fresh craters: immature, brighter interior and ejecta.
-      if(age<.06&&!geo)bright+=w*(1.-smoothstep(0.,.06,age))*(p2<1.?.6+.3*p2:.9/(p2*sqrt(sqrt(p2)))*(1.-smoothstep((re-.8)*(re-.8),re*re,p2)));
-      // Cast shadow inside the bowl (craters of a pixel or more): does the ray towards the Sun clear the rim?
+      if(age<${CRATER_FRESH_FRACTION.toFixed(4)}&&!geo)bright+=w*(1.-smoothstep(0.,${CRATER_FRESH_FRACTION.toFixed(4)},age))*(p2<1.?.6+.3*p2:.9/(p2*sqrt(sqrt(p2)))*(1.-smoothstep((re-.8)*(re-.8),re*re,p2)));
+      // Horizon samples on the irregular bowl/rim, with the 0.2665 degree solar half-angle.
       float rc=1.+.29*wa;
-      if(casting&&p2<rc*rc&&c.z*cell>fp){
-        float b=dot(t,sdir)*irk,te=-b+sqrt(max(b*b-p2+rc*rc,0.)),hb=mix(.072,.055*deep,wa);
-        float m=ch+te*tanE-hb,pen=te*.0093+fp*irk*.8+1e-4;
-        // A point level with the crest sees the Sun: the shadow closes towards the rim, without a step.
-        shade*=1.-w*uLunarDetail.z*(1.-clamp(1.+m/pen,0.,1.))*(1.-smoothstep(.8*rc,rc,sqrt(p2)));
+      if(casting&&c.z*cell>fp){
+        float b=dot(t,sdir)*irk,te=-b+sqrt(max(b*b-p20+rc*rc,0.)),ridge=-1e3;
+        for(int ray=0;ray<3;ray++){
+          float d=max(te*(.55+.225*float(ray)),.025),hh,hg;
+          lunarCrater(lunarContour(contour+lunarPlane(sdir,face)*d,max(p20+2.*b*d+d*d,0.),c.w),wa,deep,re,hh,hg);
+          ridge=max(ridge,(hh-ch)/d);
+        }
+        float pen=.00465+fp*irk/max(te,.1)*.65;
+        float visible=smoothstep(ridge-pen,ridge+pen,tanE);
+        // Pixel integration softens the unresolved rim; the profile determines the lit interior.
+        shade*=1.-w*uLunarDetail.z*(1.-visible);
       }
       }
     }
     if(seamKm>.5*exp2(float(${hi})))break;
   }
   vec3 nn=normal-uLunarDetail.x*(toView*grad);normal=nn*inversesqrt(max(dot(nn,nn),1e-12));
-  diffuseColor.rgb*=1.+uLunarDetail.y*.55*min(bright,1.5);
-  lunarSunShadow=shade*horizon;
+  diffuseColor.rgb*=1.+uLunarDetail.y*.32*min(bright,1.5);
+  lunarSunShadow=clamp(shade*horizon,0.,1.);
 }`;
 
 // The crater of octave L that reaches the lunar-space point p (km) on a surface of normal u, if any:
@@ -256,10 +352,10 @@ function eachCrater(px, py, pz, ux, uy, uz, L, cells, fn) {
     const qu = (gu - cu - d[i]) * cell, qv = (gv - cv - d[i + 1]) * cell, qn = -(au * qu + av * qv) / nf;
     if (face === 0) { OFFSET[0] = qn; OFFSET[1] = qu; OFFSET[2] = qv; } else if (face === 1) { OFFSET[0] = qu; OFFSET[1] = qn; OFFSET[2] = qv; } else { OFFSET[0] = qu; OFFSET[1] = qv; OFFSET[2] = qn; }
     const w = d[i + 3], age = w - Math.floor(w), wa = crispness(age), re = 2.3 - 0.4 * wa, rk = d[i + 2] * cell;
-    const q2 = OFFSET[0] * OFFSET[0] + OFFSET[1] * OFFSET[1] + OFFSET[2] * OFFSET[2]; if (q2 > re * re * rk * rk) continue;
+    const q2 = lunarContour(qu / rk, qv / rk, (OFFSET[0] ** 2 + OFFSET[1] ** 2 + OFFSET[2] ** 2) / (rk * rk), w); if (q2 > re * re) continue;
     if (band && dominant(T0 - OFFSET[0], T1 - OFFSET[1], T2 - OFFSET[2]) !== face) continue;
-    CRATER.r = rk; CRATER.wa = wa; CRATER.re = re; CRATER.age = age; CRATER.deep = 0.01 + 0.00128889 * Math.floor(w) ** 2;
-    fn(CRATER, OFFSET, Math.sqrt(q2) / rk);
+    CRATER.r = rk; CRATER.wa = wa; CRATER.re = re; CRATER.age = age; CRATER.deep = 0.012 + 0.00065 * Math.floor(w) ** 2;
+    fn(CRATER, OFFSET, Math.sqrt(q2));
   }
 }
 const lunarPoint = (e, x, y, z) => [e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14]];
@@ -273,7 +369,7 @@ export function craterField(space, { coarseKm = 0.25, fineKm = 0.004, strength =
   let height = 0, bright = 0;
   const add = (c, t, rho) => {
     height += lunarCrater(rho, c.wa, c.deep, c.re) * c.r * strength;
-    if (c.age < 0.06) bright += freshness(c.age) * (rho < 1 ? 0.6 + 0.3 * rho * rho : 0.9 / (rho * rho * Math.sqrt(rho)) * (1 - smooth((c.re - 0.8) ** 2, c.re * c.re, rho * rho)));
+    if (c.age < CRATER_FRESH_FRACTION) bright += freshness(c.age) * (rho < 1 ? 0.6 + 0.3 * rho * rho : 0.9 / (rho * rho * Math.sqrt(rho)) * (1 - smooth((c.re - 0.8) ** 2, c.re * c.re, rho * rho)));
   };
   const out = { height: 0, bright: 0 };
   return (x, y, z, nx, ny, nz) => {
@@ -281,7 +377,7 @@ export function craterField(space, { coarseKm = 0.25, fineKm = 0.004, strength =
     let ux = e[0] * nx + e[4] * ny + e[8] * nz, uy = e[1] * nx + e[5] * ny + e[9] * nz, uz = e[2] * nx + e[6] * ny + e[10] * nz; const l = Math.hypot(ux, uy, uz) || 1; ux /= l; uy /= l; uz /= l;
     height = 0; bright = 0;
     for (let i = 0; i < count; i++) eachCrater(px, py, pz, ux, uy, uz, hi - i, cells, add);
-    out.height = height; out.bright = Math.min(bright, 1.5) * 0.55; return out;
+    out.height = height; out.bright = Math.min(bright, 1.5) * 0.32; return out;
   };
 }
 // Crater records of the same field inside a local square (for rocks): centre (local km), rim radius (km),
@@ -312,11 +408,16 @@ export const PSR_COLOR = new THREE.Color(0x8a7dff);
 // or mesh: larger craters fade out), lattices (1|2), geometryKm (craters above it are in the mesh: shadows
 // only), macroNormal (use the 'lunarNormal' attribute), strength, albedo, shadows (runtime: material.userData
 // .lunarDetail.value = (strength, albedo, shadows, baseKm)) }. Needs space, else the object frame in km.
-export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, normalY = -1, color = 0xffffff, psr = null, hole = null, transparent = false, space = null, earthshine = null, detail = null } = {}) {
+// grain: true (ground: local x/z in km, four scales from 2.5 m to 950 m, clod shadows toward REGOLITH_UNIFORMS
+// .uRegolithSun) or 'rock' (unit rock geometry, no shadows). The tile loads on first use (loadRegolith).
+export function lunarMaterial({ vertexColors = true, map = null, normalMap = null, normalScale = 0.5, normalY = -1, color = 0xffffff, psr = null, hole = null, transparent = false, space = null, earthshine = null, detail = null, grain = false } = {}) {
   const material = new THREE.MeshLambertMaterial({ color, vertexColors, map, normalMap, normalScale: new THREE.Vector2(normalScale, normalY * normalScale), transparent });
-  const lunar = space || earthshine || detail ? space || lunarSpace() : null, levels = detail ? detailLevels(detail) : null;
+  const lunar = space || earthshine || detail || grain ? space || lunarSpace() : null, levels = detail ? detailLevels(detail) : null;
   if (detail) material.userData.lunarDetail = { value: detailVector(detail) };
+  const grainMode = grain === 'rock' ? 'rock' : 'ground';
+  if (grain) { material.defines = { ...material.defines, REGOLITH: '' }; loadRegolith(); }
   material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${PHOTOMETRY_GLSL}`);
     if (hole) {
       shader.uniforms.uHoleDir = hole.dir; shader.uniforms.uHoleCos = hole.cos;
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHolePos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvHolePos = position;');
@@ -368,8 +469,14 @@ float lunarSunShadow = 1.;
 vec3 lunarSunView = vec3(0.);
 float lunarCast(vec3 l) { return dot(l, lunarSunView) > .99999 ? lunarSunShadow : 1.; }
 uniform sampler2D uCraterTable;
-${CRATER_GLSL}`).replace('reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*BRDF_Lambert', 'reflectedLight.directDiffuse += irradiance*min(lunarK,3.2)*lunarSurge*lunarCast(directLight.direction)*BRDF_Lambert')
+${CRATER_GLSL}`).replace('irradiance*lunarPhotometry(geometryNormal,directLight.direction,geometryViewDir)', 'irradiance*lunarCast(directLight.direction)*lunarPhotometry(geometryNormal,directLight.direction,geometryViewDir)')
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${DETAIL_GLSL(levels.hi, levels.count, levels.geo, levels.lattices)}`);
+    }
+    if (grain) {
+      shader.uniforms.uRegolith = REGOLITH_UNIFORMS.uRegolith; shader.uniforms.uRegolithSun = REGOLITH_UNIFORMS.uRegolithSun;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vRegolithPos;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvRegolithPos = transformed;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${REGOLITH_COMMON}`)
+        .replace('#include <emissivemap_fragment>', `${regolithGLSL(grainMode)}\n#include <emissivemap_fragment>`);
     }
     if (earthshine) {
       // Earthlight with the same lunar-Lambert photometry as sunlight; no shadows (the Earth's disc is
@@ -382,15 +489,12 @@ uniform float uEarthIntensity;`).replace('#include <lights_fragment_end>', `#inc
 if (uEarthIntensity > 0.) {
   vec3 esD = normalMatrix * (transpose(mat3(uLunarSpace)) * uEarthDir), esL = esD * inversesqrt(max(dot(esD, esD), 1e-30));
   float esNL = saturate(dot(normal, esL));
-  float esMu = saturate(dot(normal, geometryViewDir));
-  float esPhase = acos(clamp(dot(esL, geometryViewDir), -1., 1.));
-  float esK = mix(1., 2. / max(esNL + esMu, .08), clamp(1. - .45 * esPhase, .2, 1.));
-  reflectedLight.directDiffuse += uEarthColor * (uEarthIntensity * esNL * min(esK, 3.2) * (1. + .3 * exp(-esPhase / .06))) * BRDF_Lambert(material.diffuseColor);
+  reflectedLight.directDiffuse += uEarthColor * (uEarthIntensity * esNL * lunarPhotometry(normal, esL, geometryViewDir)) * BRDF_Lambert(material.diffuseColor);
 }`);
     }
   };
-  const extra = `${earthshine ? '-es' : ''}${detail ? `-d${levels.hi}.${levels.count}.${levels.geo}.${levels.lattices}${detail.macroNormal ? 'm' : ''}` : ''}${lunar && !detail && !earthshine ? '-space' : ''}`;
-  material.customProgramCacheKey = () => `lunar-lambert-3-${psr ? 'psr' : 'plain'}-${hole ? 'hole' : 'whole'}${extra}`;
+  const extra = `${grain ? `-reg${grainMode}` : ''}${earthshine ? '-es' : ''}${detail ? `-d${levels.hi}.${levels.count}.${levels.geo}.${levels.lattices}${detail.macroNormal ? 'm' : ''}` : ''}${lunar && !detail && !earthshine ? '-space' : ''}`;
+  material.customProgramCacheKey = () => `lunar-regolith-5-${psr ? 'psr' : 'plain'}-${hole ? 'hole' : 'whole'}${extra}`;
   return material;
 }
 
@@ -465,7 +569,7 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 // steep slopes are a little brighter. Kept subtle and monochrome.
 function albedo(x, z, slope) {
   const patch = fbm(x / 14 + 31.7, z / 14 - 12.3, 4, 3);
-  return 0.6 + 0.14 * Math.min(1, slope * 2.2) + (patch - 0.5) * 0.1;
+  return 0.62 + 0.08 * Math.min(1, slope * 2.2) + (patch - 0.5) * 0.025;
 }
 
 // Detailed tile: (size × size) grid over extent km, centred on the observer. The context tile

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { lunarMaterial, regolithNormalMap, fbm, lunarSpace, craterField, craterList, DETAIL_GROUND } from './lunar-surface.js';
+import { lunarMaterial, fbm, lunarSpace, craterField, craterList, DETAIL_GROUND } from './lunar-surface.js';
 
 // The landing site at the scale of the lander: 800 m × 800 m around the destination, 2 m mesh.
 // Base heights are the LOLA relief (bilinear, the same numbers the app uses). On top of it, and
@@ -16,6 +16,39 @@ import { lunarMaterial, regolithNormalMap, fbm, lunarSpace, craterField, craterL
 // space: lunarSpace() of the local frame (siteSpace), so the craters match the other lunar meshes.
 // earthshine: earthshineUniforms() (night side). detail: false to skip the material's small craters.
 
+// Cumulative block counts N(>D) follow D^-2.3 (Apollo/Surveyor); sizes and radii are metres.
+export const GROUND_ROCKS = Object.freeze({ minimumM: 0.08, maximumM: 1.6, exponent: 2.3, backgroundCount: 3000 });
+export const CLAST_CARPET = Object.freeze({ radiusM: 36, lowPowerRadiusM: 26, cellM: 6, perSquareM: 2.6, lowPowerPerSquareM: 1.15, minimumM: 0.018, maximumM: 0.32, exponent: 2.15 });
+
+// Fracture planes truncate an irregular block; flat normals preserve facets instead of noisy blobs.
+function fracturedBlock(kind, clast = false) {
+  const g = clast ? new THREE.IcosahedronGeometry(1, 0) : new THREE.DodecahedronGeometry(1, 0), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    x += 0.19 * y + 0.08 * z; z -= 0.14 * y;
+    y = Math.max(-0.57, Math.min(0.66 + 0.20 * x - 0.12 * z, y));
+    x = Math.min(0.76 - 0.17 * y + 0.08 * z, Math.max(-0.83 + 0.11 * z, x));
+    z = Math.min(0.79 + 0.13 * x, Math.max(-0.75 - 0.15 * y, z));
+    p.setXYZ(i, x * (kind === 1 ? 1.2 : 1), y * (kind === 1 ? 0.48 : kind === 2 ? 0.84 : 1), z * (kind === 2 ? 0.68 : 1));
+  }
+  g.computeVertexNormals(); g.computeBoundingSphere(); return g;
+}
+
+// A dust apron is real low relief, coloured and illuminated exactly like its surrounding regolith.
+function dustFillet() {
+  const positions = [], indices = [], segments = 8;
+  for (let ring = 0; ring < 2; ring++) for (let j = 0; j < segments; j++) {
+    const a = j / segments * Math.PI * 2, radius = (ring ? 0.58 : 1.35) * (1 + 0.08 * Math.sin(j * 2.7));
+    positions.push(Math.cos(a) * radius, ring ? 0.12 : 0, Math.sin(a) * radius);
+  }
+  for (let j = 0; j < segments; j++) { const k = (j + 1) % segments; indices.push(j, j + segments, k, k, j + segments, k + segments); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const colors = new Float32Array(positions.length), macro = new Float32Array(positions.length);
+  for (let i = 0; i < positions.length / 3; i++) { colors.set([0.56, 0.552, 0.536], i * 3); macro[i * 3 + 1] = 1; }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3)); g.setAttribute('lunarNormal', new THREE.BufferAttribute(macro, 3));
+  g.setIndex(indices); g.computeVertexNormals(); g.computeBoundingSphere(); return g;
+}
+
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 function random(seed) { let s = (seed * 2654435761) % 2147483647 || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
@@ -24,8 +57,8 @@ function random(seed) { let s = (seed * 2654435761) % 2147483647 || 1; return ()
 const GEOMETRY_CRATERS = { coarseKm: 0.5, fineKm: 0.03125 };
 
 export class LandingSite {
-  constructor(terrain, { seed = 7, half = 0.4, step = 0.002, space = null, earthshine = null, detail = true, pad = true } = {}) {
-    this.terrain = terrain; this.half = half; this.step = step; this.space = space || lunarSpace();
+  constructor(terrain, { seed = 7, half = 0.4, step = 0.002, space = null, earthshine = null, detail = true, pad = true, lowPower = false } = {}) {
+    this.terrain = terrain; this.half = half; this.step = step; this.space = space || lunarSpace(); this.seed = seed; this.pad = pad;
     const n = this.n = Math.round(2 * half / step) + 1, rnd = random(seed + 101);
     const cell = step * 1000, halfM = half * 1000, base = new Float32Array(n * n);
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) base[r * n + c] = terrain.height(-half + c * step, -half + r * step);
@@ -68,13 +101,14 @@ export class LandingSite {
     geometry.setAttribute('lunarNormal', new THREE.BufferAttribute(macro, 3));
     geometry.setIndex(new THREE.BufferAttribute(index, 1)); geometry.computeVertexNormals(); geometry.computeBoundingSphere();
     // Fine regolith grain (clods, footprint-scale roughness); no stamped craterlets: the material draws them.
-    this.normalMap = regolithNormalMap(512, seed + 23, { craters: 0 });
-    this.mesh = new THREE.Mesh(geometry, lunarMaterial({ normalMap: this.normalMap, normalScale: detail ? 0.45 : 0.35, space: this.space, earthshine, detail: detail ? DETAIL_GROUND : null }));
+    this.normalMap = null;
+    this.mesh = new THREE.Mesh(geometry, lunarMaterial({ grain: true, space: this.space, earthshine, detail: detail ? DETAIL_GROUND : null }));
     this.mesh.receiveShadow = true; this.mesh.castShadow = true;
     this.group = new THREE.Group(); this.group.add(this.mesh);
     this.craters = craterList(this.space, half, { ...GEOMETRY_CRATERS, height: (x, z) => this.heightAt(x, z) });
     this.rocks = this.makeRocks(rnd, earthshine); this.group.add(this.rocks);
-    this.dust = this.makeDust(rnd); this.group.add(this.dust);
+    if (!pad) { this.clasts = this.makeClasts(); this.group.add(this.clasts); this.updateClasts(0, 0, { lowPower }); }
+    this.dust = this.makeDust(); this.group.add(this.dust);
   }
   heightAt(x, z) {
     const n = this.n, fx = (x + this.half) / this.step, fz = (z + this.half) / this.step;
@@ -83,31 +117,29 @@ export class LandingSite {
     return (h[r * n + c] * (1 - u) + h[r * n + c + 1] * u) * (1 - v) + (h[(r + 1) * n + c] * (1 - u) + h[(r + 1) * n + c + 1] * u) * v;
   }
   makeRocks(rnd, earthshine) {
-    // Three rock shapes, instanced: angular (faceted, the commonest), blocky slabs and rounded, dust-worn ones.
-    const shape = (detail, jitter, squash, flat, s) => {
-      const g = new THREE.IcosahedronGeometry(1, detail); const p = g.attributes.position, v = new THREE.Vector3();
-      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); const k = 0.78 + jitter * fbm(v.x * 1.7 + s, v.y * 1.7 + v.z * 1.3 - s, 3, 17 + s); v.multiplyScalar(k); v.y *= squash; p.setXYZ(i, v.x, v.y, v.z); }
-      g.computeVertexNormals();   // the icosahedron is non-indexed: face normals, a faceted block
-      // Rounded, dust-worn stones: smooth normals from the (squashed) ellipsoid instead.
-      if (!flat) { const nrm = g.attributes.normal; for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).multiply(new THREE.Vector3(1, 1 / (squash * squash), 1)).normalize(); nrm.setXYZ(i, v.x, v.y, v.z); } }
-      return g;
-    };
-    const shapes = [shape(1, 0.55, 0.7, true, 1), shape(1, 0.4, 0.45, true, 7), shape(2, 0.32, 0.68, false, 13)];
-    const material = lunarMaterial({ vertexColors: false, color: 0xffffff, space: this.space, earthshine });
-    const counts = [4200, 1100, 1300], meshes = shapes.map((g, i) => { const m = new THREE.InstancedMesh(g, material, counts[i]); m.count = 0; m.castShadow = m.receiveShadow = true; return m; });
+    const shapes = [0, 1, 2].map(kind => fracturedBlock(kind));
+    const material = this.rockMaterial = lunarMaterial({ vertexColors: false, color: 0xffffff, grain: 'rock', space: this.space, earthshine });
+    const counts = [3200, 1500, 1500], meshes = shapes.map((g, i) => { const m = new THREE.InstancedMesh(g, material, counts[i]); m.count = 0; m.castShadow = m.receiveShadow = true; return m; });
+    const fillets = new THREE.InstancedMesh(dustFillet(), this.mesh.material, 1800); fillets.count = 0; fillets.castShadow = false; fillets.receiveShadow = true; fillets.userData.groundFillet = true;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), pos = new THREE.Vector3(), color = new THREE.Color(), e = new THREE.Euler();
     const place = (x, z, size) => {
-      const fromPad = Math.hypot(x, z); if (fromPad < 9 + size || (fromPad < 35 && size > 0.6)) return;
+      const fromPad = Math.hypot(x, z); if ((this.pad && fromPad < 9 + size) || (fromPad < 5 && size > 0.6)) return;
       if (Math.abs(x) > this.half * 970 || Math.abs(z) > this.half * 970) return;
-      const kind = rnd() < 0.62 ? 0 : rnd() < 0.45 ? 1 : 2, mesh = meshes[kind]; if (mesh.count >= counts[kind]) return;
+      const kind = rnd() < 0.54 ? 0 : rnd() < 0.62 ? 1 : 2, mesh = meshes[kind]; if (mesh.count >= counts[kind]) return;
       const kx = x / 1000, kz = z / 1000, sy = 0.75 + rnd() * 0.5, half = size / 2 * sy * (kind === 1 ? 0.45 : kind === 2 ? 0.68 : 0.7);
       // Partly buried: 10 to 45 % of the height below the surface (regolith gardening buries blocks over time).
       pos.set(kx, this.heightAt(kx, kz) + half * (1 - 2 * (0.1 + rnd() * 0.35)) / 1000, kz);
       q.setFromEuler(e.set((rnd() - 0.5) * 0.7, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.7));
       s.set(size * (0.75 + rnd() * 0.5), size * sy, size * (0.75 + rnd() * 0.5)).multiplyScalar(0.0005);
       mesh.setMatrixAt(mesh.count, m.compose(pos, q, s));
-      // Rock: fresher, less dusty than the soil around it (linear albedo factor ×1.0–1.5 of mature soil).
-      const g = 0.56 * (1 + rnd() * 0.5); mesh.setColorAt(mesh.count, color.setRGB(g, g * 0.985, g * 0.965)); mesh.count++;
+      // Mature dust coats most blocks; keep albedo close to soil, without distant white pebbles.
+      const g = 0.48 + rnd() * 0.13; mesh.setColorAt(mesh.count, color.setRGB(g, g * 0.985, g * 0.965)); mesh.count++;
+      if (size > 0.16 && fillets.count < fillets.instanceMatrix.count) {
+        const delta = 0.002, gx = (this.heightAt(kx + delta, kz) - this.heightAt(kx - delta, kz)) / (2 * delta), gz = (this.heightAt(kx, kz + delta) - this.heightAt(kx, kz - delta)) / (2 * delta);
+        pos.y = this.heightAt(kx, kz) + 0.0000005;
+        q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-gx, 1, -gz).normalize());
+        s.setScalar(size * 0.0005); fillets.setMatrixAt(fillets.count++, m.compose(pos, q, s));
+      }
     };
     // Blocky ejecta around fresh craters: count grows with the crater area and freshness; sizes up to
     // ~1/15 of the crater diameter for craters that reach bedrock (D > ~25 m), cobbles for smaller ones.
@@ -119,39 +151,123 @@ export class LandingSite {
         place(c.x * 1000 + Math.cos(a) * d, c.z * 1000 + Math.sin(a) * d, size);
       }
     }
-    // Background: scattered cobbles and a few blocks (cumulative N(>D) ∝ D^-2.3 above 6 cm, after the
+    // Background: scattered cobbles and a few blocks (cumulative N(>D) ∝ D^-2.3 above 8 cm, after the
     // Surveyor and Apollo counts, Cintala & McBride 1995), denser close to the lander where the camera looks.
-    for (let i = 0; i < 4200; i++) {
+    for (let i = 0; i < GROUND_ROCKS.backgroundCount; i++) {
       const near = rnd() < 0.6, a = rnd() * Math.PI * 2, d = near ? 10 + Math.pow(rnd(), 0.9) * 150 : rnd() * this.half * 1400;
-      place(Math.cos(a) * d, Math.sin(a) * d, Math.min(1.6, 0.06 * Math.pow(1 - rnd(), -1 / 2.3)));
+      place(Math.cos(a) * d, Math.sin(a) * d, Math.min(GROUND_ROCKS.maximumM, GROUND_ROCKS.minimumM * Math.pow(Math.max(1e-6, 1 - rnd()), -1 / GROUND_ROCKS.exponent)));
     }
     const group = new THREE.Group();
     for (const mesh of meshes) { mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; group.add(mesh); }
-    group.userData.meshes = meshes; return group;
+    fillets.instanceMatrix.needsUpdate = true; fillets.computeBoundingSphere(); group.add(fillets);
+    group.userData.meshes = meshes; group.userData.fillets = fillets; return group;
   }
-  makeDust(rnd) {
-    // Engine-blown regolith: thin radial streaks racing outward close to the ground (Apollo 16 mm films).
-    const count = 3200, data = new Float32Array(count * 4), positions = new Float32Array(count * 6);
-    for (let i = 0; i < count; i++) data.set([rnd() * Math.PI * 2, rnd(), 0.7 + rnd() * 0.7, rnd()], i * 4);
-    const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const lines = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xd9d3c7, transparent: true, opacity: 0, depthWrite: false }));
-    lines.frustumCulled = false; lines.userData.data = data; lines.visible = false; return lines;
+  makeClasts() {
+    const group = new THREE.Group(), meshes = [0, 1, 2].map(i => {
+      const mesh = new THREE.InstancedMesh(fracturedBlock(i, true), this.rockMaterial, 6000);
+      mesh.count = 0; mesh.castShadow = mesh.receiveShadow = true;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(mesh); return mesh;
+    });
+    const fillets = new THREE.InstancedMesh(dustFillet(), this.mesh.material, 1600);
+    fillets.count = 0; fillets.castShadow = false; fillets.receiveShadow = true; fillets.userData.groundFillet = true; fillets.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(fillets);
+    group.userData.meshes = meshes; group.userData.fillets = fillets; return group;
+  }
+  // Deterministic 6 m cells: stones stay fixed underfoot, and only the outer carpet changes on crossing a cell.
+  // Return true so the caller can invalidate its small-caster shadow map once, rather than every frame.
+  updateClasts(x, z, { lowPower = false } = {}) {
+    if (!this.clasts) return false;
+    const cfg = CLAST_CARPET, cx = Math.floor(x * 1000 / cfg.cellM), cz = Math.floor(z * 1000 / cfg.cellM), key = `${cx}:${cz}:${lowPower}`;
+    if (key === this.clastCell) return false; this.clastCell = key;
+    const radius = lowPower ? cfg.lowPowerRadiusM : cfg.radiusM, density = lowPower ? cfg.lowPowerPerSquareM : cfg.perSquareM;
+    const meshes = this.clasts.userData.meshes, fillets = this.clasts.userData.fillets, span = Math.ceil(radius / cfg.cellM) + 1;
+    for (const mesh of meshes) mesh.count = 0; fillets.count = 0;
+    const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), scale = new THREE.Vector3(), quaternion = new THREE.Quaternion(), euler = new THREE.Euler(), up = new THREE.Vector3(0, 1, 0), normal = new THREE.Vector3();
+    const cache = this.clastCache || (this.clastCache = new Map()), centerX = (cx + 0.5) * cfg.cellM, centerZ = (cz + 0.5) * cfg.cellM;
+    let minHeight = Infinity, maxHeight = -Infinity;
+    for (let iz = cz - span; iz <= cz + span; iz++) for (let ix = cx - span; ix <= cx + span; ix++) {
+      const cellKey = `${ix}:${iz}:${lowPower}`; let cell = cache.get(cellKey);
+      if (!cell) {
+        const rnd = random(((Math.imul(ix, 73856093) ^ Math.imul(iz, 19349663) ^ this.seed) >>> 0) + 1);
+        const count = Math.round(cfg.cellM * cfg.cellM * density), records = new Float32Array(count * 24), collars = new Float32Array(count * 16);
+        for (let j = 0; j < count; j++) {
+          const px = (ix + rnd()) * cfg.cellM, pz = (iz + rnd()) * cfg.cellM;
+          const size = Math.min(cfg.maximumM, cfg.minimumM * Math.pow(Math.max(1e-6, 1 - rnd()), -1 / cfg.exponent)), kind = Math.floor(rnd() * 3);
+          const yaw = rnd() * Math.PI * 2, tiltX = (rnd() - 0.5) * 0.7, tiltZ = (rnd() - 0.5) * 0.7, stretch = 0.7 + rnd() * 0.7, shade = 0.47 + rnd() * 0.13;
+          const kx = px / 1000, kz = pz / 1000, height = this.heightAt(kx, kz), offset = j * 24;
+          position.set(kx, height + size * 0.00010, kz); scale.set(size * 0.0005, size * 0.0005 * stretch, size * 0.0005);
+          quaternion.setFromEuler(euler.set(tiltX, yaw, tiltZ)); matrix.compose(position, quaternion, scale);
+          records.set([px, pz, kind, size], offset); records.set(matrix.elements, offset + 4); records.set([shade, shade * 0.985, shade * 0.965], offset + 20);
+          if (size > 0.075) {
+            const delta = 0.002, gx = (this.heightAt(kx + delta, kz) - this.heightAt(kx - delta, kz)) / (2 * delta), gz = (this.heightAt(kx, kz + delta) - this.heightAt(kx, kz - delta)) / (2 * delta);
+            quaternion.setFromUnitVectors(up, normal.set(-gx, 1, -gz).normalize()); position.y = height + 0.0000005; scale.setScalar(size * 0.0005);
+            matrix.compose(position, quaternion, scale); collars.set(matrix.elements, j * 16); records[offset + 23] = 1;
+          }
+        }
+        cell = { records, collars }; cache.set(cellKey, cell);
+      } else { cache.delete(cellKey); cache.set(cellKey, cell); }
+      const data = cell.records;
+      for (let j = 0; j < data.length; j += 24) {
+        const px = data[j], pz = data[j + 1], mesh = meshes[data[j + 2]];
+        if ((px - centerX) ** 2 + (pz - centerZ) ** 2 > radius * radius || (this.pad && Math.hypot(px, pz) < 7) || mesh.count >= mesh.instanceMatrix.count) continue;
+        mesh.instanceMatrix.array.set(data.subarray(j + 4, j + 20), mesh.count * 16);
+        if (!mesh.instanceColor) mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(mesh.instanceMatrix.count * 3), 3);
+        mesh.instanceColor.array.set(data.subarray(j + 20, j + 23), mesh.count++ * 3);
+        minHeight = Math.min(minHeight, data[j + 17]); maxHeight = Math.max(maxHeight, data[j + 17]);
+        if (data[j + 23] && fillets.count < fillets.instanceMatrix.count) {
+          fillets.instanceMatrix.array.set(cell.collars.subarray(j / 24 * 16, j / 24 * 16 + 16), fillets.count++ * 16);
+        }
+      }
+    }
+    // Bounded LRU and an analytic bound avoid re-querying terrain and transforming 10,000 bounds on each step.
+    while (cache.size > 400) cache.delete(cache.keys().next().value);
+    const middle = Number.isFinite(minHeight) ? (minHeight + maxHeight) * 0.5 : this.heightAt(x, z), vertical = Number.isFinite(minHeight) ? (maxHeight - minHeight) * 0.5 : 0;
+    for (const mesh of [...meshes, fillets]) {
+      mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(centerX / 1000, middle, centerZ / 1000), Math.hypot(radius / 1000, vertical) + cfg.maximumM / 1000);
+    }
+    return true;
+  }
+  makeDust() {
+    // Engine-blown regolith, as in the Apollo 16 mm landing films: not lines on the ground but a thin, translucent sheet
+    // of dust racing outward a few decimetres above it, made of fine radial fibres, that veils and smears the surface
+    // more and more as the engine comes down (from ~30 m), and stops at shutdown. A ring 3-75 m around the lander,
+    // following the relief; the shader moves the fibres outward at ~40 m/s and fades the sheet with distance.
+    const rings = 10, segments = 96, inner = 0.003, outer = 0.075, positions = [], index = [];
+    for (let i = 0; i <= rings; i++) for (let j = 0; j <= segments; j++) {
+      const r = inner * Math.pow(outer / inner, i / rings), a = j / segments * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r;
+      positions.push(x, this.heightAt(x, z) + 0.0003, z);
+    }
+    for (let i = 0; i < rings; i++) for (let j = 0; j < segments; j++) { const k = i * (segments + 1) + j; index.push(k, k + segments + 1, k + 1, k + 1, k + segments + 1, k + segments + 2); }
+    const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setIndex(index);
+    const material = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      uniforms: { uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new THREE.Color(0.30, 0.29, 0.275) } },
+      vertexShader: 'varying vec3 vLocal;void main(){vLocal=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+      fragmentShader: `uniform float uLevel,uTime;uniform vec3 uColor;varying vec3 vLocal;
+        float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+        float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+        void main(){
+          float r=length(vLocal.xz)*1000.,a=atan(vLocal.z,vLocal.x);
+          // Fibres: fine in angle (about 700 around), long and moving outward along the radius.
+          float s=n(vec2(a*110.,r*.08-uTime*3.2))*.6+n(vec2(a*260.,r*.15-uTime*5.))*.4;
+          float sheet=(1.-smoothstep(18.,75.,r))*smoothstep(3.,8.,r);
+          float alpha=uLevel*sheet*(.18+.32*s);
+          gl_FragColor=vec4(uColor*(.85+.3*s),alpha);
+        }`
+    });
+    const mesh = new THREE.Mesh(geometry, material); mesh.renderOrder = 2; mesh.frustumCulled = false; mesh.visible = false; return mesh;
   }
   // level 0..1 (engine near the ground), time in seconds.
   updateDust(level, time) {
     const dust = this.dust; dust.visible = level > 0.02; if (!dust.visible) return;
-    const data = dust.userData.data, p = dust.geometry.attributes.position, max = 0.06, n = p.count / 2;
-    for (let i = 0; i < n; i++) {
-      const a = data[i * 4], r0 = data[i * 4 + 1], speed = data[i * 4 + 2], h = data[i * 4 + 3];
-      const r = 0.004 + ((r0 + time * speed * 0.55) % 1) * max, len = 0.0008 + 0.0022 * speed;
-      const x0 = Math.cos(a) * r, z0 = Math.sin(a) * r, x1 = Math.cos(a) * (r + len), z1 = Math.sin(a) * (r + len), lift = 0.00015 + h * 0.0009 * (1 - r / max);
-      p.setXYZ(i * 2, x0, this.heightAt(x0, z0) + lift, z0); p.setXYZ(i * 2 + 1, x1, this.heightAt(x1, z1) + lift * 0.8, z1);
-    }
-    p.needsUpdate = true; dust.material.opacity = 0.2 * level;
+    dust.material.uniforms.uLevel.value = Math.min(1, level * 1.3); dust.material.uniforms.uTime.value = time;
   }
   dispose() {
-    this.mesh.geometry.dispose(); this.mesh.material.dispose(); this.normalMap.dispose();
-    for (const mesh of this.rocks.userData.meshes) mesh.geometry.dispose(); this.rocks.userData.meshes[0].material.dispose();
+    this.mesh.geometry.dispose(); this.mesh.material.dispose(); this.normalMap?.dispose();
+    for (const group of [this.rocks, this.clasts].filter(Boolean)) {
+      for (const mesh of group.userData.meshes) mesh.geometry.dispose(); group.userData.fillets.geometry.dispose();
+    }
+    this.rockMaterial.dispose(); this.clastCache?.clear();
     this.dust.geometry.dispose(); this.dust.material.dispose();
   }
 }

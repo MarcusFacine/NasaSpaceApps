@@ -31,14 +31,22 @@ export function makeEnvironment(renderer, { sky = [0, 0, 0], ground = [0.34, 0.3
     side: THREE.BackSide, depthWrite: false,
     uniforms: { uSky: { value: new THREE.Color(...sky) }, uGround: { value: new THREE.Color(...ground) }, uHorizon: { value: new THREE.Color(...(horizon || ground)) } },
     vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-    fragmentShader: 'uniform vec3 uSky, uGround, uHorizon; varying vec3 vDir; void main(){ float y = vDir.y; vec3 c = y > 0. ? mix(uHorizon, uSky, smoothstep(0., .35, y)) : mix(uHorizon, uGround, smoothstep(0., -.12, y)); gl_FragColor = vec4(c, 1.); }'
+    fragmentShader: 'uniform vec3 uSky, uGround, uHorizon; varying vec3 vDir; void main(){ float y = vDir.y; vec3 c = y > 0. ? mix(uHorizon, uSky, smoothstep(0., .35, y)) : mix(uHorizon, uGround, smoothstep(0., .12, -y)); gl_FragColor = vec4(c, 1.); }'
   });
   scene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 48, 24), material));
   // A small bright patch where the Sun would be keeps highlights alive on polished surfaces.
   const sun = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(6, 5.8, 5.4) }));
   sun.position.set(6, 3, 5); scene.add(sun);
-  const pmrem = new THREE.PMREMGenerator(renderer), target = pmrem.fromScene(scene, 0.02);
-  pmrem.dispose(); material.dispose(); return target;
+  const pmrem = new THREE.PMREMGenerator(renderer), previousClear = renderer.autoClear;
+  const previousTarget = renderer.getRenderTarget(), previousFace = renderer.getActiveCubeFace(), previousMip = renderer.getActiveMipmapLevel();
+  let target;
+  // PMREM must clear each cube face even when the application's compositor disables autoClear.
+  try { renderer.autoClear = true; target = pmrem.fromScene(scene, 0.02); }
+  finally {
+    renderer.autoClear = previousClear; renderer.setRenderTarget(previousTarget, previousFace, previousMip);
+    pmrem.dispose(); material.dispose(); scene.traverse(o => { o.geometry?.dispose(); if (o.material && o.material !== material) o.material.dispose(); });
+  }
+  return target;
 }
 
 // Crumpled Kapton/Mylar foil computed from the position on the vehicle (metres), not from texture coordinates:
@@ -48,6 +56,7 @@ export function makeEnvironment(renderer, { sky = [0, 0, 0], ground = [0.34, 0.3
 // surface; facets under ~3 pixels and wrinkles under ~2 fade out, so the foil does not sparkle from afar.
 const FOIL_VARYINGS = 'varying vec3 vFoilPos, vFoilN, vFoilX, vFoilY, vFoilZ;\n';
 const FOIL_NOISE = `uniform vec3 uFoil;
+uniform vec4 uFoilLook;
 vec3 foilHash3(vec3 p) {
   p = fract(p * vec3(.1031, .1030, .0973));
   p += dot(p, p.yxz + 33.33);
@@ -86,15 +95,17 @@ const FOIL_APPLY = `{
   float foilPx = length(fwidth(vFoilPos)), foilF = uFoil.y;
   float foilFacetFade = 1. - smoothstep(1. / 5., 1. / 3., foilPx * foilF);
   vec3 foilG = vec3(0.);
-  if (foilFacetFade > 0.) foilG = uFoil.x * foilFacetFade * foilFacetSlope(vFoilPos * foilF, vFoilN);
+  if (uFoilLook.x < .5 && foilFacetFade > 0.) foilG = uFoil.x * foilFacetFade * foilFacetSlope(vFoilPos * foilF, vFoilN);
   // The two wrinkle octaves share a total slope budget of 35% of the facet strength.
-  float foilA = uFoil.x * (.35 / 1.5);
-  foilF *= uFoil.z;
-  for (int i = 0; i < 2; i++) {
+  float foilA = uFoil.x * (uFoilLook.x > .5 ? 1. : (.35 / 1.5));
+  if (uFoilLook.x < .5) foilF *= uFoil.z;
+  for (int i = 0; i < 3; i++) {
+    if (i == 2 && uFoilLook.x < .5) break;
     float foilFade = 1. - smoothstep(1. / 4., 1. / 2., foilPx * foilF);
     if (foilFade > 0.) {
       vec4 nd = foilNoise(vFoilPos * foilF + float(i) * 17.31);
-      foilG += foilA * foilFade * sign(nd.x - .5) * nd.yzw;
+      float fold = uFoilLook.x > .5 ? (nd.x - .5) / max(abs(nd.x - .5), .035) : sign(nd.x - .5);
+      foilG += foilA * foilFade * fold * nd.yzw;
     }
     foilF *= uFoil.z; foilA *= .5;
   }
@@ -105,23 +116,53 @@ const FOIL_APPLY = `{
   normal = foilTilt * inversesqrt(max(dot(foilTilt, foilTilt), 1e-12));
 }
 `;
+const FOIL_SURFACE = `
+  float foilBlack = 0., foilSilver = 0., foilFine = .5;
+  if (uFoilLook.x > .5) {
+    float foilPxColor = max(length(fwidth(vFoilPos)), 1e-7);
+    float foilFineFade = 1. - smoothstep(.2, .6, foilPxColor * 145.);
+    foilFine = mix(.5, foilNoise(vFoilPos * 145.).x, foilFineFade);
+    float foilMottle = foilNoise(vFoilPos * 4.7).x;
+    diffuseColor.rgb *= mix(.72, 1.14, foilMottle);
+    // AS11-40-5927: black thermal shielding around the upper descent bays; exposed silver deck.
+    if (uFoilLook.x > 1.5) {
+      float upperBelt = smoothstep(2.54, 2.56, vFoilPos.y);
+      float sideBay = max(step(1.55, vFoilPos.x), step(vFoilPos.z, -1.55));
+      foilBlack = max(upperBelt, sideBay * smoothstep(1.72, 1.74, vFoilPos.y));
+      foilSilver = step(2.88, vFoilPos.y) * smoothstep(.55, .8, abs(vFoilN.y));
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.012, .011, .010), foilBlack);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.48, .47, .44), foilSilver);
+    }
+  }
+`;
+const FOIL_ROUGHNESS = `
+  if (uFoilLook.x > .5) roughnessFactor = clamp(mix(roughnessFactor + (foilFine - .5) * .28, .76, foilBlack * (1. - foilSilver)), .13, 1.);
+`;
+const FOIL_METALNESS = `
+  if (uFoilLook.x > .5) metalnessFactor = mix(metalnessFactor, .12, foilBlack * (1. - foilSilver));
+`;
 // strength: slope of the coarsest creases; frequency: creases per metre; lacunarity: frequency step per octave.
-function crumple(material, strength, frequency, lacunarity = 2.13) {
+function crumple(material, strength, frequency, lacunarity = 2.13, look = 0) {
   material.normalMap = null;
   material.onBeforeCompile = shader => {
     shader.uniforms.uFoil = { value: new THREE.Vector3(strength, frequency, lacunarity) };
+    shader.uniforms.uFoilLook = { value: new THREE.Vector4(look, look && material.roughnessMap ? .23 : material.roughness, 0, 0) };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + FOIL_VARYINGS)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFoilPos = position; vFoilN = objectNormal; vFoilX = normalMatrix[0]; vFoilY = normalMatrix[1]; vFoilZ = normalMatrix[2];');
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + FOIL_VARYINGS + FOIL_NOISE)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + FOIL_SURFACE)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + FOIL_ROUGHNESS)
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n' + FOIL_METALNESS)
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + FOIL_APPLY);
   };
-  material.customProgramCacheKey = () => 'foil-2';
+  material.customProgramCacheKey = () => 'foil-4';
   return material;
 }
 
 // Aluminium sheets and painted hardware: all distances are object-space metres, independent of UVs.
 // The sheet relief uses polynomial height gradients, no neighbour searches or extra noise octaves.
 const PANEL_NOISE = `uniform vec4 uPanel, uPanelRelief, uPanelFinish;
+uniform vec2 uPanelInk;
 float panelHash(vec2 p) {
   vec3 h = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
   h += dot(h, h.yzx + 33.33);
@@ -160,6 +201,15 @@ const PANEL_SURFACE = `
   vec3 panelTint = mix(vec3(.95, .98, 1.03), vec3(1.05, .98, .93), clamp(.5 + .5 * panelStreak, 0., 1.));
   diffuseColor.rgb = clamp(diffuseColor.rgb * max(panelTone, .1)
     * mix(vec3(1.), panelTint, uPanelFinish.w * panelStreakFade), 0., 1.);
+  // Apollo LM aluminium heat shields: dark sheet joints and the heads of the fastener rows.
+  float panelJoint = 1. - smoothstep(max(uPanelRelief.y * .35, .0001), max(uPanelRelief.y * .35, .0001) + panelPx * 1.2,
+    min(panelEdge.x, panelEdge.y));
+  vec2 inkCenters = clamp(floor((panelLocal - uPanel.z) / panelPitch + .5) * panelPitch + uPanel.z,
+    vec2(uPanel.z), vec2(panelSize - uPanel.z));
+  float inkRivet = min(length(vec2(panelEdge.x - uPanel.z, panelLocal.y - inkCenters.y)),
+    length(vec2(panelLocal.x - inkCenters.x, panelEdge.y - uPanel.z)));
+  float inkDot = 1. - smoothstep(uPanel.w * .65, uPanel.w + panelPx, inkRivet);
+  diffuseColor.rgb *= 1. - panelFade * (uPanelInk.x * panelJoint + uPanelInk.y * inkDot);
 `;
 const PANEL_ROUGHNESS = `
   roughnessFactor = clamp(roughnessFactor + uPanelFinish.y * (panelValue + .3 * panelStreak), .04, 1.);
@@ -202,10 +252,12 @@ function rivetPanel(material, opts = {}) {
   const surface = new THREE.Vector4(size, span / Math.max(intervals, 1), inset, bounded('radius', .004, .002, .008));
   const relief = new THREE.Vector4(bounded('height', .0007, 0, .002), bounded('seamWidth', .0015, .0005, .005), bounded('seamDepth', .0006, 0, .003), panelled ? 1 : 0);
   const finish = new THREE.Vector4(bounded('albedoVariation', .05, 0, .2), bounded('roughnessVariation', .035, 0, .12), bounded('smudge', .015, 0, .06), bounded('heatTint', 0, 0, 1));
+  const ink = new THREE.Vector2(bounded('seamInk', 0, 0, .8), bounded('rivetInk', 0, 0, .5));
   const varyings = panelled ? FOIL_VARYINGS : 'varying vec3 vFoilPos, vFoilN;\n';
   material.normalMap = null;
   material.onBeforeCompile = shader => {
     shader.uniforms.uPanel = { value: surface }; shader.uniforms.uPanelRelief = { value: relief }; shader.uniforms.uPanelFinish = { value: finish };
+    shader.uniforms.uPanelInk = { value: ink };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\n' + varyings)
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFoilPos = position; vFoilN = objectNormal;' + (panelled ? ' vFoilX = normalMatrix[0]; vFoilY = normalMatrix[1]; vFoilZ = normalMatrix[2];' : ''));
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\n' + varyings + PANEL_NOISE)
@@ -213,7 +265,7 @@ function rivetPanel(material, opts = {}) {
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n' + PANEL_ROUGHNESS);
     if (panelled) shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + PANEL_APPLY);
   };
-  material.customProgramCacheKey = () => panelled ? 'rivet-panel-1' : 'rivet-panel-1-finish';
+  material.customProgramCacheKey = () => panelled ? 'rivet-panel-2' : 'rivet-panel-2-finish';
   return material;
 }
 
@@ -265,8 +317,74 @@ export function createMaterials(envMap) {
     }
     return kept.get(source.uuid);
   };
-  m.dispose = () => { for (const x of decalMaps) x.dispose(); quadrants.dispose(); gores.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); for (const x of kept.values()) x.dispose(); };
-  m.setEnvironment = map => { for (const x of [...Object.values(m), ...kept.values()]) if (x?.isMeshStandardMaterial && x !== m.chute) x.envMap = map; };
+  // LM-only finishes: keep the CSM/Saturn materials and their environment response unchanged.
+  // Apollo surface photos: bare/anodized shields, black Inconel/H-film, amber Kapton, dusty aluminium pads.
+  // Full cube faces need no CubeCamera/renderer clear state; no artificial reflected studio Sun.
+  // At 7 degrees: 3.1 * sin(7 deg) * regolith albedo .12 / PI is ~.014 radiance.
+  const cubeImages = [];
+  for (let face = 0; face < 6; face++) {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32;
+    const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(32, 32);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const u = (x + .5) / 16 - 1, v = (y + .5) / 16 - 1;
+      const ny = (face === 2 ? 1 : face === 3 ? -1 : -v) / Math.sqrt(1 + u * u + v * v);
+      const ground = 1 - THREE.MathUtils.smoothstep(ny, -.08, .08);
+      const color = new THREE.Color().setRGB(.00012 + .016 * ground, .00016 + .014 * ground, .00022 + .011 * ground).convertLinearToSRGB();
+      const i = (y * 32 + x) * 4;
+      pixels.data[i] = Math.round(color.r * 255); pixels.data[i + 1] = Math.round(color.g * 255); pixels.data[i + 2] = Math.round(color.b * 255); pixels.data[i + 3] = 255;
+    }
+    ctx.putImageData(pixels, 0, 0); cubeImages.push(canvas);
+  }
+  const lmEnvironment = new THREE.CubeTexture(cubeImages); lmEnvironment.colorSpace = THREE.SRGBColorSpace; lmEnvironment.needsUpdate = true;
+  const lmPanels = { ...LM_PANELS, panelSize: .58, seamInk: .55, rivetInk: .28, albedoVariation: .18 };
+  m.lmPanel = rivetPanel(std({ color: 0x97948a, metalness: .55, roughness: .38 }), lmPanels);
+  m.lmPaint = rivetPanel(std({ color: 0x9e9b91, metalness: .22, roughness: .55 }), { ...lmPanels, panelSize: .72 });
+  m.lmGold = crumple(std({ color: 0xe0aa45, metalness: .97, roughness: .3 }), .6, 21, 2.23, 1);
+  m.lmAmber = crumple(std({ color: 0xad6721, metalness: .96, roughness: .32 }), .62, 23, 2.17, 1);
+  m.lmDescentFoil = crumple(std({ color: 0xd9a13b, metalness: .97, roughness: .3 }), .6, 21, 2.23, 2);
+  m.lmSilver = crumple(std({ color: 0xbabbb5, metalness: .95, roughness: .3 }), .5, 25, 2.13, 1);
+  m.lmBlack = crumple(std({ color: 0x12110f, metalness: .12, roughness: .73 }), .44, 34, 2.13, 1);
+  m.lmRCS = rivetPanel(std({ color: 0x151411, metalness: .28, roughness: .67 }), { panelled: false, heatTint: .35 });
+  m.lmMetal = rivetPanel(std({ color: 0xacaea8, metalness: .78, roughness: .42 }), { panelled: false });
+  m.lmPad = rivetPanel(std({ color: 0x9d9c91, metalness: .62, roughness: .68 }), { panelled: false, smudge: .05 });
+  const lmKept = new Map();
+  const lmLighting = material => {
+    // Regolith ~0.12 albedo: attenuate inherited hemisphere/studio fill, never the direct Sun.
+    // Vendor r186 lights_fragment_maps/end expose irradiance separately from direct light.
+    material.envMap = lmEnvironment; material.envMapIntensity = 1; material.userData.lmSurface = true;
+    const compile = material.onBeforeCompile, key = material.customProgramCacheKey();
+    material.onBeforeCompile = shader => {
+      compile.call(material, shader);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_maps>',
+        '#include <lights_fragment_maps>\n#if defined( RE_IndirectDiffuse )\nirradiance *= .12;\n#endif');
+    };
+    material.customProgramCacheKey = () => key + '-lm-bounce-1'; return material;
+  };
+  for (const [name, material] of Object.entries(m)) if (name.startsWith('lm') && material?.isMaterial && name !== 'lmSkin') lmLighting(material);
+  const lmPlain = { blinn1SG: m.lmGold, blinn9SG: m.lmAmber, blinn6SG: m.lmBlack, blinn2SG: m.lmRCS,
+    blinn4SG: m.lmMetal, blinn3SG: m.lmPanel, initialShadingGr: m.lmPaint, blinn7SG: m.lmSilver, blinn10SG: m.lmPaint };
+  m.lmNasa = (source, mesh) => {
+    const name = source.name.split('.')[0], node = mesh.name.replace(/_/g, ' ');
+    // NASA model's group13 primitives are the sixteen RCS engine bells, not gold foil.
+    if (/^group13\b/.test(node) && name === 'blinn1SG') return m.lmRCS;
+    if (/^group31 19\b/.test(node)) return m.lmPad;
+    if (/^pCylinder1(?:$|[ .])/.test(node)) return m.lmDescentFoil;
+    if (/^pCylinde10(?:$|[ .])/.test(node)) return m.lmSilver;
+    if (/^pCylinder9(?:$|[ .])/.test(node)) return m.lmBlack;
+    if (name === 'blinn7SG' && /^(group73|group74|pCylinder[67])/.test(node)) return m.lmBlack;
+    if (name === 'blinn7SG' && /^(group75|pCylinder8)/.test(node) && mesh.geometry.boundingBox?.max.y < .7) return m.lmAmber;
+    if (lmPlain[name] && !source.map) return lmPlain[name];
+    if (!lmKept.has(source.uuid)) {
+      const c = m.nasa(source).clone();
+      if (DECALS[name]) crumple(c, .8, 28, 2.23, 1);
+      lmKept.set(source.uuid, lmLighting(c));
+    }
+    return lmKept.get(source.uuid);
+  };
+  m.lm = Object.assign(Object.create(m), { gold: m.lmGold, amber: m.lmAmber, silverFoil: m.lmSilver,
+    black: m.lmBlack, charcoal: m.lmRCS, greyPanel: m.lmPanel, aluminium: m.lmMetal });
+  m.dispose = () => { for (const x of decalMaps) x.dispose(); quadrants.dispose(); gores.dispose(); lmEnvironment.dispose(); for (const x of Object.values(m)) if (x?.isMaterial) x.dispose(); for (const x of [...kept.values(), ...lmKept.values()]) x.dispose(); };
+  m.setEnvironment = map => { for (const x of [...Object.values(m), ...kept.values(), ...lmKept.values()]) if (x?.isMeshStandardMaterial && x !== m.chute) x.envMap = x.userData.lmSurface ? lmEnvironment : map; };
   return m;
 }
 
@@ -276,9 +394,13 @@ function add(parent, geometry, material, position, rotation) {
 }
 const cyl = (rt, rb, h, s = 40, open = false) => new THREE.CylinderGeometry(rt, rb, h, s, 1, open);
 // A stage of a NASA model, with the simulation's materials.
-function nasaPart(source, m) {
+function nasaPart(source, m, lunar = false) {
   const g = new THREE.Group();
-  for (const mesh of source.children) { const c = new THREE.Mesh(mesh.geometry, m.nasa(mesh.material)); c.castShadow = c.receiveShadow = true; g.add(c); }
+  for (const mesh of source.children) {
+    const c = new THREE.Mesh(mesh.geometry, lunar ? m.lmNasa(mesh.material, mesh) : m.nasa(mesh.material));
+    c.name = mesh.name; c.userData.lmSourceName = mesh.name; c.userData.lmSourceMaterial = mesh.material.name;
+    c.castShadow = c.receiveShadow = true; g.add(c);
+  }
   return g;
 }
 // Rocket-engine bell: throat at y = 0, exit at y = −length.
@@ -927,9 +1049,10 @@ function buildCSM(m, nasa = null) { const g = new THREE.Group(), cm = buildCM(m,
 // ---- Lunar Module ----
 export function buildDescentStage(m, nasa = null) {
   if (nasa) {
-    const g = nasaPart(nasa.lm.descent, m), engine = exhaust('dps', { exit: 0.75, base: 1.15, bell: [0.9, 0.35] }); engine.position.y = 1.15; g.add(engine);
+    const g = nasaPart(nasa.lm.descent, m, true), engine = exhaust('dps', { exit: 0.75, base: 1.15, bell: [0.9, 0.35] }); engine.position.y = 1.15; g.add(engine);
     g.userData.plume = engine; g.userData.height = nasa.lm.deck; return g;
   }
+  m = m.lm || m;
   const g = new THREE.Group(), y0 = 1.5, hh = 1.65;
   const oct = new THREE.Shape(); const R = 2.28;
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8, p = [Math.cos(a) * R, Math.sin(a) * R]; i ? oct.lineTo(...p) : oct.moveTo(...p); }
@@ -941,9 +1064,9 @@ export function buildDescentStage(m, nasa = null) {
   for (let i = 0; i < 4; i++) {
     const a = i * Math.PI / 2, dir = new THREE.Vector3(Math.sin(a), 0, Math.cos(a)), side = new THREE.Vector3(Math.cos(a), 0, -Math.sin(a));
     const pad = dir.clone().multiplyScalar(4.25).setY(0.22), top = dir.clone().multiplyScalar(2.0).setY(y0 + hh - 0.3);
-    strut(g, top, pad.clone().setY(0.42), 0.085, m.silverFoil);
+    strut(g, top, pad.clone().setY(0.42), 0.085, m.gold);
     for (const s of [-1, 1]) strut(g, pad.clone().setY(0.62).addScaledVector(dir, -0.12), dir.clone().multiplyScalar(1.85).addScaledVector(side, s * 1.0).setY(y0 + 0.05), 0.045, m.aluminium);
-    add(g, cyl(0.47, 0.42, 0.2, 28), m.silverFoil, [pad.x, 0.1, pad.z]);
+    add(g, cyl(0.47, 0.42, 0.2, 28), m.lmPad || m.aluminium, [pad.x, 0.1, pad.z]);
     if (i !== 0) strut(g, pad.clone().setY(0.2), pad.clone().addScaledVector(dir, 0.35).setY(-1.45), 0.012, m.aluminium);
   }
   // Porch and ladder on the forward (+Z) leg.
@@ -955,7 +1078,8 @@ export function buildDescentStage(m, nasa = null) {
   return g;
 }
 export function buildAscentStage(m, nasa = null) {
-  if (nasa) { const g = nasaPart(nasa.lm.ascent, m), engine = exhaust('aps', { exit: 0.43, base: 0.05, debris: nasa.lm.deck, bell: [0.5, 0.2] }); engine.position.y = 0.05; g.add(engine); g.userData.plume = engine; return g; }
+  if (nasa) { const g = nasaPart(nasa.lm.ascent, m, true), engine = exhaust('aps', { exit: 0.43, base: 0.05, debris: nasa.lm.deck, bell: [0.5, 0.2] }); engine.position.y = 0.05; g.add(engine); g.userData.plume = engine; return g; }
+  m = m.lm || m;
   const g = new THREE.Group();
   // Cabin: faceted prism seen from the front.
   const s = new THREE.Shape(); [[-1.15, 0], [1.15, 0], [1.4, 0.55], [1.4, 1.7], [1.0, 2.35], [-1.0, 2.35], [-1.4, 1.7], [-1.4, 0.55]].forEach((p, i) => i ? s.lineTo(...p) : s.moveTo(...p));
@@ -1055,7 +1179,7 @@ function buildChutes(m) {
   g.userData = { mains, drogues, rig }; return g;
 }
 
-const HEIGHT = { saturnV: 110.6, stage2: 80, sivb: 34, stack: 18, lm: 7, ascent: 3.8, csmAscent: 15, csm: 11, cm: 3.5, cmChutes: 50 };
+const HEIGHT = { saturnV: 110.6, stage2: 80, sivb: 34, stack: 18, lm: 7, ascent: 3.8, csmAscent: 15, rendezvous: 22, csm: 11, cm: 3.5, cmChutes: 50 };
 
 // One vehicle that switches configuration with the mission phase.
 export class Spacecraft {
@@ -1071,6 +1195,17 @@ export class Spacecraft {
     cfg.ascent = buildAscentStage(m, nasa);
     const csmA = new THREE.Group(), csm2 = buildCSM(m, nasa), asc = buildAscentStage(m, nasa); asc.rotation.x = Math.PI; asc.position.y = apex + ascDock; csmA.add(csm2, asc); csmA.userData.plume = csm2.userData.plume; cfg.csmAscent = csmA;
     cfg.csm = buildCSM(m, nasa);
+    // Rendezvous: the ascent stage closing on the CSM nose to nose, its docking tunnel on the CSM's probe. Braking jets:
+    // the four RCS quads fire toward the CSM in short bursts at the range gates (a white puff each, gone in ~0.3 s).
+    const rv = new THREE.Group(), csm3 = buildCSM(m, nasa), asc3 = buildAscentStage(m, nasa); asc3.rotation.x = Math.PI; rv.add(csm3, asc3);
+    const puffMap = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      r.addColorStop(0, 'rgba(255,255,255,.95)'); r.addColorStop(.35, 'rgba(235,240,250,.35)'); r.addColorStop(1, 'rgba(235,240,250,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+    const puffs = [];
+    for (const [x, z] of [[1.65, 1.65], [-1.65, 1.65], [1.65, -1.65], [-1.65, -1.65]]) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffMap, transparent: true, depthWrite: false, opacity: 0, blending: THREE.AdditiveBlending }));
+      sprite.position.set(x, 3.3, z); sprite.scale.setScalar(1.4); asc3.add(sprite); puffs.push(sprite);
+    }
+    rv.userData = { plume: csm3.userData.plume, ascent: asc3, dockY: apex + ascDock, puffs }; cfg.rendezvous = rv;
     // Entry: the capsule's own heat shield glows (a material of its own), wrapped in the plasma.
     const cm = buildCM(m, {}, nasa); cm.position.y = -1.5;
     const shield = cm.children.find(c => c.userData.shield); if (shield) shield.material = m.heatShield.clone();
@@ -1082,6 +1217,17 @@ export class Spacecraft {
     this.name = null; this.set('lm');
   }
   get height() { return HEIGHT[this.name] / 1000; }
+  // k: 0..1 through the final approach. Range from 45 m to contact, slowing as flown (braking gates at ~30, 15 and
+  // 5 m, then ~0.1 m/s), a lateral offset taken out on the way and a little attitude hold wander; contact at k = 1.
+  rendezvous(k, time = performance.now() / 1000) {
+    const rv = this.configs.rendezvous, asc = rv.userData.ascent, c = Math.min(1, Math.max(0, k)), e = 1 - Math.pow(1 - c, 2.2);
+    const range = 45 * (1 - e), side = 12 * Math.pow(1 - e, 1.6), wander = 1 - e;
+    asc.position.set(side, rv.userData.dockY + range, -.45 * side);
+    asc.rotation.set(Math.PI + .06 * wander * Math.sin(time * .9), .35 * wander, .05 * wander * Math.sin(time * .6));
+    const gate = g => Math.max(0, 1 - Math.abs(c - g) / .025);
+    const burst = Math.max(gate(.42), gate(.66), gate(.84), gate(.95)) * (.6 + .4 * Math.sin(time * 37) ** 2);
+    for (const p of rv.userData.puffs) p.material.opacity = .9 * burst;
+  }
   // Where the ascent stage sits on the descent stage, km.
   get ascentBase() { return (this.nasa ? this.nasa.lm.deck : 3.15) / 1000; }
   set(name) {

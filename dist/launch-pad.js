@@ -16,27 +16,45 @@ export class LaunchPad {
   constructor(water) {
     this.group = new THREE.Group();
     const rnd = random(4242);
-    // Ground: 8 km of marsh, lagoons, the crawlerway and the pad apron, drawn once.
-    const map = this.groundMap = canvasTexture(2048, (g, n) => {
-      g.fillStyle = '#56603f'; g.fillRect(0, 0, n, n);
-      for (let i = 0; i < 2600; i++) { const x = rnd() * n, y = rnd() * n, r = 6 + rnd() * 46; g.fillStyle = ['rgba(70,84,52,.5)', 'rgba(98,104,70,.45)', 'rgba(46,62,44,.5)', 'rgba(120,116,84,.3)'][i % 4]; g.beginPath(); g.ellipse(x, y, r, r * (0.4 + rnd() * 0.6), rnd() * 3, 0, 7); g.fill(); }
-      for (let i = 0; i < 46; i++) { const x = rnd() * n, y = rnd() * n, r = 20 + rnd() * 90; g.fillStyle = 'rgba(28,48,60,.85)'; g.beginPath(); g.ellipse(x, y, r, r * (0.3 + rnd() * 0.5), rnd() * 3, 0, 7); g.fill(); }
-      const c = n / 2, px = n / 8000; // pixels per metre
-      g.fillStyle = '#b9ab8b'; g.fillRect(c - 3200 * px, c - 22 * px, 3200 * px, 16 * px); g.fillRect(c - 3200 * px, c + 6 * px, 3200 * px, 16 * px); // crawlerway, two tracks
-      g.fillStyle = '#8f8a7c'; g.beginPath(); g.arc(c, c, 420 * px, 0, 7); g.fill();
-      g.fillStyle = '#a9a69b'; g.fillRect(c - 190 * px, c - 190 * px, 380 * px, 380 * px);
-      g.strokeStyle = '#3c3d3a'; g.lineWidth = 9 * px; g.beginPath(); g.arc(c, c, 520 * px, 0, 7); g.stroke();
-      g.fillStyle = '#d8cfae'; g.fillRect(c + 900 * px, 0, 70 * px, n); // beach
-      g.fillStyle = '#1c4259'; g.fillRect(c + 970 * px, 0, n, n); // Atlantic
-    });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshLambertMaterial({ map })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.group.add(ground);
-    const land = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), new THREE.MeshLambertMaterial({ color: 0x4f5a3c })); land.rotation.x = -Math.PI / 2; land.position.set(-76, -0.0006, 0); this.group.add(land);
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), water); sea.rotation.x = -Math.PI / 2; sea.position.set(80.97, 0.0002, 0); this.group.add(sea);
+    // Ground: the real Kennedy Space Center from the air (USDA NAIP via USGS The National Map, public domain; made by
+    // scripts/prepare-ksc-imagery.py), north up (-z), east +x, LC-39A at the origin: 6 km at 2 m/pixel around the pad
+    // 40 km at 20 m/pixel out to the Banana River, Merritt Island and the coast, and 120 km at 60 m/pixel of the mainland. Pure black in the 40 km square is
+    // "no data" (open Atlantic), where the sea underneath shows. Both fade into the air's blue haze with distance
+    // (aerial perspective; scale height of the haze ~20 km at the horizon on a clear Florida day).
+    this.haze = { value: new THREE.Color(0.55, 0.64, 0.78) };
+    const loader = new THREE.TextureLoader(), asset = f => new URL(`./assets/mission/${f}`, import.meta.url).href;
+    const imagery = (file, half, hole) => {
+      const map = loader.load(asset(file)); map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 16;
+      const material = new THREE.MeshLambertMaterial({ map });
+      material.onBeforeCompile = shader => {
+        shader.uniforms.uHaze = this.haze;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vGround;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGround = position.xy;');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uHaze;\nvarying vec2 vGround;')
+          .replace('#include <map_fragment>', `#include <map_fragment>
+${hole ? `if (max(abs(vGround.x), abs(vGround.y)) < ${hole.toFixed(3)}) discard;` : ''}
+if (max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)) < .012) discard;   // no data: the Atlantic
+`)
+          .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, 1. - exp(-length(vViewPosition) / 20.));`);
+      };
+      material.customProgramCacheKey = () => `ksc-ground-${hole ? 'ring' : 'core'}`;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2 * half, 2 * half), material); mesh.rotation.x = -Math.PI / 2; mesh.receiveShadow = true;
+      this.group.add(mesh); return mesh;
+    };
+    this.near = imagery('ksc-near.jpg', 3, 0); this.mid = imagery('ksc-mid.jpg', 20, 2.97); this.far = imagery('ksc-far.jpg', 60, 19.8);
+    this.mid.position.y = -.0003; this.far.position.y = -.0006;
+    // Beyond the photographs: the Florida mainland to the west, the Atlantic everywhere else, under the imagery.
+    // Drawn first and without depth: a metre below the photographs is below the depth precision 30 km away.
+    const land = new THREE.Mesh(new THREE.PlaneGeometry(180, 400), new THREE.MeshLambertMaterial({ color: 0x4a5236, depthWrite: false })); land.rotation.x = -Math.PI / 2; land.position.set(-150, -0.0008, 0); land.renderOrder = -2; this.group.add(land);
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), water); sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.0012, 0); sea.renderOrder = -3; sea.onBeforeRender = (r, sc, cam, g, m) => { m.userData.depthWrite ??= m.depthWrite; m.depthWrite = false; }; sea.onAfterRender = (r, sc, cam, g, m) => { m.depthWrite = m.userData.depthWrite; }; this.group.add(sea);
     // Pad mound (elevated 12 m), flame trench running north-south, mobile launcher deck.
     const concrete = new THREE.MeshLambertMaterial({ color: 0xa9a59a }), dark = new THREE.MeshLambertMaterial({ color: 0x2e2d2b }), steel = new THREE.MeshLambertMaterial({ color: 0x7d8185 });
     const add = (geometry, material, x, y, z) => { const m = new THREE.Mesh(geometry, material); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; this.group.add(m); return m; };
-    add(new THREE.CylinderGeometry(0.075, 0.2, 0.012, 4, 1), concrete, 0, 0.006, 0).rotation.y = Math.PI / 4;
-    add(new THREE.BoxGeometry(0.018, 0.0125, 0.3), dark, 0, 0.0063, 0);
+    {
+      const g = new THREE.CylinderGeometry(0.075, 0.2, 0.012, 4, 1).rotateY(Math.PI / 4).translate(0, 0.006, 0), pos = g.attributes.position, uv = g.attributes.uv;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / 6 + .5, .5 - pos.getZ(i) / 6);
+      const mound = new THREE.Mesh(g, this.near.material); mound.receiveShadow = true; this.group.add(mound);
+    }
     add(new THREE.BoxGeometry(0.049, 0.0076, 0.041), steel, -0.006, 0.012 + 0.0038, 0);
     // Umbilical tower: red lattice, 116 m above the deck, with the hammerhead crane on top.
     const red = new THREE.MeshLambertMaterial({ color: 0xa33a2c }), unit = new THREE.BoxGeometry(1, 1, 1), members = [];
@@ -95,9 +113,10 @@ export class LaunchPad {
       }
     }
     p.needsUpdate = size.needsUpdate = alpha.needsUpdate = heat.needsUpdate = true;
+    this.haze.value.setRGB(.55, .64, .78).multiplyScalar(.08 + .92 * day);
     smoke.material.uniforms.uScale.value = scale; smoke.material.uniforms.uLight.value.setScalar(0.12 + 0.8 * day);
     // Flame light on the clouds, linear radiance: ~2 next to the flame column, falling off over a few tens of metres.
     smoke.material.uniforms.uFlameTop.value = PAD_DECK + altitude(t); smoke.material.uniforms.uFlame.value = 2.2 * Math.min(1, ignition * 1.25);
   }
-  dispose() { this.groundMap.dispose(); this.group.traverse(o => { o.geometry?.dispose(); if (o.material && o.material !== this.water) o.material.dispose?.(); }); }
+  dispose() { for (const m of [this.near, this.mid, this.far]) m.material.map?.dispose(); this.group.traverse(o => { o.geometry?.dispose(); if (o.material && o.material !== this.water) o.material.dispose?.(); }); }
 }

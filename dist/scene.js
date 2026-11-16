@@ -5,16 +5,19 @@ import { number } from './i18n.js';
 // Short distances read in metres: a ridge 250 m away is not "0 km".
 const distance = km => (km < 1 ? `${number(Math.round(km * 100) * 10)} m` : km < 10 ? `${number(km, 1)} km` : `${number(Math.round(km))} km`);
 import { loadStarCatalog, createStarField, setRotationRows, combine } from './stars.js';
-import { cloudMaterial, lunarMaterial, regolithNormalMap, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry, siteSpace } from './lunar-surface.js';
+import { lunarMaterial, detailedTerrainGeometry, contextTerrainGeometry, innerTerrainGeometry, siteSpace, lunarSpace, earthshineUniforms, earthshineIrradiance, REGOLITH_UNIFORMS, loadRegolith } from './lunar-surface.js';
+import { TerrainLight, NEAR_SHADOW } from './terrain-light.js';
 import { LandingSite } from './landing-site.js';
 import { loadNasaModels } from './nasa-models.js';
 import { makeEnvironment, createMaterials, buildLM } from './spacecraft.js';
+import { AppSky } from './app-sky.js';
+import { buildLMCabin } from './lm-cabin.js';
 
 const asset = path => new URL(path, import.meta.url).href;
 const v3 = a => new THREE.Vector3(...a);
 const bodyToScene = a => new THREE.Vector3(a[0], a[2], -a[1]);
 export const SCENE_COLORS = { sun: 0xffe600, earth: 0xff5c9a, blocked: 0x8a8a82 };
-const BODY_DISTANCE = 1400, PATH_RADIUS = 1250, HORIZON_RADIUS = 1150, STAR_RADIUS = 1800;
+const PATH_RADIUS = 1250, HORIZON_RADIUS = 1150, STAR_RADIUS = 1800;
 const lowPower = () => matchMedia('(max-width: 820px)').matches || (navigator.hardwareConcurrency || 8) <= 4;
 // Walking on the surface as a suited astronaut: Apollo crews walked at about 1 m/s and loped faster; the eyes sit at
 // the observer height. The detailed ground (landing-site.js: craters down to ~15 cm, rocks) covers 800 × 800 m around
@@ -33,15 +36,6 @@ function discTexture() {
   g.fillStyle = r; g.fillRect(0, 0, 64, 64);
   return new THREE.CanvasTexture(c);
 }
-function glowSprite(stops, scale) {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const g = c.getContext('2d'), r = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  stops.forEach(([at, color]) => r.addColorStop(at, color));
-  g.fillStyle = r; g.fillRect(0, 0, 256, 256);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
-  sprite.scale.set(scale, scale, 1); return sprite;
-}
-
 // Straight sight line from the observer along a direction, checked against the same terrain
 // the horizon uses. Returns the first point where the relief rises above the line.
 function trace(terrain, dir, h0) {
@@ -119,26 +113,16 @@ export class LunarScene {
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false; this.controls.addEventListener('change', () => this.invalidate());
 
-    // Sunlight: one hard source, no sky. Shadows reach the context tile on capable machines.
-    const reach = this.lowPower ? 75 : 125;
+    // One nonnegative solar source. Relief visibility multiplies it; the tight map contains objects only.
+    this.groundLight = new TerrainLight(this.renderer, { lowPower: this.lowPower });
     this.sunlight = new THREE.DirectionalLight(0xfff4e0, 3.1); this.sunlight.castShadow = true;
-    this.sunlight.shadow.mapSize.set(this.lowPower ? 2048 : 4096, this.lowPower ? 2048 : 4096);
-    Object.assign(this.sunlight.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach, near: 1, far: 1100 });
-    this.sunlight.shadow.normalBias = 0.09; this.sunlight.shadow.bias = -0.0003;
-    // The Sun does not move while the camera does: its big shadow map is redrawn only when the light, the relief
-    // or the view change (applyLights).
+    const shadowSize = this.lowPower ? NEAR_SHADOW.lowSize : NEAR_SHADOW.size;
+    this.sunlight.shadow.mapSize.set(shadowSize, shadowSize);
+    Object.assign(this.sunlight.shadow.camera, { left: -NEAR_SHADOW.halfWidthKm, right: NEAR_SHADOW.halfWidthKm, top: NEAR_SHADOW.halfHeightKm, bottom: -NEAR_SHADOW.halfHeightKm, near: .05, far: 1.2 });
+    // With the heightfield excluded as a caster, 6 mm receiver offset retains decimetre clast shadows.
+    this.sunlight.shadow.normalBias = NEAR_SHADOW.normalBiasKm; this.sunlight.shadow.bias = NEAR_SHADOW.bias;
     this.sunlight.shadow.autoUpdate = false; this.sunlight.shadow.needsUpdate = true;
     this.scene.add(this.sunlight, this.sunlight.target);
-    // Near shadows while walking: a light with a tight shadow box around the walker and its negative twin without
-    // shadows, along the same sunlight. They cancel everywhere except inside the near shadows, where they take the
-    // direct light away: the astronaut, the rocks and the small craters get centimetre shadows, while the main
-    // light keeps the shadows of the far ridges.
-    this.nearSun = new THREE.DirectionalLight(0xfff4e0, 0); this.nearSun.castShadow = !this.lowPower;
-    this.nearSun.shadow.mapSize.set(2048, 2048); this.nearSun.shadow.autoUpdate = false; Object.assign(this.nearSun.shadow.camera, { left: -.12, right: .12, top: .06, bottom: -.06, near: 0, far: 1.2 });
-    // Grazing light: a 12 cm normal offset is ~3.4 m along a 2° ray, enough to keep the ground from shading itself.
-    this.nearSun.shadow.normalBias = .00012; this.nearSun.shadow.bias = -.0003;
-    this.nearAnti = new THREE.DirectionalLight(0xfff4e0, 0);
-    this.scene.add(this.nearSun, this.nearSun.target, this.nearAnti, this.nearAnti.target);
     // Reading light (off by default): earthlight from Earth's direction plus a faint sky fill.
     // It exists only to read relief in shadow; it is not physical and the UI says so.
     this.earthlight = new THREE.DirectionalLight(0x9fc4ff, 0); this.scene.add(this.earthlight, this.earthlight.target);
@@ -152,41 +136,25 @@ export class LunarScene {
     this.moonTexture = loader.load(asset('./assets/moon-color.jpg'), () => this.invalidate(), undefined, () => onError(t('error.moonTexture')));
     this.moonTexture.colorSpace = THREE.SRGBColorSpace; this.moonTexture.wrapS = THREE.RepeatWrapping;
     this.moonTexture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-    const earthTexture = loader.load(asset('./assets/earth-color.jpg'), () => this.invalidate(), undefined, () => onError(t('error.earthTexture')));
-    earthTexture.colorSpace = THREE.SRGBColorSpace;
-    this.regolith = regolithNormalMap(this.lowPower ? 256 : 512);
+    this.groundSpace = lunarSpace(); this.groundEarthshine = earthshineUniforms();
+    loadRegolith(() => this.invalidate(), Math.min(16, this.renderer.capabilities.getMaxAnisotropy()));
     this.psrUniform = { value: 0 };
-    this.terrainMaterial = lunarMaterial({ normalMap: this.regolith, normalScale: 0.42, psr: this.psrUniform });
-    this.innerMaterial = lunarMaterial({ normalMap: this.regolith, normalScale: 0.5, psr: this.psrUniform });
-    this.contextMaterial = lunarMaterial({ normalMap: null });
+    const ground = { space: this.groundSpace, earthshine: this.groundEarthshine, grain: !this.lowPower };
+    this.terrainMaterial = this.groundLight.attach(lunarMaterial({ ...ground, psr: this.psrUniform }));
+    this.innerMaterial = this.groundLight.attach(lunarMaterial({ ...ground, psr: this.psrUniform }));
+    this.contextMaterial = this.groundLight.attach(lunarMaterial(ground));
 
-    // Earth: real angular size and phase (lit by the same sunlight), oriented by Greenwich sidereal
-    // time so the side facing the Moon is the real one; clouds, and city lights only on the night side.
-    const earthLights = loader.load(asset('./assets/earth-lights.png'), () => this.invalidate());
-    earthLights.colorSpace = THREE.SRGBColorSpace;
-    const earthClouds = loader.load(asset('./assets/earth-clouds.png'), () => this.invalidate());
-    this.sunView = { value: new THREE.Vector3(0, 0, 1) };
-    const earthMaterial = new THREE.MeshStandardMaterial({ map: earthTexture, roughness: 0.85, metalness: 0, emissive: 0xffc98a, emissiveMap: earthLights, emissiveIntensity: 1.6 });
-    earthMaterial.onBeforeCompile = shader => {
-      shader.uniforms.uSunView = this.sunView;
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>
-uniform vec3 uSunView;`)
-        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView));`);
-    };
-    this.earth = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), earthMaterial);
-    this.earth.add(new THREE.Mesh(new THREE.SphereGeometry(1.012, 96, 64), cloudMaterial(earthClouds)));
-    this.earthGlow = glowSprite([[0, 'rgba(150,200,255,0)'], [0.36, 'rgba(150,200,255,0)'], [0.42, 'rgba(150,200,255,.55)'], [0.62, 'rgba(120,170,255,.12)'], [1, 'rgba(120,170,255,0)']], 3.2);
-    this.earth.add(this.earthGlow);
-    // Sun: disc at true angular size, a bright core and a wide soft bloom.
-    this.sun = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.MeshBasicMaterial({ color: 0xfffbf0, toneMapped: false }));
-    this.sun.add(glowSprite([[0, 'rgba(255,250,235,1)'], [0.08, 'rgba(255,240,200,.9)'], [0.22, 'rgba(255,225,150,.28)'], [1, 'rgba(255,215,120,0)']], 9));
-    this.sun.add(glowSprite([[0, 'rgba(255,236,180,.22)'], [0.4, 'rgba(255,225,150,.06)'], [1, 'rgba(255,215,120,0)']], 40));
+    // Earth and Sun: the mission's physical renderers (app-sky.js). The Earth has the Hillaire atmosphere, its real
+    // phase and orientation (orientEarth: Greenwich sidereal time), clouds and sun glint; the Sun is the limb-darkened
+    // disc at true size with the camera's glare. The surface and terrain views go through an HDR camera with automatic
+    // exposure (CameraFX), as a photograph would: sunlit regolith is exposed like an Apollo frame, and a scene lit only
+    // by earthshine opens up, dim and grainy. Low-power devices draw directly, as before.
+    this.sky = new AppSky(this.renderer, this.scene, this.camera, { lowPower: this.lowPower, assetUrl: asset, invalidate: () => this.invalidate(), maxPixelRatio: 1 });
+    this.earth = this.sky.earth; this.sun = this.sky.sun;
     this.localGroup.add(this.earth, this.sun);
 
     this.moon = new THREE.Mesh(new THREE.SphereGeometry(12, 192, 128), lunarMaterial({ vertexColors: false, map: this.moonTexture, color: 0xf2efe8 }));
-    this.globeGroup.add(this.moon);
+    this.globeGroup.add(this.moon); this.sky.setMoon(this.moon);
     this.makeGraticule();
     this.globeMarkers = sites.map(site => {
       const marker = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
@@ -244,7 +212,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       if (!data || this.disposed) return;
       this.stars = createStarField(data, STAR_RADIUS);
       this.stars.material.uniforms.uPixelRatio.value = this.renderer.getPixelRatio();
-      this.scene.add(this.stars); this.orientStars(); this.invalidate();
+      this.scene.add(this.stars); this.sky.setStars(data, this.stars); this.orientStars(); this.invalidate();
     });
 
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(container);
@@ -266,17 +234,24 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     this.render = () => {
       if (this.disposed) return;
       const now = performance.now(), dt = Math.min(.1, (now - this.walker.last) / 1000); this.walker.last = now;
-      if (this.view === 'surface' && (this.walker.keys.size || this.walker.air) && !this.suspended) { this.walk(dt); this.dirty = true; }
+      if (this.view === 'surface' && !this.walker.cabin && (this.walker.keys.size || this.walker.air) && !this.suspended) { this.walk(dt); this.dirty = true; }
       if (this.dirty && !this.suspended && !document.hidden && !this.contextLost) {
         this.frameView(); this.controls.update(); this.updateThickness();
-        // Shadow maps: the far one (whole tiles) only when the light, the relief or the view change; the near one every
-        // frame while walking, with the big tiles left out (the ground at the feet is the detailed patch).
-        const walking = this.view === 'surface' && Boolean(this.landing), far = this.sunlight.shadow.needsUpdate;
-        // The near map must exist from the first frame (materials sample it), and follows the walker afterwards.
-        if (walking || !this.nearSun.shadow.map) this.nearSun.shadow.needsUpdate = true;
-        for (const mesh of [this.terrainMesh, this.innerMesh, this.contextMesh]) if (mesh) { mesh.userData.cast ??= mesh.castShadow; mesh.castShadow = mesh.userData.cast && (far || !walking); }
-        this.sunView.value.copy(this.sunlight.position).normalize().transformDirection(this.camera.matrixWorldInverse);
-        this.renderer.render(this.scene, this.camera); this.updateLabels(); this.dirty = false;
+        // Cached horizon pass only on Sun/relief changes; walking redraws only the small-object map.
+        const walking = this.view === 'surface' && Boolean(this.landing);
+        if (walking) {
+          this.landing.updateClasts(this.walker.x, this.walker.z, { lowPower: this.lowPower });
+          this.placeNearLights(); this.sunlight.shadow.needsUpdate = true;
+        }
+        if (this.lander && !this.lander.userData.terrainLight) {
+          this.lander.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) this.groundLight.attach(m); });
+          this.lander.userData.terrainLight = true;
+        }
+        for (const mesh of [this.terrainMesh, this.innerMesh, this.contextMesh, this.landing?.mesh]) if (mesh) mesh.castShadow = false;
+        // A sampled near map must be allocated on its first shadow-enabled frame.
+        if (this.sunlight.castShadow && !this.sunlight.shadow.map) this.sunlight.shadow.needsUpdate = true;
+        if (this.view !== 'globe') this.groundLight.update(this.camera);
+        this.sky.render(dt); this.updateLabels(); this.dirty = this.sky.needsFrames();
       }
       this.frame = requestAnimationFrame(this.render);
     };
@@ -303,17 +278,21 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   setTerrain(terrain) {
     if (this.terrain?.site.id === terrain.site.id && this.terrain.wide === terrain.wide && this.terrain.inner === terrain.inner) return;
     this.terrain = terrain;
+    // siteSpace splits its translation into lattice cells; keep both parts for lunar detail/earthshine.
+    const space = siteSpace(siteBasis(terrain.site), RADIUS_KM + terrain.elevationKm - terrain.height(0, 0));
+    this.groundSpace.matrix.value.copy(space.matrix.value); this.groundSpace.cells.value.copy(space.cells.value);
+    this.groundLight.setTerrain(terrain);
     for (const mesh of [this.terrainMesh, this.contextMesh]) if (mesh) { this.localGroup.remove(mesh); mesh.geometry.dispose(); }
     this.terrainMesh = new THREE.Mesh(detailedTerrainGeometry(terrain, { stride: this.lowPower ? 2 : 1 }), this.terrainMaterial);
-    this.terrainMesh.castShadow = this.terrainMesh.receiveShadow = true;
+    this.terrainMesh.castShadow = false; this.terrainMesh.receiveShadow = true;
     this.localGroup.add(this.terrainMesh);
     if (this.innerMesh) { this.localGroup.remove(this.innerMesh); this.innerMesh.geometry.dispose(); this.innerMesh = null; }
     const inner = innerTerrainGeometry(terrain, { stride: this.lowPower ? 2 : 1 });
-    if (inner) { this.innerMesh = new THREE.Mesh(inner, this.innerMaterial); this.innerMesh.castShadow = this.innerMesh.receiveShadow = true; this.localGroup.add(this.innerMesh); }
+    if (inner) { this.innerMesh = new THREE.Mesh(inner, this.innerMaterial); this.innerMesh.castShadow = false; this.innerMesh.receiveShadow = true; this.localGroup.add(this.innerMesh); }
     const context = contextTerrainGeometry(terrain);
     if (context) {
       this.contextMesh = new THREE.Mesh(context, this.contextMaterial);
-      this.contextMesh.castShadow = !this.lowPower; this.contextMesh.receiveShadow = true;
+      this.contextMesh.castShadow = false; this.contextMesh.receiveShadow = true;
       this.localGroup.add(this.contextMesh);
     } else this.contextMesh = null;
     this.horizonKey = '';
@@ -330,13 +309,15 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   setPsr(on) { this.psrUniform.value = on ? 1 : 0; this.invalidate(); }
   applyLights() {
     const r = this.result, globe = this.view === 'globe';
+    this.sunlight.target.position.set(0, 0, 0);
     if (globe) this.sunlight.position.copy(bodyToScene(unit(r.eph.sun)).multiplyScalar(450));
-    else this.sunlight.position.copy(v3(r.sun.direction).multiplyScalar(450));
+    else { this.groundLight.setSun(v3(r.sun.direction)); REGOLITH_UNIFORMS.uRegolithSun.value.copy(v3(r.sun.direction)).normalize(); this.placeNearLights(); }
     this.sunlight.castShadow = !globe;
     // During an eclipse the Earth covers part or all of the Sun: the direct light falls with the covered share.
-    this.sunlight.intensity = 3.1 * (1 - (r.sun.eclipse || 0));
-    const near = this.view === 'surface' && Boolean(this.landing) && this.nearSun.castShadow ? this.sunlight.intensity : 0;
-    this.nearSun.intensity = near; this.nearAnti.intensity = -near; this.placeNearLights();
+    this.sunlight.intensity = 3.1 * Math.max(0, 1 - (r.sun.eclipse || 0));
+    const earth = v3(r.earth.direction).normalize(), sun = v3(r.sun.direction).normalize();
+    this.groundEarthshine.direction.value.copy(earth).transformDirection(this.groundSpace.matrix.value);
+    this.groundEarthshine.intensity.value = !globe && earth.y > 0 ? earthshineIrradiance(Math.acos(THREE.MathUtils.clamp(-sun.dot(earth), -1, 1)), r.earth.distanceKm, 1, 3.1) : 0;
     this.earthlight.position.copy(v3(r.earth.direction).multiplyScalar(450));
     this.earthlight.intensity = this.readingLight && !globe ? 0.55 : 0;
     this.fill.intensity = this.readingLight ? 0.35 : globe ? 0.04 : 0;
@@ -346,10 +327,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   // result: evaluate() for the primary site. Sun and Earth sit far away along their directions.
   update(result, date, heightM, selected) {
     this.result = result; this.heightM = heightM; this.date = date; this.selected = selected;
-    this.earth.position.copy(v3(result.earth.direction).multiplyScalar(BODY_DISTANCE));
-    this.earth.scale.setScalar(BODY_DISTANCE * 6378.137 / result.earth.distanceKm);
-    this.sun.position.copy(v3(result.sun.direction).multiplyScalar(BODY_DISTANCE));
-    this.sun.scale.setScalar(BODY_DISTANCE * 695700 / result.sun.distanceKm);
+    this.sky.update(result, date);
     this.orientEarth(result, date);
     this.applyLights();
     this.globeMarkers.forEach(marker => { marker.visible = selected.includes(marker.userData.siteId); marker.scale.setScalar(marker.userData.siteId === result.siteId ? 1.8 : 1); });
@@ -440,19 +418,19 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     this.rays.sun.visible = this.rays.earth.visible = this.view === 'terrain';
     this.observer.visible = this.view === 'terrain';
     const surface = this.view === 'surface', atPoint = Math.hypot(this.walker.x, this.walker.z) < .001;
-    this.horizonLine.visible = surface && atPoint;
-    this.helmet.classList.toggle('on', surface && this.walker.helmet); this.helmet.classList.toggle('visor', this.walker.visor);
-    this.walkHud.hidden = !surface; this.astronaut.visible = surface && Boolean(this.landing);
-    if (this.lander) this.lander.visible = surface && this.walker.lander;
+    this.horizonLine.visible = surface && atPoint && !this.walker.cabin;
+    this.helmet.classList.toggle('on', surface && this.walker.helmet && !this.walker.cabin); this.helmet.classList.toggle('visor', this.walker.visor);
+    this.walkHud.hidden = !surface; this.astronaut.visible = surface && Boolean(this.landing) && !this.walker.cabin;
+    if (this.lander) this.lander.visible = surface && (this.walker.lander || this.walker.cabin);
     if (surface) this.ensureGround();
-    this.paths.visible = local && !this.telephoto;
+    this.paths.visible = local && !this.telephoto && !this.walker.cabin;
     for (const p of this.sitePins) { p.pin.visible = local && p.shown && !this.telephoto; p.link.visible = this.view === 'terrain' && p.shown; }
     if (this.stars) this.stars.material.uniforms.uOpacity.value = this.view === 'terrain' ? 0.55 : 0.9;
   }
 
   setView(view) {
-    if (view !== 'surface') { this.walker.keys.clear(); this.landWalker(); }
-    this.view = view; this.applyView();
+    if (view !== 'surface') { this.walker.keys.clear(); this.landWalker(); if (this.walker.cabin) this.setCabin(false, false); }
+    this.view = view; this.sky.setView(view); this.applyView();
     if (this.result) { this.applyLights(); this.orientStars(); }
     this.resetCamera();
   }
@@ -526,7 +504,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
 
   resize() {
     const { width, height } = this.container.getBoundingClientRect(); if (!width || !height) return;
-    this.renderer.setSize(width, height, false); this.camera.aspect = width / height; if (this.camera.view?.enabled) this.camera.clearViewOffset(); this.camera.updateProjectionMatrix(); this.invalidate();
+    this.renderer.setSize(width, height, false); this.sky?.resize(width, height, this.renderer.getPixelRatio()); this.camera.aspect = width / height; if (this.camera.view?.enabled) this.camera.clearViewOffset(); this.camera.updateProjectionMatrix(); this.invalidate();
   }
 
   project(position) {
@@ -534,7 +512,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h, visible: p.z < 1 && p.z > -1 && Math.abs(p.x) < 0.96 && Math.abs(p.y) < 0.92 };
   }
   updateLabels() {
-    const local = this.view !== 'globe', away = this.view === 'surface' && Math.hypot(this.walker.x, this.walker.z) >= .001;
+    const local = this.view !== 'globe', away = this.view === 'surface' && (Math.hypot(this.walker.x, this.walker.z) >= .001 || this.walker.cabin);
     this.placeWalkOverlay();
     for (const body of ['sun', 'earth']) {
       const label = document.getElementById(`${body}Label`); if (!label) continue;
@@ -552,7 +530,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     });
     // Site labels never leave the picture: outside the free area of the scene they stick to its edge
     // and an arrow points the way.
-    if (local && !this.telephoto && this.sitePins.some(p => p.shown)) {
+    if (local && !this.telephoto && !this.walker.cabin && this.sitePins.some(p => p.shown)) {
       const box = this.container.getBoundingClientRect(), w = box.width, h = box.height;
       const rect = sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return r.width && r.top < box.bottom && r.bottom > box.top && r.left < box.right ? r : null; };
       const answer = rect('.answer'), deck = rect('.console'), title = rect('.stage-title');
@@ -605,9 +583,10 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     setTimeout(() => {
       this.groundPending = false; if (this.disposed || !this.terrain || this.landing) return;
       const terrain = this.terrain, space = siteSpace(siteBasis(terrain.site), RADIUS_KM + terrain.elevationKm - terrain.height(0, 0));
-      this.landing = new LandingSite(terrain, { seed: [...terrain.site.id].reduce((s, c) => s + c.charCodeAt(0), 0), space, pad: false });
+      this.landing = new LandingSite(terrain, { seed: [...terrain.site.id].reduce((s, c) => s + c.charCodeAt(0), 0), space, earthshine: this.groundEarthshine, pad: false, lowPower: this.lowPower });
       this.landing.dust.visible = false;
-      this.landing.group.traverse(o => { if (o.isMesh || o.isInstancedMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      this.landing.group.traverse(o => { if (o.isMesh || o.isInstancedMesh) { o.castShadow = o !== this.landing.mesh && !o.userData.groundFillet; o.receiveShadow = true; for (const m of Array.isArray(o.material) ? o.material : [o.material]) this.groundLight.attach(m); } });
+      this.groundLight.setLanding(this.landing);
       this.localGroup.add(this.landing.group);
       if (this.innerMesh) {
         const inner = innerTerrainGeometry(terrain, { stride: this.lowPower ? 2 : 1, hole: this.landing.half });
@@ -628,6 +607,9 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
       this.landerPending = false; if (this.disposed || !this.landing || this.lander) return;
       if (!this.landerMaterials) { this.landerEnv = makeEnvironment(this.renderer, { ground: [.34, .33, .31] }); this.landerMaterials = createMaterials(this.landerEnv.texture); this.landerMaterials.onTextureLoad = () => this.invalidate(); }
       const lm = buildLM(this.landerMaterials, nasa);
+      // The crew cabin (lm-cabin.js), inside the ascent stage, for 'Enter the lander'.
+      this.cabin = buildLMCabin({ exterior: lm, worldScale: .001 }); this.cabin.group.visible = false; lm.add(this.cabin.group);
+      this.cabin.lights = []; this.cabin.group.traverse(o => { if (o.isLight) { this.cabin.lights.push([o, o.intensity]); o.intensity = 0; } });
       for (const stage of [lm.userData.descent, lm.userData.ascent]) if (stage?.userData.plume) stage.userData.plume.visible = false;
       lm.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       // Where: in front-right of the first view (which faces the Sun), on the least sloping of a ring of candidates.
@@ -677,8 +659,33 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   }
   placeNearLights() {
     if (!this.result) return;
-    const d = v3(this.result.sun.direction), at = this.walkerGround();
-    for (const light of [this.nearSun, this.nearAnti]) { light.target.position.copy(at); light.position.copy(at).addScaledVector(d, .6); light.target.updateMatrixWorld(); }
+    const d = v3(this.result.sun.direction), inside = this.walker.cabin && this.lander;
+    const at = inside ? this.lander.position.clone() : this.view === 'surface' ? this.walkerGround() : new THREE.Vector3();
+    const box = inside ? { w: .004, h: .004 } : { w: NEAR_SHADOW.halfWidthKm, h: NEAR_SHADOW.halfHeightKm }, cam = this.sunlight.shadow.camera;
+    if (cam.right !== box.w || cam.top !== box.h) { Object.assign(cam, { left: -box.w, right: box.w, top: box.h, bottom: -box.h }); cam.updateProjectionMatrix(); }
+    this.sunlight.target.position.copy(at); this.sunlight.position.copy(at).addScaledVector(d, .6); this.sunlight.target.updateMatrixWorld();
+  }
+  // 'Enter the lander': the camera at the Commander's eye, 1.5 m above the ascent-stage floor, looking out of the
+  // left triangular window (Apollo crews flew the descent standing, in restraints). The exterior shell of the ascent
+  // stage hides; the cabin's walls, its floodlights and the sunlight through the windows take over. Drag looks around.
+  setCabin(on, reset = true) {
+    const w = this.walker; if (on && (!this.cabin || !this.lander || this.view !== 'surface')) return;
+    w.cabin = Boolean(on); w.keys.clear(); this.landWalker();
+    if (this.cabin) {
+      this.cabin.group.visible = w.cabin; this.cabin.setInterior(w.cabin);
+      for (const [light, intensity] of this.cabin.lights) light.intensity = w.cabin ? intensity : 0;
+    }
+    this.camera.near = w.cabin ? .00002 : .0005;
+    if (w.cabin) {
+      this.lander.updateMatrixWorld(true);
+      const eye = this.cabin.group.localToWorld(this.cabin.eyes.cdr.clone()), ahead = this.cabin.group.localToWorld(this.cabin.eyes.cdr.clone().add(this.cabin.lookDir)).sub(eye).normalize();
+      this.controls.target.copy(eye); this.camera.position.copy(eye).addScaledVector(ahead, -.00008);
+      this.setFov(70);
+    }
+    this.placeNearLights(); this.sunlight.shadow.needsUpdate = true;
+    this.applyView(); this.walkTexts();
+    if (!w.cabin && reset) { this.resetCamera(); this.placeWalker(); this.checkHere(true); }
+    this.camera.updateProjectionMatrix(); this.controls.update(); this.invalidate();
   }
   // Back on the ground at once, with no speed left (a new start, or leaving the surface view).
   landWalker() { Object.assign(this.walker, { air: false, vy: 0, yoff: 0, vx: 0, vz: 0 }); }
@@ -775,6 +782,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
           <button type="button" class="walk-toggle" data-walk-opt="visor" aria-pressed="false"></button>
           <button type="button" class="walk-toggle" data-walk-opt="run" aria-pressed="false"></button>
           <button type="button" class="walk-toggle" data-walk-opt="lander" aria-pressed="true"></button>
+          <button type="button" class="walk-toggle" data-walk-opt="cabin" aria-pressed="false"></button>
           <button type="button" class="walk-toggle" data-walk-opt="jump"></button>
           <button type="button" class="walk-toggle" data-walk-opt="back"></button>
         </div>
@@ -789,7 +797,8 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     el.querySelectorAll('[data-walk-opt]').forEach(b => b.addEventListener('click', () => {
       const opt = b.dataset.walkOpt, w = this.walker;
       if (opt === 'jump') { this.jump(); return; }
-      if (opt === 'back') { this.resetCamera(); this.placeWalker(); this.checkHere(true); this.applyView(); this.walkTexts(); return; }
+      if (opt === 'cabin') { this.setCabin(!w.cabin); return; }
+      if (opt === 'back') { if (w.cabin) this.setCabin(false); this.resetCamera(); this.placeWalker(); this.checkHere(true); this.applyView(); this.walkTexts(); return; }
       const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on));
       if (opt === 'helmet') w.helmet = on; else if (opt === 'visor') w.visor = on; else if (opt === 'lander') { w.lander = on; this.checkHere(true); } else w.run = on;
       this.applyView(); this.invalidate();
@@ -799,7 +808,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   walkTexts() {
     if (!this.walkHud) return;
     const t = this.t, w = this.walker, el = this.walkHud, put = (node, text) => { if (node.textContent !== text) node.textContent = text; }, attr = (node, name, value) => { if (node.getAttribute(name) !== value) node.setAttribute(name, value); };
-    const names = { helmet: 'walk.helmet', visor: 'walk.visor', run: 'walk.run', back: 'walk.back', lander: 'walk.lander', jump: 'walk.jump' };
+    const names = { helmet: 'walk.helmet', visor: 'walk.visor', run: 'walk.run', back: 'walk.back', lander: 'walk.lander', jump: 'walk.jump', cabin: w.cabin ? 'walk.cabinOut' : 'walk.cabin' };
     el.querySelectorAll('[data-walk-opt]').forEach(b => put(b, t(names[b.dataset.walkOpt])));
     const aria = { arrowup: 'walk.forward', arrowdown: 'walk.backward', arrowleft: 'walk.turnLeft', arrowright: 'walk.turnRight' };
     el.querySelectorAll('[data-walk]').forEach(b => attr(b, 'aria-label', t(aria[b.dataset.walk])));
@@ -807,6 +816,8 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
     put(el.querySelector('.walk-hint'), t(matchMedia('(hover: hover)').matches ? 'walk.hint' : 'walk.hintTouch'));
     const info = el.querySelector('.walk-info');
     if (el.dataset.state === 'preparing') { put(info, t('walk.preparing')); return; }
+    const cabinButton = el.querySelector('[data-walk-opt="cabin"]'); cabinButton.hidden = !this.cabin; attr(cabinButton, 'aria-pressed', String(Boolean(w.cabin)));
+    if (w.cabin) { put(info, t('walk.inCabin')); return; }
     const d = Math.hypot(w.x, w.z) * 1000, compass = t('compass8').split(','), dir = compass[Math.round(((Math.atan2(w.x, -w.z) * 180 / Math.PI + 360) % 360) / 45) % 8];
     const where = d < 1 ? t('walk.at') : t('walk.where', { d: number(Math.round(d)), dir });
     const here = w.here ? t('walk.here', { sun: t(w.here.eclipse >= 1 && w.here.sun ? 'walk.sun.eclipse' : w.here.lander ? 'walk.sun.lander' : w.here.sun ? 'walk.sun.lit' : 'walk.sun.shade'), earth: t(w.here.earth ? 'walk.earth.on' : 'walk.earth.off') }) : '';
@@ -835,7 +846,7 @@ totalEmissiveRadiance *= smoothstep(.06, -.22, dot(normalize(vNormal), uSunView)
   }
   invalidate() { this.dirty = true; }
   dispose() {
-    this.disposed = true; cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); this.controls.dispose(); this.renderer.dispose();
+    this.disposed = true; cancelAnimationFrame(this.frame); this.resizeObserver.disconnect(); this.controls.dispose(); this.sky.dispose(); this.groundLight.dispose(); this.renderer.dispose();
     window.removeEventListener('keydown', this.onWalkKey); window.removeEventListener('keyup', this.onWalkKey); window.removeEventListener('blur', this.onWalkBlur);
     this.landing?.dispose(); this.landerMaterials?.dispose(); this.landerEnv?.dispose(); this.helmet.remove(); this.walkHud.remove();
     [...this.siteLabels, ...this.blockLabels, ...this.sitePins.map(p => p.el)].forEach(el => el.remove());

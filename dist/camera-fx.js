@@ -135,13 +135,14 @@ const quadMaterial = o => new THREE.ShaderMaterial({ depthTest: false, depthWrit
 // atmosphere when the line of sight grazes it. Drawn first in the bodies pass (renderOrder -100, no depth test or
 // write): everything opaque paints over it, so the Earth, the Moon and the spacecraft cut it with their own
 // antialiased edges, whatever the near plane is.
-export function createSun() {
+export function createSun({ logarithmicDepthBuffer = false } = {}) {
   const halo = 24; // quad half-size in solar radii: the corona is drawn out to ~24 R_sun
   const material = new THREE.ShaderMaterial({
     uniforms: { uSunDir: { value: new THREE.Vector3(1, 0, 0) }, uRadius: { value: SUN_RADIUS }, uHalo: { value: halo },
       uDisc: { value: SUN_DISC_RADIANCE }, uCorona: { value: SUN_RADIANCE }, uColor: { value: new THREE.Vector3(...SUN_RGB) },
       uEarthCentre: { value: new THREE.Vector3() }, uEarthRadius: { value: 0 }, uUnitKm: { value: 1000 } },
     vertexShader: /* glsl */`
+      ${logarithmicDepthBuffer ? '#include <common>\n#include <logdepthbuf_pars_vertex>' : ''}
       uniform vec3 uSunDir; uniform float uRadius, uHalo; varying vec2 vXY; varying vec3 vDir;
       void main(){
         vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]), up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
@@ -149,8 +150,10 @@ export function createSun() {
         vec3 d = normalize(uSunDir + (right * xy.x + up * xy.y) * uRadius); vDir = d;
         // A direction, not a point: projected at infinity and pinned to the far plane, whatever near/far are.
         vec4 clip = projectionMatrix * vec4(mat3(viewMatrix) * d, 0.); clip.z = clip.w * .99999; gl_Position = clip;
+        ${logarithmicDepthBuffer ? '#include <logdepthbuf_vertex>' : ''}
       }`,
     fragmentShader: /* glsl */`
+      ${logarithmicDepthBuffer ? '#include <logdepthbuf_pars_fragment>' : ''}
       uniform float uDisc, uCorona; uniform vec3 uColor; varying vec2 vXY; varying vec3 vDir;
       ${GLSL_SUN}${GLSL_ATMOSPHERE}
       void main(){
@@ -163,6 +166,7 @@ export function createSun() {
         float fade = 1. - smoothstep(.7 * ${halo.toFixed(1)}, ${halo.toFixed(1)}, rho);
         vec3 c = (disc + uCorona * corona * fade * (1. - inside)) * uColor * atmosphereT(cameraPosition, normalize(vDir));
         gl_FragColor = vec4(min(c, vec3(30000.)), inside);
+        ${logarithmicDepthBuffer ? '#include <logdepthbuf_fragment>' : ''}
       }`,
     // Plain additive (one, one) also for alpha: the disc marks itself as covering the sky, the corona does not.
     depthTest: false, depthWrite: false, transparent: false, toneMapped: false, fog: false,
@@ -197,9 +201,9 @@ const METER = { w: 64, h: 32 };
 const fullTarget = (w, h, type) => new THREE.WebGLRenderTarget(w, h, { type, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, generateMipmaps: false });
 
 export class CameraFX {
-  constructor(renderer, { camera = null, milkyWay = null, stars = null, blades = 5 } = {}) {
+  constructor(renderer, { camera = null, milkyWay = null, stars = null, blades = 5, halfFloat = false, initialEV = null, sunOptions = {} } = {}) {
     this.renderer = renderer; this.camera = camera;
-    const float = renderer.extensions.has('EXT_color_buffer_float'), type = float ? THREE.FloatType : THREE.HalfFloatType;
+    const float = !halfFloat && renderer.extensions.has('EXT_color_buffer_float'), type = float ? THREE.FloatType : THREE.HalfFloatType;
     // Metering knobs. Exposure X multiplies scene radiance before the bloom; EV = log2 X.
     this.params = {
       key: 0.04,        // light-weighted mean luminance at and above which the camera stays at X = 1 ('sunny 16')
@@ -219,10 +223,12 @@ export class CameraFX {
     };
     this.floor = float ? 2 ** -33 : 2 ** -14; // meter floor: a black frame reads as this luminance (-> maxEV)
     this.fixed = null; this.reset = true; this.last = 0; this.touched = -1e9; this.size = new THREE.Vector2(1, 1);
-    this.sun = createSun();
+    this.initialEV = Number.isFinite(initialEV) ? initialEV : null;
+    this.sun = createSun(sunOptions);
     this.sceneToJ2000 = new THREE.Matrix3().set(1, 0, 0, 0, 0, -1, 0, 1, 0); // mission world (x, y=north, z) -> J2000
     this.j2000ToScene = this.sceneToJ2000.clone().transpose();
     this.sunDir = new THREE.Vector3(1, 0, 0); this.sunScreen = new THREE.Vector3(); this.sunOn = false; this.analytic = 1;
+    this.externalVisibility = 1; this.offscreenVisibility = 0;
     this.moments = [fullTarget(METER.w, METER.h, type), fullTarget(8, 4, type), fullTarget(1, 1, type)];
     this.state = [fullTarget(1, 1, type), fullTarget(1, 1, type)]; this.current = 0;
     const blackSky = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); blackSky.needsUpdate = true; this.blackSky = blackSky;
@@ -251,9 +257,10 @@ export class CameraFX {
     this.adaptMaterial = quadMaterial({
       uniforms: { tMoments: { value: null }, tPrev: { value: null }, tHdr: { value: null }, uKey: { value: .04 }, uSlope: { value: .8 }, uCoverage: { value: .25 }, uBias: { value: 0 },
         uMinEV: { value: 0 }, uMaxEV: { value: 20 }, uDt: { value: 0 }, uTauBright: { value: .22 }, uTauDark: { value: 1.3 }, uReset: { value: 1 }, uFixed: { value: -1 },
-        uSunUv: { value: new THREE.Vector2() }, uSunR: { value: new THREE.Vector2() }, uSunOn: { value: 0 }, uDisc: { value: SUN_DISC_RADIANCE }, uColor: { value: new THREE.Vector3(...SUN_RGB) } },
+        uSunUv: { value: new THREE.Vector2() }, uSunR: { value: new THREE.Vector2() }, uSunOn: { value: 0 }, uDisc: { value: SUN_DISC_RADIANCE }, uColor: { value: new THREE.Vector3(...SUN_RGB) },
+        uInitialEV: { value: -1000 }, uVisibility: { value: 1 }, uOffscreenVisibility: { value: 0 } },
       fragmentShader: /* glsl */`
-        uniform sampler2D tMoments, tPrev, tHdr; uniform float uKey, uSlope, uCoverage, uBias, uMinEV, uMaxEV, uDt, uTauBright, uTauDark, uReset, uFixed, uSunOn, uDisc;
+        uniform sampler2D tMoments, tPrev, tHdr; uniform float uKey, uSlope, uCoverage, uBias, uMinEV, uMaxEV, uDt, uTauBright, uTauDark, uReset, uFixed, uSunOn, uDisc, uInitialEV, uVisibility, uOffscreenVisibility;
         uniform vec2 uSunUv, uSunR; uniform vec3 uColor;
         ${GLSL_SUN}
         void main(){
@@ -267,7 +274,7 @@ export class CameraFX {
           float evM = evLight + uCoverage * log2(cover);
           float target = clamp(uSlope * (log2(uKey) - evM) + uBias, uMinEV, uMaxEV);
           float ev = texelFetch(tPrev, ivec2(0), 0).r;
-          if (uReset > .5 || isnan(ev) || isinf(ev)) ev = target;
+          if (uReset > .5 || isnan(ev) || isinf(ev)) ev = uInitialEV > -100. ? clamp(uInitialEV, uMinEV, uMaxEV) : target;
           else ev += (target - ev) * (1. - exp(-uDt / (target < ev ? uTauBright : uTauDark)));
           if (uFixed > -100.) ev = uFixed;
           // How much of the solar disc reaches the film, per channel: the disc as it was drawn in the HDR buffer
@@ -280,8 +287,9 @@ export class CameraFX {
             vec3 expect = rho < 1. ? uDisc / LD_MEAN * limbDarkening(rho) * uColor : vec3(0.);
             vec2 uv = uSunUv + q * uSunR; full += expect;
             if (all(greaterThanEqual(uv, vec2(0.))) && all(lessThanEqual(uv, vec2(1.)))) seen += min(texture2D(tHdr, uv).rgb, vec3(uDisc * 1.6));
+            else seen += expect * uOffscreenVisibility;
           }
-          vec3 vis = clamp(seen / max(full, vec3(1e-6)), 0., 1.);
+          vec3 vis = clamp(seen / max(full, vec3(1e-6)), 0., 1.) * uVisibility;
           gl_FragColor = vec4(ev, vis);
         }`
     });
@@ -431,11 +439,15 @@ export class CameraFX {
   // Per frame, before composer.render(): camera (matrices up to date), Sun direction (unit, scene frame),
   // occluding spheres [{centre, radius}] for the analytic visibility, the Earth {centre, radius} for the
   // atmosphere (or null), and the distance to the Sun in AU (disc size).
-  update(camera, { sunDir, spheres = [], earth = null, distanceAU = 1, unitKm = 1000 } = {}) {
+  // sunVisibility is a terrain-disc fraction (0..1), multiplied by the HDR disc samples. Offscreen visibility
+  // is opt-in: only a caller with a conservative camera-height terrain horizon should enable near-frame glare.
+  update(camera, { sunDir, spheres = [], earth = null, distanceAU = 1, unitKm = 1000, sunVisibility: visibility = 1, offscreenVisibility = 0 } = {}) {
     this.camera = camera; if (sunDir) this.sunDir.copy(sunDir).normalize();
     const u = this.sun.material.uniforms; u.uSunDir.value.copy(this.sunDir); u.uRadius.value = SUN_RADIUS / distanceAU; u.uUnitKm.value = unitKm;
     u.uEarthRadius.value = earth ? earth.radius : 0; if (earth) u.uEarthCentre.value.copy(earth.centre);
     this.analytic = sunVisibility(camera.position, this.sunDir, spheres, distanceAU);
+    this.externalVisibility = Number.isFinite(visibility) ? THREE.MathUtils.clamp(visibility, 0, 1) : 0;
+    this.offscreenVisibility = Number.isFinite(offscreenVisibility) ? THREE.MathUtils.clamp(offscreenVisibility, 0, 1) : 0;
     this.flux = SOLAR_IRRADIANCE / (distanceAU * distanceAU);
     this.distanceAU = distanceAU;
   }
@@ -471,6 +483,7 @@ class CameraFXPass extends Pass {
     const prev = fx.state[fx.current], next = fx.state[1 - fx.current], au = fx.adaptMaterial.uniforms;
     au.uKey.value = p.key; au.uSlope.value = p.slope; au.uCoverage.value = p.coverage; au.uBias.value = p.bias; au.uMinEV.value = p.minEV; au.uMaxEV.value = p.maxEV;
     au.uTauBright.value = p.tauBright; au.uTauDark.value = p.tauDark; au.uDt.value = dt; au.uReset.value = fx.reset ? 1 : 0; au.uFixed.value = fx.fixed ?? -1000;
+    au.uInitialEV.value = fx.initialEV ?? -1000; au.uVisibility.value = fx.externalVisibility; au.uOffscreenVisibility.value = fx.offscreenVisibility;
     au.tMoments.value = fx.moments[2].texture; au.tPrev.value = prev.texture; au.tHdr.value = hdr; au.uSunOn.value = fx.sunOn ? 1 : 0;
     au.uSunUv.value.set(fx.sunScreen.x / W, fx.sunScreen.y / H); au.uSunR.value.set(rPx / W, rPx / H); au.uDisc.value = fx.sun.material.uniforms.uDisc.value;
     q.material = fx.adaptMaterial; renderer.setRenderTarget(next); q.render(renderer);
