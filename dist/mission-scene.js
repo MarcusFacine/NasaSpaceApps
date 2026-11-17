@@ -35,7 +35,7 @@ const EARTHSHINE_BOOST=400;
 // The trajectory diagrams show the sky as a long exposure (~20 stops): with the white paths in frame the camera stays
 // at EV 0 and the true starlight (Pogson, anchored on the Sun) would be black. Close views keep the true sky, and the
 // camera opens at most 3 stops there, so the night licences (city lights, airglow, earthshine) are not multiplied.
-const DIAGRAM_STARS=2**20,DIAGRAM_MILKY_WAY=2**22,CLOSE_MAX_EV=3;
+const DIAGRAM_STARS=2**20,DIAGRAM_MILKY_WAY=2**22,CLOSE_MAX_EV=1;
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const LUNAR_PHASES=new Set(['loi','lunarOrbit','descent','surface','ascent','lunarReturnOrbit','tei']);
 const EARTH_PHASES=new Set(['liftoff','launch','earthOrbit','tli','arrival']);
@@ -46,7 +46,7 @@ const LOCAL_VIEW=new THREE.Vector3(.032,.009,.044); // ~55 m from the lander, 13
 function sideLitView(sun){const h=new THREE.Vector3(sun[0],0,sun[2]);if(h.lengthSq()<1e-8)return LOCAL_VIEW.clone();h.normalize().applyAxisAngle(Y,1.95);return h.multiplyScalar(.0545).setY(.009);}
 const PAD_CAMERA=new THREE.Vector3(.31,.012,.27); // press site: ~410 m from the pad, on the ground
 // What is dropped along the way: [model, stage, from, to, first gap (m), drift over the window (m)].
-const SPENT=[['sic','launch',.23,.42,95,900],['sii','launch',.785,.97,60,700],['sivb','outbound',0,.12,45,520],['asc','lunarReturnOrbit',.36,.5,14,200],['sm','arrival',0,.2,18,420]];
+const SPENT=[['sic','launch',.23,.42,95,900],['sii','launch',.785,.97,60,700],['sivb','outbound',0,.12,45,520],['asc','lunarReturnOrbit',.56,.7,14,200],['sm','arrival',0,.2,18,420]];
 function mesh(geometry,material,parent,position){const m=new THREE.Mesh(geometry,material);if(position)m.position.set(...position);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
 
 export class MissionScene {
@@ -68,6 +68,9 @@ export class MissionScene {
       this.fx=new CameraFX(this.renderer);this.fx.createStageTarget({type});this.sunAU=1;
       const stage=new Pass();stage.needsSwap=false;stage.render=renderer=>{renderer.setRenderTarget(this.fx.stage);renderer.clear();this.draw();};
       this.bloom=new UnrealBloomPass(new THREE.Vector2(size.x/2,size.y/2),.5,.75,1);this.film=new ShaderPass(FILM);
+      // The Sun as a lens sees it: a crisp disc, a starburst and a few ghosts. The default halo and veil (a 1:1 model
+      // of a cheap lens's scatter) turned it into a fog ball a fifth of the frame wide.
+      Object.assign(this.fx.params,{halo:.15,veil:.04,ghosts:.45,spikes:.75,flare:.8});
       for(const pass of [stage,this.fx.pass,this.bloom,new OutputPass(),this.film])this.composer.addPass(pass);
     }
     this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(45,1,.001,10000);this.controls=new OrbitControls(this.camera,canvas);this.controls.enableDamping=false;this.controls.addEventListener('change',()=>{this.dirty=true;});this.controls.addEventListener('start',()=>{this.cameraTween=null;this.manualCamera=true;});
@@ -295,7 +298,7 @@ export class MissionScene {
     // Greenwich faces the sidereal angle (precession ignored: visual only).
     this.earth.rotation.y=window.Astronomy.SiderealTime(sample.date)*Math.PI/12;
     // Vehicle: the stage, module or capsule flying at this moment of the Apollo profile.
-    this.vehicle.set(sample.config);this.engineLevel=sample.throttle||0;
+    this.vehicle.set(sample.config);if(sample.config==='rendezvous')this.vehicle.rendezvous(sample.dock);this.engineLevel=sample.throttle||0;
     const attitude=v(sample.attitude||sample.direction).normalize();
     this.vehicle.group.position.copy(space(sample.position));this.vehicle.group.visible=!coast;
     {
@@ -462,7 +465,7 @@ export class MissionScene {
     const at=this.vehicle.group.position.clone(),centre=this.nearEarth(sample)?new THREE.Vector3():this.moon.position;
     const radial=at.clone().sub(centre).normalize(),motion=v(sample.direction).normalize();
     const side=new THREE.Vector3().crossVectors(motion,radial);if(side.lengthSq()<1e-4)side.crossVectors(radial,Math.abs(radial.y)<.9?Y:new THREE.Vector3(1,0,0));side.normalize();
-    const forward=new THREE.Vector3().crossVectors(radial,side).normalize(),wanted=Math.max(.022,this.vehicle.height*3.1);
+    const forward=new THREE.Vector3().crossVectors(radial,side).normalize(),wanted=Math.max(.022,this.vehicle.height*(this.vehicle.name==='rendezvous'?1.9:3.1));
     this.chaseD=this.chaseD?this.chaseD+(wanted-this.chaseD)*.14:wanted;
     const entry=sample.phase==='arrival',swing=(sample.t-.5)*(entry?.5:1.1);
     const offset=forward.multiplyScalar(entry?-.2:-.5).addScaledVector(side,entry?1:.85).addScaledVector(radial,entry?.22:.3).normalize().applyAxisAngle(radial,swing).multiplyScalar(this.chaseD*.001);

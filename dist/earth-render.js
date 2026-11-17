@@ -133,7 +133,7 @@ vec3 aIntegrate(vec3 o, vec3 d, float t0, float t1, vec3 sunDir, float n, out ve
 // (uNightGain, artistic licence, see createEarthRenderer).
 const AIRGLOW = /* glsl */`
 const float AG_R = ${g(RG + 92)}, AG_S = 4.3, AG_S2 = 2., AG_LO = ${g(RG + 87)}, AG_HI = ${g(RG + 97)};
-const vec3 AG_OH = vec3(1., .74, .2) * 6.5e-5, AG_OI = vec3(.4, 1., .3) * 9e-5;
+const vec3 AG_OH = vec3(1., .74, .2) * 2.9e-5, AG_OI = vec3(.4, 1., .3) * 4e-5;   // ISS night frames: a thin band, not a glow
 vec3 aAirglow(vec3 o, vec3 d, float tMax, vec3 sunDir) {
   float b = dot(o, d); vec3 c = o - b * d; float p = length(c), tc = -b, rOut = AG_R + 17., rIn = AG_R - 17.;
   if (p > rOut) return vec3(0.);
@@ -214,6 +214,17 @@ void main() {
 
 const QUAD_VERTEX = 'void main(){gl_Position=vec4(position.xy,0.,1.);}';
 const WORLD_VERTEX = 'varying vec3 vWorld;void main(){vec4 w=modelMatrix*vec4(position,1.);vWorld=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}';
+// Explorer cameras span millimetres to thousands of km; match the terrain's logarithmic depth.
+const WORLD_LOG_VERTEX = /* glsl */`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying vec3 vWorld;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.); vWorld = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+  #include <logdepthbuf_vertex>
+}`;
+const withLogDepth = source => '#include <logdepthbuf_pars_fragment>\n' + source.replace('void main() {', 'void main() {\n  #include <logdepthbuf_fragment>\n');
 
 // --- LUT passes (run once at startup) ---------------------------------------------------------------------------
 const TRANSMITTANCE_LUT = /* glsl */`${ATMOSPHERE}
@@ -392,7 +403,9 @@ void main() {
 #endif
   if (k1 > 0.) { s = cloudNoise(Pe, k1, k2, nw); tex = nw.x; }
   float wd = max(mix(.5, uCloud.z, k2), 1.5 * fwidth(s)); // sharp only once the cells are resolved, never below a pixel
-  float c = cloudCover(c0, s, wd), dcx = dFdx(c), dcy = dFdy(c);
+  // Below ~25 km the 8 km texels of the global cloud map read as blocks: that layer gives way (the pad and the sea
+  // scenes have their own cumulus) and returns as the camera climbs.
+  float c = cloudCover(c0, s, wd) * smoothstep(4., 25., length(o) - A_RG), dcx = dFdx(c), dcy = dFdy(c);
   if (cover <= 0.) discard;
 
   vec3 V = -d, L = uSunDir; float muS = dot(N, L);
@@ -632,12 +645,14 @@ function makeView(renderer, U) {
  *   anisotropy: texture anisotropy applied to the maps (default 8; 16 costs ~10% more at grazing angles).
  *   water: optional land/water mask (earth-water-8k.png, linear, 255 = water) replacing brc.g.
  *   dayStyle: '4k' (earth-day.jpg, default) or 'bmng' (earth-day-8k.jpg): how the day map relates to reflectance.
+ *   physicalNight: remove the mission's 30000x night-exposure licence; city/airglow radiance shares daylight units.
+ *   logarithmicDepthBuffer: match a logarithmic-depth renderer (default false preserves the mission shaders).
  * Returns { earth, atmosphere, update(camera, centreWorld, sunDirWorld, kmPerUnit, moonDirWorld?), skyDome(opts),
  *   sunTransmittance(altKm, cosZenith, target?), hazeColor(altKm, sunDirLocal, viewDirLocal?, target?),
  *   skyIrradiance(cosZenith, target?), extinction(altKm), setMaps(maps), uniforms, dispose() }
  *   (plus view and tables: internals, for debugging).
  */
-export function createEarthRenderer(renderer, { day, night, brc, clouds = null, water = null, dayStyle = '4k', nightGain = 1, sunColor = SUN_COLOR, sunIrradiance = SUN_E, anisotropy = 8 } = {}) {
+export function createEarthRenderer(renderer, { day, night, brc, clouds = null, water = null, dayStyle = '4k', nightGain = 1, sunColor = SUN_COLOR, sunIrradiance = SUN_E, anisotropy = 8, physicalNight = false, logarithmicDepthBuffer = false } = {}) {
   let tables = tableCache.get(renderer);
   if (!tables) { tables = buildTables(renderer); tables.users = 0; tableCache.set(renderer, tables); }
   tables.users++;
@@ -645,12 +660,16 @@ export function createEarthRenderer(renderer, { day, night, brc, clouds = null, 
   const U = {
     uTransLUT: { value: tables.trans.texture }, uMultiLUT: { value: tables.multi.texture }, uIrrLUT: { value: tables.irr.texture }, uNoise: { value: tables.noise.texture },
     uCentre: { value: new THREE.Vector3() }, uKmPerUnit: { value: 1000 }, uSunDir: { value: new THREE.Vector3(1, 0, 0) }, uSunColor: { value: sunColorValue },
-    uSunE: { value: sunIrradiance }, uNightGain: { value: nightGain }, uLandSat: { value: 1 }, uToEarth: { value: new THREE.Matrix3() },
+    uSunE: { value: sunIrradiance }, uNightGain: { value: nightGain / (physicalNight ? NIGHT_EXPOSURE : 1) }, uLandSat: { value: 1 }, uToEarth: { value: new THREE.Matrix3() },
     uCloud: { value: new THREE.Vector4(.6, 1.1, .17, 0) }, uMoonDir: { value: new THREE.Vector3(0, -1, 0) }, uMoonE: { value: new THREE.Color(0, 0, 0) },
     uDay: { value: null }, uNight: { value: null }, uBrc: { value: null }, uClouds: { value: null }, uWater: { value: null }, uDayStyle: { value: new THREE.Vector4() },
   };
   const view = makeView(renderer, U); Object.assign(U, view.lookup);
-  const earthMaterial = new THREE.ShaderMaterial({ uniforms: U, vertexShader: WORLD_VERTEX, fragmentShader: EARTH_FRAGMENT });
+  const worldVertex = logarithmicDepthBuffer ? WORLD_LOG_VERTEX : WORLD_VERTEX;
+  const fragment = source => logarithmicDepthBuffer ? withLogDepth(source) : source;
+  // At sub-pixel footprints det can be exactly zero: sign(0) would still divide by zero before bloom.
+  const earthFragment = physicalNight || logarithmicDepthBuffer ? EARTH_FRAGMENT.replace('sign(det) * max(abs(det), 1e-10)', '(det < 0. ? -1. : 1.) * max(abs(det), 1e-10)') : EARTH_FRAGMENT;
+  const earthMaterial = new THREE.ShaderMaterial({ uniforms: U, vertexShader: worldVertex, fragmentShader: fragment(earthFragment) });
   let style = DAY_STYLES['4k'];
   // Swap maps at any time, e.g. the 8k set once loaded: setMaps({ day, night, clouds, water, dayStyle: 'bmng' }).
   const setMaps = maps => {
@@ -677,7 +696,7 @@ export function createEarthRenderer(renderer, { day, night, brc, clouds = null, 
   // Earth or of the limb is nearer than the far faces and stays uncovered; the Moon, the Sun or stars beyond the limb
   // are filtered by it.
   const shellMaterial = transmit => new THREE.ShaderMaterial({
-    uniforms: U, vertexShader: WORLD_VERTEX, fragmentShader: SHELL_FRAGMENT, defines: transmit ? { TRANSMIT: '' } : {},
+    uniforms: U, vertexShader: worldVertex, fragmentShader: fragment(SHELL_FRAGMENT), defines: transmit ? { TRANSMIT: '' } : {},
     side: THREE.BackSide, depthTest: true, transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
     blendSrc: transmit ? THREE.ZeroFactor : THREE.OneFactor, blendDst: transmit ? THREE.SrcColorFactor : THREE.OneFactor,
     blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
@@ -700,7 +719,8 @@ export function createEarthRenderer(renderer, { day, night, brc, clouds = null, 
     if (moonDirWorld) {
       U.uMoonDir.value.copy(moonDirWorld).normalize();
       const a = 180 - THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(U.uMoonDir.value.dot(U.uSunDir.value), -1, 1)));
-      const e = U.uSunE.value * MOON_FULL * Math.pow(10, -.4 * (.026 * a + 4e-9 * a ** 4)) * NIGHT_EXPOSURE * U.uNightGain.value;
+      // x0.3: ISS night photographs keep moonlit ground dark and the clouds faintly grey (a full licence read as daylight).
+      const e = .3 * U.uSunE.value * MOON_FULL * Math.pow(10, -.4 * (.026 * a + 4e-9 * a ** 4)) * NIGHT_EXPOSURE * U.uNightGain.value;
       U.uMoonE.value.setRGB(e, e * .93, e * .84).multiply(U.uSunColor.value);
     } else U.uMoonE.value.setRGB(0, 0, 0);
     camKm.copy(camera.getWorldPosition(camPos)).sub(centreWorld).multiplyScalar(kmPerUnit); const r = camKm.length();
@@ -723,7 +743,7 @@ export function createEarthRenderer(renderer, { day, night, brc, clouds = null, 
     const dv = makeView(renderer, U), sun = new THREE.Vector3(0, 1, 0), at = new THREE.Vector3(), cam = new THREE.Vector3();
     const material = new THREE.ShaderMaterial({
       uniforms: { uTransLUT: U.uTransLUT, uMultiLUT: U.uMultiLUT, uSunE: U.uSunE, uSunColor: U.uSunColor, uSunDir: { value: sun }, uGroundColor: { value: new THREE.Color(...groundColor) }, ...dv.lookup },
-      vertexShader: WORLD_VERTEX, fragmentShader: DOME_FRAGMENT, side: THREE.BackSide, depthWrite: false, fog: false,
+      vertexShader: worldVertex, fragmentShader: fragment(DOME_FRAGMENT), side: THREE.BackSide, depthWrite: false, fog: false,
     });
     return {
       material,
